@@ -32,7 +32,11 @@ export const useFileStore = create<FileState>()(
       openFile: (file) => set((state) => {
         const existing = state.openedFiles.find(f => f.path === file.path);
         if (existing) {
-          return { activeFileId: existing.id };
+          // Update initialLine if provided, to trigger scroll in editor
+          const updatedFiles = state.openedFiles.map(f => 
+            f.id === existing.id ? { ...f, initialLine: file.initialLine } : f
+          );
+          return { activeFileId: existing.id, openedFiles: updatedFiles };
         }
         return {
           openedFiles: [...state.openedFiles, file],

@@ -1,5 +1,5 @@
-use tauri::{command, PathResolver};
-use std::path::{Path, PathBuf};
+use tauri::command;
+use std::path::PathBuf;
 use walkdir::WalkDir;
 
 #[command]

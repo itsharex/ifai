@@ -7,9 +7,10 @@ import { useLayoutStore } from '../../stores/layoutStore';
 import { FilePlus, FolderOpen, MessageSquare } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { openDirectory, readFileContent } from '../../utils/fileSystem';
+import { open } from '@tauri-apps/plugin-dialog';
 
 export const MonacoEditor = () => {
-  const { setEditorInstance, theme } = useEditorStore();
+  const { editorInstance, setEditorInstance, theme } = useEditorStore();
   const { activeFileId, openedFiles, updateFileContent, openFile, setFileTree } = useFileStore();
   const { sendMessage } = useChatStore();
   const { setChatOpen, toggleChat } = useLayoutStore();
@@ -29,7 +30,7 @@ export const MonacoEditor = () => {
 
   const handleOpenFile = async () => {
     try {
-      const selected = await window.__TAURI_INTERNALS__.plugins.dialog.open({
+      const selected = await open({
         multiple: false,
       });
       if (selected && typeof selected === 'string') {
@@ -53,8 +54,20 @@ export const MonacoEditor = () => {
     if (tree) setFileTree(tree);
   };
 
+  useEffect(() => {
+    if (activeFile?.initialLine && editorInstance) {
+      editorInstance.revealLineInCenter(activeFile.initialLine);
+      editorInstance.setPosition({ lineNumber: activeFile.initialLine, column: 1 });
+      editorInstance.focus();
+    }
+  }, [activeFile?.id, activeFile?.initialLine, editorInstance]);
+
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     setEditorInstance(editor);
+    if (activeFile?.initialLine) {
+        editor.revealLineInCenter(activeFile.initialLine);
+        editor.setPosition({ lineNumber: activeFile.initialLine, column: 1 });
+    }
 
     // Add "Explain Code" Action
     editor.addAction({
@@ -131,7 +144,7 @@ export const MonacoEditor = () => {
         </div>
       </div>
     );
-  }
+  };
 
   return (
     <Editor

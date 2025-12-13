@@ -14,4 +14,5 @@ export interface OpenedFile {
   content: string;
   isDirty: boolean;
   language: string;
+  initialLine?: number;
 }

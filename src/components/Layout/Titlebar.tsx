@@ -5,6 +5,7 @@ import { useEditorStore } from '../../stores/editorStore';
 import { v4 as uuidv4 } from 'uuid';
 import { openDirectory, readFileContent, writeFileContent, saveFileAs } from '../../utils/fileSystem';
 import { toast } from 'sonner';
+import { open } from '@tauri-apps/plugin-dialog';
 
 interface TitlebarProps {
   onToggleChat?: () => void;
@@ -33,7 +34,7 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
   const handleOpenFile = async () => {
     setIsMenuOpen(false);
     try {
-      const selected = await window.__TAURI_INTERNALS__.plugins.dialog.open({
+      const selected = await open({
         multiple: false,
       });
 
@@ -184,4 +185,5 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
     </div>
   );
 };
+
 

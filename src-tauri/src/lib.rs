@@ -1,6 +1,7 @@
 mod ai;
 mod file_walker;
 mod terminal;
+mod search;
 use ai::Message;
 use terminal::TerminalManager;
 
@@ -29,7 +30,8 @@ pub fn run() {
             terminal::create_pty,
             terminal::write_pty,
             terminal::resize_pty,
-            terminal::kill_pty
+            terminal::kill_pty,
+            search::search_in_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -29,4 +29,7 @@ eventsource-stream = "0.2.3"
 futures = "0.3.31"
 walkdir = "2.5.0"
 portable-pty = "0.9.0"
+grep = "0.4.1"
+ignore = "0.4.25"
+termcolor = "1.4.1"
 
