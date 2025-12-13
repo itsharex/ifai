@@ -8,6 +8,7 @@ import { AIChat } from './components/AIChat/AIChat';
 import { useFileStore } from './stores/fileStore';
 import { useEditorStore } from './stores/editorStore';
 import { writeFileContent } from './utils/fileSystem';
+import { Toaster, toast } from 'sonner';
 
 function App() {
   const { activeFileId, openedFiles, setFileDirty } = useFileStore();
@@ -23,9 +24,10 @@ function App() {
           try {
             await writeFileContent(activeFile.path, activeFile.content);
             setFileDirty(activeFile.id, false);
-            console.log('File saved:', activeFile.path);
+            toast.success('File saved');
           } catch (error) {
             console.error('Failed to save file:', error);
+            toast.error('Failed to save file');
           }
         }
       } else if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
@@ -46,6 +48,7 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen bg-[#1e1e1e] text-white overflow-hidden">
+      <Toaster position="bottom-right" theme="dark" />
       <Titlebar onToggleChat={() => setIsChatOpen(!isChatOpen)} isChatOpen={isChatOpen} />
       
       <div className="flex flex-1 overflow-hidden">

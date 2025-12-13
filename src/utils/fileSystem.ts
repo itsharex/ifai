@@ -1,4 +1,4 @@
-import { readDir, readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
+import { readDir, readTextFile, writeTextFile, rename, remove } from '@tauri-apps/plugin-fs';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { FileNode } from '../stores/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -76,4 +76,15 @@ export const saveFileAs = async (content: string): Promise<string | null> => {
     return path;
   }
   return null;
+};
+
+export const renameFile = async (oldPath: string, newPath: string): Promise<void> => {
+    await rename(oldPath, newPath);
+};
+
+export const deleteFile = async (path: string): Promise<void> => {
+    // recursive true for directories, false for files (though remove handles both if recursive is true)
+    // But remove api signature might differ slightly based on version.
+    // In tauri v2 plugin-fs, remove options object: { recursive?: boolean }
+    await remove(path, { recursive: true }); 
 };

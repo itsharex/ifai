@@ -4,6 +4,7 @@ import { useFileStore } from '../../stores/fileStore';
 import { useEditorStore } from '../../stores/editorStore';
 import { v4 as uuidv4 } from 'uuid';
 import { openDirectory, readFileContent, writeFileContent, saveFileAs } from '../../utils/fileSystem';
+import { toast } from 'sonner';
 
 interface TitlebarProps {
   onToggleChat?: () => void;
@@ -29,12 +30,12 @@ export const Titlebar = ({ onToggleChat, isChatOpen }: TitlebarProps) => {
 
   const handleOpenFile = async () => {
     setIsMenuOpen(false);
-    const selected = await window.__TAURI_INTERNALS__.plugins.dialog.open({
-      multiple: false,
-    });
+    try {
+      const selected = await window.__TAURI_INTERNALS__.plugins.dialog.open({
+        multiple: false,
+      });
 
-    if (selected && typeof selected === 'string') {
-      try {
+      if (selected && typeof selected === 'string') {
         const content = await readFileContent(selected);
         openFile({
           id: uuidv4(),
@@ -44,9 +45,10 @@ export const Titlebar = ({ onToggleChat, isChatOpen }: TitlebarProps) => {
           isDirty: false,
           language: getLanguageFromPath(selected),
         });
-      } catch (error) {
-        console.error('Failed to open file:', error);
       }
+    } catch (error) {
+      console.error('Failed to open file:', error);
+      toast.error('Failed to open file');
     }
   };
 
@@ -58,12 +60,14 @@ export const Titlebar = ({ onToggleChat, isChatOpen }: TitlebarProps) => {
         if (activeFile.path) {
           await writeFileContent(activeFile.path, activeFile.content);
           setFileDirty(activeFile.id, false);
+          toast.success('File saved');
         } else {
           // If it's a new untitled file, use Save As
           await handleSaveFileAs();
         }
       } catch (error) {
         console.error('Failed to save file:', error);
+        toast.error('Failed to save file');
       }
     }
   };
@@ -85,9 +89,11 @@ export const Titlebar = ({ onToggleChat, isChatOpen }: TitlebarProps) => {
             language: getLanguageFromPath(newPath),
           });
           setFileDirty(activeFile.id, false);
+          toast.success('File saved');
         }
       } catch (error) {
         console.error('Failed to save file as:', error);
+        toast.error('Failed to save file as');
       }
     }
   };
@@ -169,3 +175,4 @@ export const Titlebar = ({ onToggleChat, isChatOpen }: TitlebarProps) => {
     </div>
   );
 };
+
