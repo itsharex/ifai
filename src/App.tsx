@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Titlebar } from './components/Layout/Titlebar';
 import { Sidebar } from './components/Layout/Sidebar';
 import { Statusbar } from './components/Layout/Statusbar';
 import { MonacoEditor } from './components/Editor/MonacoEditor';
 import { TabBar } from './components/Editor/TabBar';
+import { AIChat } from './components/AIChat/AIChat';
 import { useFileStore } from './stores/fileStore';
 import { useEditorStore } from './stores/editorStore';
 import { writeFileContent } from './utils/fileSystem';
@@ -11,6 +12,7 @@ import { writeFileContent } from './utils/fileSystem';
 function App() {
   const { activeFileId, openedFiles, setFileDirty } = useFileStore();
   const { editorInstance } = useEditorStore();
+  const [isChatOpen, setIsChatOpen] = useState(true);
 
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
@@ -31,6 +33,10 @@ function App() {
         if (editorInstance) {
           editorInstance.getAction('actions.find')?.run();
         }
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'l') {
+        // Toggle Chat with Cmd+L
+        e.preventDefault();
+        setIsChatOpen(prev => !prev);
       }
     };
 
@@ -40,7 +46,7 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen bg-[#1e1e1e] text-white overflow-hidden">
-      <Titlebar />
+      <Titlebar onToggleChat={() => setIsChatOpen(!isChatOpen)} isChatOpen={isChatOpen} />
       
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
@@ -51,6 +57,8 @@ function App() {
             <MonacoEditor />
           </div>
         </div>
+
+        {isChatOpen && <AIChat />}
       </div>
       
       <Statusbar />

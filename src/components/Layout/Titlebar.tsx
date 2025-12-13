@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { ChevronDown, Sun, Moon } from 'lucide-react';
+import { ChevronDown, Sun, Moon, MessageSquare } from 'lucide-react';
 import { useFileStore } from '../../stores/fileStore';
 import { useEditorStore } from '../../stores/editorStore';
 import { v4 as uuidv4 } from 'uuid';
 import { openDirectory, readFileContent, writeFileContent, saveFileAs } from '../../utils/fileSystem';
 
-export const Titlebar = () => {
+interface TitlebarProps {
+  onToggleChat?: () => void;
+  isChatOpen?: boolean;
+}
+
+export const Titlebar = ({ onToggleChat, isChatOpen }: TitlebarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { openFile, activeFileId, openedFiles, updateFileContent, setFileDirty } = useFileStore();
   const { theme, setTheme } = useEditorStore();
@@ -145,13 +150,20 @@ export const Titlebar = () => {
         </div>
       </div>
 
-      <div>
+      <div className="flex items-center space-x-2">
+        <button 
+          className={`p-1 rounded ${isChatOpen ? 'text-blue-400 bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+          onClick={onToggleChat}
+          title="Toggle AI Chat (Cmd+L)"
+        >
+          <MessageSquare size={16} />
+        </button>
         <button 
           className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
           onClick={handleThemeToggle}
           title="Toggle Theme"
         >
-          {theme === 'vs-dark' ? <Sun size={18} /> : <Moon size={18} />}
+          {theme === 'vs-dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
       </div>
     </div>
