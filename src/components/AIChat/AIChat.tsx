@@ -4,12 +4,9 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useChatStore } from '../../stores/useChatStore';
-import { v4 as uuidv4 } from 'uuid';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 
 export const AIChat = () => {
-  const { messages, isLoading, apiKey, setApiKey, addMessage, updateMessageContent, setLoading } = useChatStore();
+  const { messages, isLoading, apiKey, setApiKey, sendMessage } = useChatStore();
   const [input, setInput] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -24,55 +21,9 @@ export const AIChat = () => {
 
   const handleSend = async () => {
     if (!input.trim() || !apiKey) return;
-    if (isLoading) return;
-
-    const userMsgId = uuidv4();
-    const assistantMsgId = uuidv4();
-    const eventId = `chat_${assistantMsgId}`;
-
-    addMessage({ id: userMsgId, role: 'user', content: input });
-    addMessage({ id: assistantMsgId, role: 'assistant', content: '' });
+    const msg = input;
     setInput('');
-    setLoading(true);
-
-    try {
-      // Setup listeners before invoking
-      const unlistenData = await listen<string>(eventId, (event) => {
-        useChatStore.getState().updateMessageContent(assistantMsgId, 
-            useChatStore.getState().messages.find(m => m.id === assistantMsgId)?.content + event.payload
-        );
-      });
-      
-      const unlistenError = await listen<string>(`${eventId}_error`, (event) => {
-        console.error('Chat error:', event.payload);
-        setLoading(false);
-        unlistenData();
-        unlistenError();
-        unlistenFinish();
-      });
-
-      const unlistenFinish = await listen<string>(`${eventId}_finish`, () => {
-        setLoading(false);
-        unlistenData();
-        unlistenError();
-        unlistenFinish();
-      });
-
-      // Invoke Rust command
-      // Filter messages to send only role and content
-      const history = messages.map(m => ({ role: m.role, content: m.content }));
-      history.push({ role: 'user', content: input });
-
-      await invoke('ai_chat', { 
-        apiKey, 
-        messages: history, 
-        eventId 
-      });
-
-    } catch (e) {
-      console.error('Failed to invoke ai_chat', e);
-      setLoading(false);
-    }
+    await sendMessage(msg);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Titlebar } from './components/Layout/Titlebar';
 import { Sidebar } from './components/Layout/Sidebar';
 import { Statusbar } from './components/Layout/Statusbar';
@@ -7,13 +7,14 @@ import { TabBar } from './components/Editor/TabBar';
 import { AIChat } from './components/AIChat/AIChat';
 import { useFileStore } from './stores/fileStore';
 import { useEditorStore } from './stores/editorStore';
+import { useLayoutStore } from './stores/layoutStore';
 import { writeFileContent } from './utils/fileSystem';
 import { Toaster, toast } from 'sonner';
 
 function App() {
   const { activeFileId, openedFiles, setFileDirty } = useFileStore();
   const { editorInstance } = useEditorStore();
-  const [isChatOpen, setIsChatOpen] = useState(true);
+  const { isChatOpen, toggleChat } = useLayoutStore();
 
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
@@ -38,18 +39,18 @@ function App() {
       } else if ((e.metaKey || e.ctrlKey) && e.key === 'l') {
         // Toggle Chat with Cmd+L
         e.preventDefault();
-        setIsChatOpen(prev => !prev);
+        toggleChat();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeFileId, openedFiles, setFileDirty, editorInstance]);
+  }, [activeFileId, openedFiles, setFileDirty, editorInstance, toggleChat]);
 
   return (
     <div className="flex flex-col h-screen bg-[#1e1e1e] text-white overflow-hidden">
       <Toaster position="bottom-right" theme="dark" />
-      <Titlebar onToggleChat={() => setIsChatOpen(!isChatOpen)} isChatOpen={isChatOpen} />
+      <Titlebar onToggleChat={toggleChat} isChatOpen={isChatOpen} />
       
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

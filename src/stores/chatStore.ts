@@ -12,4 +12,5 @@ export interface ChatState {
   addMessage: (message: ChatMessage) => void;
   updateMessageContent: (id: string, content: string) => void;
   setLoading: (loading: boolean) => void;
+  sendMessage: (content: string) => Promise<void>;
 }
