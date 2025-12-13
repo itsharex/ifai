@@ -1,5 +1,8 @@
 mod ai;
+mod file_walker;
+mod terminal;
 use ai::Message;
+use terminal::TerminalManager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -15,10 +18,19 @@ async fn ai_chat(app: tauri::AppHandle, api_key: String, messages: Vec<Message>,
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(TerminalManager::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, ai_chat])
+        .invoke_handler(tauri::generate_handler![
+            greet, 
+            ai_chat, 
+            file_walker::get_all_file_paths,
+            terminal::create_pty,
+            terminal::write_pty,
+            terminal::resize_pty,
+            terminal::kill_pty
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

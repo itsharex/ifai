@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, Sun, Moon, MessageSquare } from 'lucide-react';
+import { ChevronDown, Sun, Moon, MessageSquare, Terminal } from 'lucide-react';
 import { useFileStore } from '../../stores/fileStore';
 import { useEditorStore } from '../../stores/editorStore';
 import { v4 as uuidv4 } from 'uuid';
@@ -9,9 +9,11 @@ import { toast } from 'sonner';
 interface TitlebarProps {
   onToggleChat?: () => void;
   isChatOpen?: boolean;
+  onToggleTerminal?: () => void;
+  isTerminalOpen?: boolean;
 }
 
-export const Titlebar = ({ onToggleChat, isChatOpen }: TitlebarProps) => {
+export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTerminalOpen }: TitlebarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { openFile, activeFileId, openedFiles, updateFileContent, setFileDirty } = useFileStore();
   const { theme, setTheme } = useEditorStore();
@@ -157,6 +159,13 @@ export const Titlebar = ({ onToggleChat, isChatOpen }: TitlebarProps) => {
       </div>
 
       <div className="flex items-center space-x-2">
+        <button 
+          className={`p-1 rounded ${isTerminalOpen ? 'text-green-400 bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+          onClick={onToggleTerminal}
+          title="Toggle Terminal (Cmd+J)"
+        >
+          <Terminal size={16} />
+        </button>
         <button 
           className={`p-1 rounded ${isChatOpen ? 'text-blue-400 bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
           onClick={onToggleChat}
