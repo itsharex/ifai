@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useFileStore } from '../../stores/fileStore';
 import { ChevronRight, ChevronDown, File, Folder } from 'lucide-react';
-import { FileNode } from '../../stores/types';
+import { FileNode, GitStatus } from '../../stores/types';
 import { readFileContent, readDirectory, renameFile, deleteFile } from '../../utils/fileSystem';
 import { toast } from 'sonner';
 
@@ -67,10 +67,28 @@ const FileTreeItem = ({ node, level, onContextMenu, onReload }: {
     }
   }, [expanded]); // simplistic dependency
 
+  const getStatusColorClass = (status?: GitStatus) => {
+    switch (status) {
+      case GitStatus.Added:
+      case GitStatus.Untracked:
+        return 'text-green-500';
+      case GitStatus.Modified:
+        return 'text-yellow-500';
+      case GitStatus.Deleted:
+      case GitStatus.Conflicted:
+        return 'text-red-500';
+      case GitStatus.Renamed:
+      case GitStatus.TypeChange:
+        return 'text-blue-400';
+      default:
+        return 'text-gray-300'; // Unmodified or Unknown
+    }
+  };
+
   return (
     <div>
       <div 
-        className="flex items-center py-1 px-2 hover:bg-gray-800 cursor-pointer text-gray-300 text-sm select-none"
+        className="flex items-center py-1 px-2 hover:bg-gray-800 cursor-pointer text-sm select-none"
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={handleClick}
         onContextMenu={(e) => onContextMenu(e, node)}
@@ -80,7 +98,7 @@ const FileTreeItem = ({ node, level, onContextMenu, onReload }: {
           {node.kind === 'file' && <File size={14} />}
         </span>
         {node.kind === 'directory' && !expanded && <Folder size={14} className="mr-1" />}
-        <span className="truncate">{node.name}</span>
+        <span className={`truncate ${getStatusColorClass(node.gitStatus)}`}>{node.name}</span>
       </div>
       {expanded && children && (
         <div>
@@ -132,10 +150,6 @@ export const FileTree = () => {
     if (contextMenu.node) {
         setRenamingNode(contextMenu.node);
         setRenameInput(contextMenu.node.name);
-        // Logic to show input dialog (using simple prompt for MVP for now or custom UI)
-        // For better UX, let's use a native prompt for simplicity in this iteration, 
-        // as custom inline input requires more complex state management.
-        // Or actually, let's just use window.prompt for the MVP to save UI work.
         const newName = window.prompt("Rename to:", contextMenu.node.name);
         if (newName && newName !== contextMenu.node.name) {
              performRename(contextMenu.node, newName);
@@ -150,10 +164,6 @@ export const FileTree = () => {
         const newPath = [...pathParts, newName].join('/');
         await renameFile(node.path, newPath);
         toast.success(`Renamed to ${newName}`);
-        // Ideally reload parent. For MVP, we might need to reload the whole tree or implement finer reload.
-        // Let's just reload the root for simplicity if possible, or user has to collapse/expand.
-        // A full refresh of the tree structure is complex without a robust file watcher.
-        // For now, prompt user to refresh or collapse/expand.
     } catch (e) {
         console.error("Rename failed", e);
         toast.error("Rename failed");
@@ -166,7 +176,6 @@ export const FileTree = () => {
             try {
                 await deleteFile(contextMenu.node.path);
                 toast.success("Deleted");
-                // Same reload issue.
             } catch (e) {
                 console.error("Delete failed", e);
                 toast.error("Delete failed");
@@ -207,3 +216,4 @@ export const FileTree = () => {
     </div>
   );
 };
+

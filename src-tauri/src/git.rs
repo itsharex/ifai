@@ -1,0 +1,78 @@
+use serde::Serialize;
+use git2::{Repository, StatusOptions, Status};
+use std::path::Path;
+use tauri::command;
+use std::collections::HashMap;
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub enum GitStatus {
+    Untracked,
+    Modified,
+    Added,
+    Deleted,
+    Renamed,
+    TypeChange,
+    Conflicted,
+    Ignored,
+    Unmodified,
+    Unknown,
+}
+
+// Helper to convert git2::Status into our GitStatus enum
+fn convert_git2_status(status: Status) -> GitStatus {
+    if status.is_wt_new() {
+        GitStatus::Untracked // File is new in working tree, not yet added to index
+    } else if status.is_index_new() {
+        GitStatus::Added // File is new in index (staged)
+    } else if status.is_wt_deleted() {
+        GitStatus::Deleted
+    } else if status.is_wt_renamed() {
+        GitStatus::Renamed
+    } else if status.is_wt_typechange() {
+        GitStatus::TypeChange
+    } else if status.is_index_modified() {
+        GitStatus::Modified
+    } else if status.is_index_deleted() {
+        GitStatus::Deleted
+    } else if status.is_index_renamed() {
+        GitStatus::Renamed
+    } else if status.is_index_typechange() {
+        GitStatus::TypeChange
+    } else if status.is_ignored() {
+        GitStatus::Ignored
+    } else if status.is_conflicted() {
+        GitStatus::Conflicted
+    } else if status.is_wt_modified() {
+        GitStatus::Modified
+    } else {
+        GitStatus::Unmodified // Or Unknown if none of above
+    }
+}
+
+#[command]
+pub async fn get_git_statuses(repo_path: String) -> Result<HashMap<String, GitStatus>, String> {
+    let repo = Repository::open(&repo_path).map_err(|e| e.to_string())?;
+
+    let mut options = StatusOptions::new();
+    options.include_untracked(true);
+    options.recurse_untracked_dirs(true);
+    options.exclude_submodules(true);
+
+    let statuses = repo.statuses(Some(&mut options)).map_err(|e| e.to_string())?;
+
+    let mut file_statuses = HashMap::new();
+
+    for entry in statuses.iter() {
+        let path_str = entry.path().map_or("", |p| p);
+        let status = entry.status();
+
+        let git_status = convert_git2_status(status);
+        
+        // git2 path is relative to repo root, we need to convert to absolute path for frontend.
+        let abs_path = Path::new(&repo_path).join(path_str);
+
+        file_statuses.insert(abs_path.to_string_lossy().to_string(), git_status);
+    }
+
+    Ok(file_statuses)
+}
