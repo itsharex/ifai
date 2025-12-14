@@ -1,8 +1,9 @@
-use tauri::{AppHandle, Emitter, command, State, Manager};
-use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter, command, State};
+use std::sync::Arc;
 use std::collections::HashMap;
-use tokio::process::{Command, Child, ChildStdin};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Command, ChildStdin};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, AsyncBufReadExt};
+use tokio::sync::Mutex;
 use std::process::Stdio;
 use std::str;
 
@@ -10,6 +11,7 @@ use std::str;
 pub struct LspManager {
     // Map language_id -> Child Process Stdin
     // We only keep stdin to write. Stdout is consumed by a background task.
+    // Use tokio::sync::Mutex for async compatibility
     processes: Arc<Mutex<HashMap<String, ChildStdin>>>,
 }
 
@@ -43,7 +45,7 @@ pub async fn start_lsp(
     let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
     let stderr = child.stderr.take().ok_or("Failed to open stderr")?;
 
-    state.processes.lock().unwrap().insert(language_id.clone(), stdin);
+    state.processes.lock().await.insert(language_id.clone(), stdin);
 
     // Spawn stdout reader
     let app_handle = app.clone();
@@ -121,8 +123,6 @@ pub async fn start_lsp(
     tokio::spawn(async move {
         let mut reader = BufReader::new(stderr);
         let mut line = String::new();
-        // Use read_line-like loop if possible, or just raw bytes
-        // BufReader has read_line
         loop {
             line.clear();
             match reader.read_line(&mut line).await {
@@ -144,7 +144,7 @@ pub async fn send_lsp_message(
     language_id: String,
     message: String,
 ) -> Result<(), String> {
-    let mut processes = state.processes.lock().unwrap();
+    let mut processes = state.processes.lock().await;
     if let Some(stdin) = processes.get_mut(&language_id) {
         // Format LSP message: Header + Body
         let content = message.as_bytes();
@@ -164,14 +164,8 @@ pub async fn send_lsp_message(
 
 #[command]
 pub async fn kill_lsp(state: State<'_, LspManager>, language_id: String) -> Result<(), String> {
-    let mut processes = state.processes.lock().unwrap();
-    if let Some(mut stdin) = processes.remove(&language_id) {
-        // Dropping stdin often signals EOF to the process, causing it to exit.
-        // We don't have the Child handle here to call .kill(), because we split it.
-        // But usually closing stdin is enough for LSP.
-        // Or we can send "exit" notification via JSON-RPC.
-        // The frontend `monaco-languageclient` usually sends `shutdown` and `exit`.
-        
+    let mut processes = state.processes.lock().await;
+    if let Some(stdin) = processes.remove(&language_id) {
         drop(stdin); // Close stdin
         Ok(())
     } else {
