@@ -8,9 +8,10 @@ import { FilePlus, FolderOpen, MessageSquare } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { openDirectory, readFileContent } from '../../utils/fileSystem';
 import { open } from '@tauri-apps/plugin-dialog';
+import { InlineEditWidget } from './InlineEditWidget';
 
 export const MonacoEditor = () => {
-  const { editorInstance, setEditorInstance, theme } = useEditorStore();
+  const { editorInstance, setEditorInstance, theme, setInlineEdit } = useEditorStore();
   const { activeFileId, openedFiles, updateFileContent, openFile, setFileTree } = useFileStore();
   const { sendMessage } = useChatStore();
   const { setChatOpen, toggleChat } = useLayoutStore();
@@ -102,6 +103,19 @@ export const MonacoEditor = () => {
             }
         }
     });
+
+    // Add Inline Edit Command (Cmd+K)
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+        const position = editor.getPosition();
+        const selection = editor.getSelection();
+        if (position && selection && !selection.isEmpty()) {
+            setInlineEdit({
+                isVisible: true,
+                position: { lineNumber: position.lineNumber, column: position.column },
+                selection: selection
+            });
+        }
+    });
   };
 
   const handleChange = (value: string | undefined) => {
@@ -140,6 +154,7 @@ export const MonacoEditor = () => {
             <span>Go to File</span> <span>Cmd+P</span>
             <span>Find in Files</span> <span>Cmd+Shift+F</span>
             <span>Toggle AI Chat</span> <span>Cmd+L</span>
+            <span>Inline AI Edit</span> <span>Cmd+K</span>
           </div>
         </div>
       </div>
@@ -147,21 +162,24 @@ export const MonacoEditor = () => {
   };
 
   return (
-    <Editor
-      height="100%"
-      path={activeFile.path} // Unique key for model caching
-      defaultLanguage={activeFile.language || 'plaintext'}
-      language={activeFile.language}
-      value={activeFile.content}
-      theme={theme}
-      onChange={handleChange}
-      onMount={handleEditorDidMount}
-      options={{
-        minimap: { enabled: true },
-        fontSize: 14,
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-      }}
-    />
+    <div className="relative h-full w-full">
+      <Editor
+        height="100%"
+        path={activeFile.path} // Unique key for model caching
+        defaultLanguage={activeFile.language || 'plaintext'}
+        language={activeFile.language}
+        value={activeFile.content}
+        theme={theme}
+        onChange={handleChange}
+        onMount={handleEditorDidMount}
+        options={{
+          minimap: { enabled: true },
+          fontSize: 14,
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+        }}
+      />
+      <InlineEditWidget />
+    </div>
   );
 };
