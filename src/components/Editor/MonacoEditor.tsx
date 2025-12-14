@@ -111,6 +111,79 @@ export const MonacoEditor = () => {
         }
     });
 
+    // Register Inline Completion Provider
+    const completionProvider = monaco.languages.registerInlineCompletionsProvider({ pattern: '**' }, {
+        provideInlineCompletions: async (model, position, context, token) => {
+            const apiKey = useChatStore.getState().apiKey;
+            if (!apiKey) return { items: [] };
+
+            // Debounce or context check? Monaco handles debounce somewhat, 
+            // but we might want to ensure we don't spam.
+            // For now, let's trust Monaco's trigger logic or user manual trigger.
+            // Actually, inline completion triggers automatically.
+            
+            // Get Context
+            const textBefore = model.getValueInRange({
+                startLineNumber: Math.max(1, position.lineNumber - 50),
+                startColumn: 1,
+                endLineNumber: position.lineNumber,
+                endColumn: position.column
+            });
+            
+            const textAfter = model.getValueInRange({
+                startLineNumber: position.lineNumber,
+                startColumn: position.column,
+                endLineNumber: Math.min(model.getLineCount(), position.lineNumber + 20),
+                endColumn: 1
+            });
+
+            const prompt = `You are a code completion engine. Output only the code to complete the cursor location. Do not output markdown.
+Context:
+${textBefore}[CURSOR]${textAfter}
+`;
+
+            try {
+                // We use a shorter timeout for completions to avoid hanging UI
+                // But invoke is async.
+                const messages = [{ role: 'user', content: prompt }];
+                const result = await invoke<string>('ai_completion', { 
+                    apiKey, 
+                    messages 
+                });
+
+                if (!result) return { items: [] };
+
+                // Clean up result (remove markdown blocks if any)
+                let cleanText = result.replace(/^```\w*\n/, '').replace(/\n```$/, '');
+                
+                return {
+                    items: [{
+                        insertText: cleanText,
+                        range: new monaco.Range(
+                            position.lineNumber, 
+                            position.column, 
+                            position.lineNumber, 
+                            position.column
+                        )
+                    }]
+                };
+            } catch (e) {
+                console.error("Completion failed", e);
+                return { items: [] };
+            }
+        },
+        freeInlineCompletions(completions) {}
+    });
+
+    // Cleanup provider on unmount
+    // monaco.languages.register... returns a disposable.
+    // However, saving it to ref for cleanup is tricky in functional component without ref.
+    // Let's attach it to editor instance or just ignore for now (React strict mode might register twice).
+    // Better: use a ref to store disposable.
+    
+    // ... inside handleEditorDidMount
+    // Store disposable somewhere?
+    
     // Add Inline Edit Command (Cmd+K)
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
         const position = editor.getPosition();

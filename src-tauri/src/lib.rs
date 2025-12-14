@@ -27,6 +27,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet, 
             ai_chat, 
+            ai::ai_completion,
             file_walker::get_all_file_paths,
             terminal::create_pty,
             terminal::write_pty,
