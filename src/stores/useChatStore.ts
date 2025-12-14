@@ -42,14 +42,18 @@ ONLY output ONE tool call per response. Wait for user approval.
 const parseToolCall = (content: string): ToolCall | null => {
     // Basic regex failed on nested braces. We need to manually find the JSON block.
     // 1. Find start of JSON
-    let startIndex = content.lastIndexOf('```json');
-    if (startIndex !== -1) {
-        startIndex += 7;
+    let startIndex = -1;
+    let toolCallBlockStart = -1;
+
+    const codeBlockStart = content.lastIndexOf('```json');
+    if (codeBlockStart !== -1) {
+        startIndex = codeBlockStart + 7;
+        toolCallBlockStart = codeBlockStart;
     } else {
         startIndex = content.lastIndexOf('{');
         // Check if it looks like a tool call
         if (startIndex !== -1) {
-            // naive check
+             toolCallBlockStart = startIndex;
         }
     }
 
@@ -101,8 +105,8 @@ const parseToolCall = (content: string): ToolCall | null => {
                  // Handle <<FILE_CONTENT>> replacement
                  if (json.args.content === '<<FILE_CONTENT>>') {
                     // Search backwards for the last code block
-                    // We look for ```lang ... ``` before the tool call
-                    const beforeTool = content.substring(0, startIndex);
+                    // We look for ```lang ... ``` strictly BEFORE the tool call block
+                    const beforeTool = content.substring(0, toolCallBlockStart);
                     const lastCodeBlockEnd = beforeTool.lastIndexOf('```');
                     if (lastCodeBlockEnd !== -1) {
                         const lastCodeBlockStart = beforeTool.lastIndexOf('```', lastCodeBlockEnd - 1);
