@@ -8,28 +8,25 @@ use tauri::command;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct MatchResult {
-    path: String,
-    line_number: u64,
-    content: String,
+    pub path: String,
+    pub line_number: u64,
+    pub content: String,
 }
 
 #[command]
 pub async fn search_in_files(root_path: String, query: String) -> Result<Vec<MatchResult>, String> {
+    grep_search(&root_path, &query).map_err(|e| e.to_string())
+}
+
+pub fn grep_search(root_path: &str, query: &str) -> anyhow::Result<Vec<MatchResult>> {
     let matches = Arc::new(Mutex::new(Vec::new()));
     let matches_clone = matches.clone();
 
     // Use ignore::WalkBuilder to respect .gitignore
-    let walker = WalkBuilder::new(&root_path).build();
+    let walker = WalkBuilder::new(root_path).build();
 
-    let matcher = RegexMatcher::new(&query).map_err(|e| e.to_string())?;
+    let matcher = RegexMatcher::new(query)?;
     
-    // We can use parallel iterator if we use 'ignore' crate's parallel features, 
-    // but standard loop is easier to implement for MVP without complex threading logic.
-    // 'ignore' crate provides a parallel walker but integrating with 'grep' needs care.
-    // Let's stick to serial for simplicity first, or use simple threading.
-    // Actually, WalkBuilder produces a parallel iterator if configured, but let's iterate serially for now.
-    
-    // Correction: WalkBuilder returns a walker that is iterable.
     for result in walker {
         match result {
             Ok(entry) => {
@@ -47,7 +44,7 @@ pub async fn search_in_files(root_path: String, query: String) -> Result<Vec<Mat
                     UTF8(|ln, line| {
                         let mut m = matches_in_file.lock().unwrap();
                         if m.len() >= 1000 {
-                            return Ok(false); // Stop searching if limit reached
+                            return Ok(false); 
                         }
                         m.push(MatchResult {
                             path: path_string.clone(),

@@ -44,8 +44,10 @@ pub fn run() {
             lsp::start_lsp,
             lsp::send_lsp_message,
             lsp::kill_lsp,
-            rag::init_rag_index, // Added command
-            rag::search_semantic // Added command
+            rag::init_rag_index, 
+            rag::search_semantic,
+            rag::search_hybrid,
+            rag::build_context
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

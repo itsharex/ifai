@@ -12,6 +12,10 @@ export const Sidebar = () => {
   const { setFileTree, rootPath, fileTree } = useFileStore();
   const [activeTab, setActiveTab] = useState<'explorer' | 'search'>('explorer');
 
+import { invoke } from '@tauri-apps/api/core';
+
+// ...
+
   useEffect(() => {
     // Restore file tree from rootPath if exists
     if (rootPath && !fileTree) {
@@ -26,6 +30,8 @@ export const Sidebar = () => {
             kind: 'directory',
             children
           });
+          // Init RAG
+          invoke('init_rag_index', { rootPath });
         } catch (e) {
           console.error("Failed to restore project:", e);
         }
@@ -38,11 +44,10 @@ export const Sidebar = () => {
     const tree = await openDirectory();
     if (tree) {
       setFileTree(tree);
+      invoke('init_rag_index', { rootPath: tree.path });
     }
   };
-
-  return (
-    <div className="flex h-full border-r border-gray-700 bg-gray-900">
+// ...
       {/* Activity Bar */}
       <div className="w-12 flex flex-col items-center py-2 border-r border-gray-700 bg-[#1e1e1e]">
         <button 

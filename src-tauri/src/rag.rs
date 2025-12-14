@@ -6,6 +6,7 @@ use ignore::WalkBuilder;
 use serde::{Serialize, Deserialize};
 use std::fs;
 use anyhow::Result;
+use crate::search;
 
 // Data structure for a text chunk
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,8 +37,6 @@ impl VectorIndex {
     }
 
     pub fn add(&mut self, path: String, content: String) -> Result<()> {
-        // Split text using characters (simple default)
-        // 512 characters roughly corresponds to typical chunk sizes
         let splitter = TextSplitter::new(ChunkConfig::new(512)); 
         let chunks_iter = splitter.chunks(&content); 
 
@@ -50,7 +49,6 @@ impl VectorIndex {
             return Ok(());
         }
 
-        // Generate embeddings
         let embeddings = self.model.embed(chunk_texts.clone(), None)?;
 
         for (i, chunk_text) in chunk_texts.iter().enumerate() {
@@ -65,30 +63,6 @@ impl VectorIndex {
         Ok(())
     }
 
-    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<(Chunk, f32)>> {
-        // Embedding search requires query embedding. 
-        // Note: embed() takes &self in fastembed < 4, but maybe &mut self in 5.x?
-        // If it requires mut, we need to change signature.
-        // Let's try assume it's immutable first, if compiler complains again, we change.
-        // Actually, previous error `cannot borrow self.model as mutable` confirms it needs mut.
-        // BUT, wait, `self.model` is `TextEmbedding`. 
-        // Why would embedding generation mutate the model? Maybe caching?
-        // Let's try `&self` and if it fails, I will use `&mut self`.
-        // The error was: `self.model.embed` -> `self` is `&` reference.
-        // So `TextEmbedding::embed` takes `&self`? 
-        // Wait, if it takes `&self`, then `self.model.embed` should work even if `self` is `&VectorIndex`.
-        // Unless `embed` takes `&mut self`.
-        
-        // Let's check fastembed 5.4.0 docs via guess: usually `embed` is `&self`.
-        // Maybe the error was because I tried to use it mutably elsewhere?
-        // Ah, the error message: `cannot borrow self.model as mutable`.
-        // That means `embed` takes `&mut self`.
-        
-        // So I must change `search` to `&mut self`.
-        Err(anyhow::anyhow!("Force recompile to check signature"))
-    }
-    
-    // Proper search with mut
     pub fn search_mut(&mut self, query: &str, limit: usize) -> Result<Vec<(Chunk, f32)>> {
          let query_embeddings = self.model.embed(vec![query], None)?;
         let q_vec = &query_embeddings[0];
@@ -100,7 +74,6 @@ impl VectorIndex {
             })
             .collect();
         
-        // Sort by score desc
         scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         let results = scores.iter().take(limit).map(|(i, score)| {
@@ -135,11 +108,9 @@ impl RagState {
 
 #[command]
 pub async fn init_rag_index(app: AppHandle, state: State<'_, RagState>, root_path: String) -> Result<String, String> {
-    // Run in background thread
     let index_mutex = state.index.clone();
     let app_handle = app.clone();
     
-    // Check if index already initialized
     {
         let mut guard = index_mutex.lock().unwrap();
         if guard.is_none() {
@@ -151,9 +122,8 @@ pub async fn init_rag_index(app: AppHandle, state: State<'_, RagState>, root_pat
         }
     }
 
-    app.emit("rag-status", "Scanning files...").unwrap_or(());
+    app_handle.emit("rag-status", "Scanning files...").unwrap_or(());
 
-    // Spawn indexing task
     std::thread::spawn(move || {
         let walker = WalkBuilder::new(&root_path)
             .hidden(true)
@@ -196,11 +166,60 @@ pub async fn init_rag_index(app: AppHandle, state: State<'_, RagState>, root_pat
 
 #[command]
 pub async fn search_semantic(state: State<'_, RagState>, query: String) -> Result<Vec<Chunk>, String> {
-    let mut guard = state.index.lock().unwrap(); // Need mutable lock for search_mut
+    let mut guard = state.index.lock().unwrap();
     if let Some(index) = guard.as_mut() {
         let results = index.search_mut(&query, 5).map_err(|e| e.to_string())?;
         Ok(results.into_iter().map(|(chunk, _)| chunk).collect())
     } else {
         Err("Index not initialized".to_string())
     }
+}
+
+#[command]
+pub async fn search_hybrid(
+    state: State<'_, RagState>, 
+    query: String, 
+    root_path: String
+) -> Result<Vec<Chunk>, String> {
+    let mut guard = state.index.lock().unwrap();
+    let semantic_results = if let Some(index) = guard.as_mut() {
+        match index.search_mut(&query, 5) {
+            Ok(res) => res.into_iter().map(|(c, _)| c).collect(),
+            Err(_) => vec![]
+        }
+    } else {
+        vec![]
+    };
+
+    let keyword_results = search::grep_search(&root_path, &query).unwrap_or_default();
+    let keyword_chunks = keyword_results.into_iter().take(5).map(|m| Chunk {
+        id: format!("{}::L{}", m.path, m.line_number),
+        path: m.path,
+        content: m.content
+    }).collect::<Vec<_>>();
+
+    let mut final_results = semantic_results;
+    final_results.extend(keyword_chunks);
+    
+    Ok(final_results)
+}
+
+#[command]
+pub async fn build_context(
+    state: State<'_, RagState>, 
+    query: String,
+    root_path: String
+) -> Result<String, String> {
+    let chunks = search_hybrid(state, query, root_path).await?;
+    
+    let mut context_xml = String::from("<context>\n");
+    for chunk in chunks.iter().take(10) {
+        context_xml.push_str(&format!(
+            "  <file path=\"{}\">\n    {}\n  </file>\n", 
+            chunk.path, chunk.content.trim()
+        ));
+    }
+    context_xml.push_str("</context>");
+    
+    Ok(context_xml)
 }

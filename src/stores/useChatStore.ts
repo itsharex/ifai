@@ -23,6 +23,10 @@ export const useChatStore = create<ChatState>()(
       toggleAutocomplete: () => set((state) => ({
         isAutocompleteEnabled: !state.isAutocompleteEnabled
       })),
+import { useFileStore } from './fileStore';
+
+// ...
+
       sendMessage: async (input: string) => {
         const { apiKey, messages, isLoading, addMessage, setLoading, updateMessageContent } = get();
         if (!input.trim() || !apiKey || isLoading) return;
@@ -61,9 +65,24 @@ export const useChatStore = create<ChatState>()(
                 cleanup();
             });
 
+            // RAG: Build Context
+            let fullContent = input;
+            const rootPath = useFileStore.getState().rootPath;
+            if (rootPath) {
+                try {
+                    const context = await invoke<string>('build_context', { query: input, rootPath });
+                    if (context) {
+                        fullContent = `${context}\n\n<user_query>${input}</user_query>`;
+                        console.log("RAG Context injected");
+                    }
+                } catch (e) {
+                    console.error("RAG failed:", e);
+                }
+            }
+
             // Prepare history
             const history = messages.map(m => ({ role: m.role, content: m.content }));
-            history.push({ role: 'user', content: input });
+            history.push({ role: 'user', content: fullContent });
 
             await invoke('ai_chat', { 
                 apiKey, 
