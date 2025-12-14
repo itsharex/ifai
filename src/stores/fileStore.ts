@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { FileNode, OpenedFile, GitStatus } from './types';
 import { invoke } from '@tauri-apps/api/core';
+import { readFileContent } from '../utils/fileSystem';
 
 interface FileState {
   fileTree: FileNode | null;
@@ -20,6 +21,7 @@ interface FileState {
   setFileDirty: (id: string, isDirty: boolean) => void;
   setGitStatuses: (statuses: Map<string, GitStatus>) => void;
   fetchGitStatuses: () => Promise<void>;
+  reloadFileContent: (id: string) => Promise<void>;
 }
 
 // Helper to recursively update git status in file tree
@@ -101,6 +103,22 @@ export const useFileStore = create<FileState>()(
             get().setGitStatuses(statusMap);
         } catch (e) {
             console.error("Failed to fetch Git status:", e);
+        }
+      },
+
+      reloadFileContent: async (id: string) => {
+        const file = get().openedFiles.find(f => f.id === id);
+        if (file && file.path && !file.isDirty) {
+            try {
+                const content = await readFileContent(file.path);
+                set((state) => ({
+                    openedFiles: state.openedFiles.map(f => 
+                        f.id === id ? { ...f, content, isDirty: false } : f
+                    ),
+                }));
+            } catch (e) {
+                console.error(`Failed to reload file ${file.path}:`, e);
+            }
         }
       },
     }),

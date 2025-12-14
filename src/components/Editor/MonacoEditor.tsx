@@ -12,11 +12,18 @@ import { InlineEditWidget } from './InlineEditWidget';
 
 export const MonacoEditor = () => {
   const { editorInstance, setEditorInstance, theme, setInlineEdit } = useEditorStore();
-  const { activeFileId, openedFiles, updateFileContent, openFile, setFileTree } = useFileStore();
+  const { activeFileId, openedFiles, updateFileContent, openFile, setFileTree, reloadFileContent } = useFileStore();
   const { sendMessage } = useChatStore();
-  const { setChatOpen, toggleChat } = useLayoutStore();
+  // ...
 
   const activeFile = openedFiles.find(f => f.id === activeFileId);
+
+  // Auto-reload content if empty (due to persistence not saving content)
+  useEffect(() => {
+    if (activeFile && activeFile.path && !activeFile.content && !activeFile.isDirty) {
+        reloadFileContent(activeFile.id);
+    }
+  }, [activeFile?.id, activeFile?.path, activeFile?.content, activeFile?.isDirty, reloadFileContent]);
 
   const handleNewFile = () => {
     openFile({

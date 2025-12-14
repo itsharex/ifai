@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useEditorStore } from '../../stores/editorStore';
 import { useChatStore } from '../../stores/useChatStore';
-import { Sparkles, X, ArrowUp } from 'lucide-react';
+import { Sparkles, X, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { v4 as uuidv4 } from 'uuid';
-import { Range } from 'monaco-editor';
+import { toast } from 'sonner';
 
 export const InlineEditWidget = () => {
   const { editorInstance, inlineEdit, closeInlineEdit } = useEditorStore();
@@ -33,7 +33,14 @@ export const InlineEditWidget = () => {
   }, [inlineEdit.isVisible, inlineEdit.position, editorInstance]);
 
   const handleSubmit = async () => {
-    if (!input.trim() || !apiKey || !editorInstance || !inlineEdit.selection) return;
+    if (!input.trim()) return;
+    
+    if (!apiKey) {
+        toast.error("Please set DeepSeek API Key in the Chat panel first.");
+        return;
+    }
+
+    if (!editorInstance || !inlineEdit.selection) return;
     
     setIsLoading(true);
     const selection = inlineEdit.selection;
@@ -58,18 +65,6 @@ ${input}`;
     try {
         const unlistenData = await listen<string>(eventId, (event) => {
             generatedCode += event.payload;
-            // Real-time replacement? No, let's buffer or stream replace.
-            // Stream replacing whole block is tricky because we need to track end position.
-            // For MVP, let's accumulate and replace at the end, OR 
-            // Replace the selection continuously? 
-            // Let's Replace continuously!
-            
-            // To do this properly without messing up cursor, we usually replace the whole range.
-            // But streaming updates to a range is hard.
-            // EASIER MVP: Show loading, wait for full response, then replace.
-            // STREAMING MVP: Use a separate decoration or "Ghost text".
-            
-            // Let's stick to: Wait for full response -> Replace. Safer.
         });
 
         const cleanup = () => {
@@ -82,18 +77,20 @@ ${input}`;
 
         const unlistenError = await listen<string>(`${eventId}_error`, (event) => {
             console.error('Inline Edit Error:', event.payload);
+            toast.error(`AI Error: ${event.payload}`);
             cleanup();
         });
 
         const unlistenFinish = await listen<string>(`${eventId}_finish`, () => {
             // Apply edit
             if (generatedCode) {
-                // Ensure we replace the correct range (it might have moved, but we assume user didn't type)
+                // Ensure we replace the correct range
                 editorInstance.executeEdits('inline-ai', [{
                     range: selection,
                     text: generatedCode,
                     forceMoveMarkers: true
                 }]);
+                toast.success('Code updated by AI');
             }
             cleanup();
         });
@@ -107,6 +104,7 @@ ${input}`;
 
     } catch (e) {
         console.error(e);
+        toast.error(`Failed to request AI: ${String(e)}`);
         setIsLoading(false);
     }
   };
@@ -126,8 +124,8 @@ ${input}`;
         className="absolute z-50 bg-[#252526] border border-gray-600 rounded-lg shadow-2xl p-2 w-[400px] flex items-center gap-2"
         style={style}
     >
-        <div className="text-blue-400">
-            {isLoading ? <span className="animate-spin text-lg">⟳</span> : <Sparkles size={16} />}
+        <div className="text-blue-400 flex items-center justify-center w-5 h-5">
+            {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={16} />}
         </div>
         <input
             ref={inputRef}
