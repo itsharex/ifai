@@ -3,8 +3,10 @@ mod file_walker;
 mod terminal;
 mod search;
 mod git;
+mod lsp;
 use ai::Message;
 use terminal::TerminalManager;
+use lsp::LspManager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -21,6 +23,7 @@ async fn ai_chat(app: tauri::AppHandle, api_key: String, messages: Vec<Message>,
 pub fn run() {
     tauri::Builder::default()
         .manage(TerminalManager::new())
+        .manage(LspManager::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -34,7 +37,10 @@ pub fn run() {
             terminal::resize_pty,
             terminal::kill_pty,
             search::search_in_files,
-            git::get_git_statuses
+            git::get_git_statuses,
+            lsp::start_lsp,
+            lsp::send_lsp_message,
+            lsp::kill_lsp
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

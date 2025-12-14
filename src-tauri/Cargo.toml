@@ -33,4 +33,5 @@ grep = "0.4.1"
 ignore = "0.4.25"
 termcolor = "1.4.1"
 git2 = "0.20.3"
+bytes = "1.11.0"
 
