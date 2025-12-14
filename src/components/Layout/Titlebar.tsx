@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { openDirectory, readFileContent, writeFileContent, saveFileAs } from '../../utils/fileSystem';
 import { toast } from 'sonner';
 import { open } from '@tauri-apps/plugin-dialog';
+import { useTranslation } from 'react-i18next';
 
 interface TitlebarProps {
   onToggleChat?: () => void;
@@ -15,6 +16,7 @@ interface TitlebarProps {
 }
 
 export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTerminalOpen }: TitlebarProps) => {
+  const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { openFile, activeFileId, openedFiles, updateFileContent, setFileDirty, fetchGitStatuses } = useFileStore();
   const { theme, setTheme } = useEditorStore();
@@ -23,7 +25,7 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
     setIsMenuOpen(false);
     openFile({
       id: uuidv4(),
-      name: 'Untitled',
+      name: t('common.untitled'),
       path: '',
       content: '',
       isDirty: true,
@@ -43,7 +45,7 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
         openFile({
           id: uuidv4(),
           path: selected,
-          name: selected.split('/').pop() || 'Untitled',
+          name: selected.split('/').pop() || t('common.untitled'),
           content: content,
           isDirty: false,
           language: getLanguageFromPath(selected),
@@ -51,7 +53,7 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
       }
     } catch (error) {
       console.error('Failed to open file:', error);
-      toast.error('Failed to open file');
+      toast.error(t('common.fileOpenFailed'));
     }
   };
 
@@ -63,7 +65,7 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
         if (activeFile.path) {
           await writeFileContent(activeFile.path, activeFile.content);
           setFileDirty(activeFile.id, false);
-          toast.success('File saved');
+          toast.success(t('common.fileSaved'));
           fetchGitStatuses();
         } else {
           // If it's a new untitled file, use Save As
@@ -71,7 +73,7 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
         }
       } catch (error) {
         console.error('Failed to save file:', error);
-        toast.error('Failed to save file');
+        toast.error(t('common.fileSaveFailed'));
       }
     }
   };
@@ -87,18 +89,18 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
           openFile({
             id: activeFile.id, // Keep same ID
             path: newPath,
-            name: newPath.split('/').pop() || 'Untitled',
+            name: newPath.split('/').pop() || t('common.untitled'),
             content: activeFile.content,
             isDirty: false,
             language: getLanguageFromPath(newPath),
           });
           setFileDirty(activeFile.id, false);
-          toast.success('File saved');
+          toast.success(t('common.fileSaved'));
           fetchGitStatuses();
         }
       } catch (error) {
         console.error('Failed to save file as:', error);
-        toast.error('Failed to save file as');
+        toast.error(t('common.fileSaveFailed'));
       }
     }
   };
@@ -128,7 +130,7 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
             className="flex items-center text-gray-400 hover:text-white text-sm px-2 py-1 rounded hover:bg-gray-700"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
-            File <ChevronDown size={14} className="ml-1" />
+            {t('menu.file')} <ChevronDown size={14} className="ml-1" />
           </button>
           {isMenuOpen && (
             <div className="absolute top-full left-0 mt-1 bg-gray-700 rounded shadow-lg z-50 py-1 w-40">
@@ -136,25 +138,25 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
                 className="px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-600 cursor-pointer"
                 onClick={handleNewFile}
               >
-                New File
+                {t('menu.newFile')}
               </div>
               <div 
                 className="px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-600 cursor-pointer"
                 onClick={handleOpenFile}
               >
-                Open File
+                {t('menu.openFile')}
               </div>
               <div 
                 className="px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-600 cursor-pointer"
                 onClick={handleSaveFile}
               >
-                Save
+                {t('menu.save')}
               </div>
               <div 
                 className="px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-600 cursor-pointer"
                 onClick={handleSaveFileAs}
               >
-                Save As...
+                {t('menu.saveAs')}
               </div>
             </div>
           )}
@@ -165,14 +167,14 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
         <button 
           className={`p-1 rounded ${isTerminalOpen ? 'text-green-400 bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
           onClick={onToggleTerminal}
-          title="Toggle Terminal (Cmd+J)"
+          title={t('terminal.title') + " (Cmd+J)"}
         >
           <Terminal size={16} />
         </button>
         <button 
           className={`p-1 rounded ${isChatOpen ? 'text-blue-400 bg-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
           onClick={onToggleChat}
-          title="Toggle AI Chat (Cmd+L)"
+          title={t('chat.title') + " (Cmd+L)"}
         >
           <MessageSquare size={16} />
         </button>

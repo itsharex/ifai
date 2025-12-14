@@ -1,0 +1,67 @@
+{
+  "menu": {
+    "file": "File",
+    "newFile": "New File",
+    "openFile": "Open File",
+    "save": "Save",
+    "saveAs": "Save As"
+  },
+  "sidebar": {
+    "explorer": "Explorer",
+    "search": "Search"
+  },
+  "editor": {
+    "welcome": "IfAI Editor",
+    "newFile": "New File",
+    "openFile": "Open File...",
+    "openFolder": "Open Folder...",
+    "toggleChat": "Toggle AI Chat",
+    "shortcuts": {
+      "showCommands": "Show All Commands",
+      "goToFile": "Go to File",
+      "findInFiles": "Find in Files",
+      "toggleChat": "Toggle AI Chat",
+      "inlineEdit": "Inline AI Edit"
+    },
+    "contextMenu": {
+      "explain": "AI: Explain Code",
+      "refactor": "AI: Refactor Code"
+    },
+    "inlineWidget": {
+        "placeholder": "Edit with AI (e.g. 'Add comments')...",
+        "success": "Code updated by AI",
+        "error": "Failed to request AI"
+    }
+  },
+  "chat": {
+    "title": "AI Assistant",
+    "settings": "Settings",
+    "apiKeyLabel": "DeepSeek API Key",
+    "autocompleteLabel": "AI Autocomplete",
+    "saveAndStart": "Save & Start Chatting",
+    "placeholder": "Ask DeepSeek...",
+    "errorNoKey": "Please set DeepSeek API Key in the Chat panel first"
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Search",
+    "noResults": "No results found",
+    "openFolder": "Open a folder to search files"
+  },
+  "terminal": {
+    "title": "Terminal"
+  },
+  "commandPalette": {
+    "placeholder": "Go to file, symbol, or run command...",
+    "noResults": "No results.",
+    "openFolder": "Open a folder to search files."
+  },
+  "common": {
+    "untitled": "Untitled",
+    "loading": "Loading...",
+    "fileSaved": "File saved",
+    "fileSaveFailed": "Failed to save file",
+    "fileOpenFailed": "Failed to open file",
+    "folderOpenFailed": "Failed to open folder"
+  }
+}

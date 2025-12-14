@@ -5,8 +5,10 @@ import { openDirectory, readDirectory } from '../../utils/fileSystem';
 import { FolderOpen, Files, Search as SearchIcon } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { SearchPanel } from '../Search/SearchPanel';
+import { useTranslation } from 'react-i18next';
 
 export const Sidebar = () => {
+  const { t } = useTranslation();
   const { setFileTree, rootPath, fileTree } = useFileStore();
   const [activeTab, setActiveTab] = useState<'explorer' | 'search'>('explorer');
 
@@ -46,14 +48,14 @@ export const Sidebar = () => {
         <button 
           className={`p-2 mb-2 rounded ${activeTab === 'explorer' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
           onClick={() => setActiveTab('explorer')}
-          title="Explorer"
+          title={t('sidebar.explorer')}
         >
           <Files size={24} />
         </button>
         <button 
           className={`p-2 mb-2 rounded ${activeTab === 'search' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
           onClick={() => setActiveTab('search')}
-          title="Search"
+          title={t('sidebar.search')}
         >
           <SearchIcon size={24} />
         </button>
@@ -64,11 +66,11 @@ export const Sidebar = () => {
         {activeTab === 'explorer' && (
           <>
             <div className="flex items-center justify-between p-2">
-              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Explorer</span>
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">{t('sidebar.explorer')}</span>
               <button 
                 onClick={handleOpenFolder} 
                 className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
-                title="Open Folder"
+                title={t('editor.openFolder')}
               >
                 <FolderOpen size={14} />
               </button>

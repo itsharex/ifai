@@ -9,12 +9,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { openDirectory, readFileContent } from '../../utils/fileSystem';
 import { open } from '@tauri-apps/plugin-dialog';
 import { InlineEditWidget } from './InlineEditWidget';
+import { useTranslation } from 'react-i18next';
 
 export const MonacoEditor = () => {
+  const { t } = useTranslation();
   const { editorInstance, setEditorInstance, theme, setInlineEdit } = useEditorStore();
   const { activeFileId, openedFiles, updateFileContent, openFile, setFileTree, reloadFileContent } = useFileStore();
   const { sendMessage } = useChatStore();
-  // ...
+  const { setChatOpen, toggleChat } = useLayoutStore();
 
   const activeFile = openedFiles.find(f => f.id === activeFileId);
 
@@ -80,7 +82,7 @@ export const MonacoEditor = () => {
     // Add "Explain Code" Action
     editor.addAction({
         id: 'explain-code',
-        label: 'AI: Explain Code',
+        label: t('editor.contextMenu.explain'),
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 1.5,
         run: async (ed) => {
@@ -97,7 +99,7 @@ export const MonacoEditor = () => {
     // Add "Refactor Code" Action
     editor.addAction({
         id: 'refactor-code',
-        label: 'AI: Refactor Code',
+        label: t('editor.contextMenu.refactor'),
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 1.6,
         run: async (ed) => {

@@ -4,9 +4,11 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useChatStore } from '../../stores/useChatStore';
+import { useTranslation } from 'react-i18next';
 
 export const AIChat = () => {
-  const { messages, isLoading, apiKey, setApiKey, sendMessage } = useChatStore();
+  const { t } = useTranslation();
+  const { messages, isLoading, apiKey, setApiKey, sendMessage, isAutocompleteEnabled, toggleAutocomplete } = useChatStore();
   const [input, setInput] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -37,10 +39,10 @@ export const AIChat = () => {
     return (
       <div className="flex flex-col h-full bg-[#1e1e1e] border-l border-gray-700 p-4">
         <h2 className="text-lg font-bold mb-4 text-gray-200 flex items-center">
-            <Settings className="mr-2" size={20}/> Settings
+            <Settings className="mr-2" size={20}/> {t('chat.settings')}
         </h2>
         <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-400 mb-2">DeepSeek API Key</label>
+            <label className="block text-sm font-medium text-gray-400 mb-2">{t('chat.apiKeyLabel')}</label>
             <input 
                 type="password"
                 className="w-full bg-[#2d2d2d] border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -50,7 +52,7 @@ export const AIChat = () => {
             />
         </div>
         <div className="flex items-center justify-between mb-4">
-            <label htmlFor="autocomplete-toggle" className="block text-sm font-medium text-gray-400">AI Autocomplete</label>
+            <label htmlFor="autocomplete-toggle" className="block text-sm font-medium text-gray-400">{t('chat.autocompleteLabel')}</label>
             <label className="relative inline-flex items-center cursor-pointer">
                 <input 
                     type="checkbox" 
@@ -68,7 +70,7 @@ export const AIChat = () => {
             onClick={() => setShowSettings(false)}
             disabled={!apiKey}
         >
-            Save & Start Chatting
+            {t('chat.saveAndStart')}
         </button>
       </div>
     );
@@ -77,7 +79,7 @@ export const AIChat = () => {
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e] border-l border-gray-700 w-80">
       <div className="flex items-center justify-between p-3 border-b border-gray-700 bg-[#252526]">
-        <span className="font-bold text-gray-300 flex items-center"><Bot size={18} className="mr-2"/> AI Assistant</span>
+        <span className="font-bold text-gray-300 flex items-center"><Bot size={18} className="mr-2"/> {t('chat.title')}</span>
         <button onClick={() => setShowSettings(true)} className="text-gray-400 hover:text-white">
             <Settings size={16} />
         </button>
@@ -134,7 +136,7 @@ export const AIChat = () => {
         <div className="relative">
             <textarea
                 className="w-full bg-[#3c3c3c] text-white rounded p-2 pr-10 text-sm focus:outline-none resize-none h-20"
-                placeholder="Ask DeepSeek..."
+                placeholder={t('chat.placeholder')}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}

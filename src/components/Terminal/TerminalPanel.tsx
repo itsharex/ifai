@@ -6,12 +6,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useFileStore } from '../../stores/fileStore';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface TerminalPanelProps {
   onClose: () => void;
 }
 
 export const TerminalPanel = ({ onClose }: TerminalPanelProps) => {
+  const { t } = useTranslation();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -132,7 +134,7 @@ export const TerminalPanel = ({ onClose }: TerminalPanelProps) => {
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e]">
       <div className="flex items-center justify-between p-2 border-b border-gray-700">
-        <span className="text-sm text-gray-300">Terminal</span>
+        <span className="text-sm text-gray-300">{t('terminal.title')}</span>
         <button onClick={onClose} className="text-gray-400 hover:text-white">
           <X size={16} />
         </button>
@@ -141,3 +143,4 @@ export const TerminalPanel = ({ onClose }: TerminalPanelProps) => {
     </div>
   );
 };
+

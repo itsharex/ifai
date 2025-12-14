@@ -6,8 +6,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 export const InlineEditWidget = () => {
+  const { t } = useTranslation();
   const { editorInstance, inlineEdit, closeInlineEdit } = useEditorStore();
   const { apiKey } = useChatStore();
   const [input, setInput] = useState('');
@@ -36,7 +38,7 @@ export const InlineEditWidget = () => {
     if (!input.trim()) return;
     
     if (!apiKey) {
-        toast.error("Please set DeepSeek API Key in the Chat panel first.");
+        toast.error(t('chat.errorNoKey'));
         return;
     }
 
@@ -97,7 +99,7 @@ ${input}`;
                     editorInstance.getAction('editor.action.formatSelection')?.run();
                 }, 100);
 
-                toast.success('Code updated by AI');
+                toast.success(t('editor.inlineWidget.success'));
             }
             cleanup();
         });
@@ -111,7 +113,7 @@ ${input}`;
 
     } catch (e) {
         console.error(e);
-        toast.error(`Failed to request AI: ${String(e)}`);
+        toast.error(t('editor.inlineWidget.error') + `: ${String(e)}`);
         setIsLoading(false);
     }
   };
@@ -138,7 +140,7 @@ ${input}`;
             ref={inputRef}
             type="text"
             className="flex-1 bg-transparent border-none outline-none text-white text-sm placeholder-gray-500"
-            placeholder="Edit with AI (e.g. 'Add comments')..."
+            placeholder={t('editor.inlineWidget.placeholder')}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}

@@ -4,12 +4,14 @@ import { useLayoutStore } from '../../stores/layoutStore';
 import { useFileStore } from '../../stores/fileStore';
 import { invoke } from '@tauri-apps/api/core';
 import Fuse from 'fuse.js';
+import { useTranslation } from 'react-i18next';
 
 interface CommandPaletteProps {
   onSelect?: (path: string) => void;
 }
 
 export const CommandPalette = ({ onSelect }: CommandPaletteProps) => {
+  const { t } = useTranslation();
   const { isCommandPaletteOpen, setCommandPaletteOpen } = useLayoutStore();
   const { rootPath } = useFileStore();
   const [input, setInput] = useState('');
@@ -94,7 +96,7 @@ export const CommandPalette = ({ onSelect }: CommandPaletteProps) => {
             ref={inputRef}
             type="text"
             className="w-full bg-gray-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Go to file, symbol, or run command..."
+            placeholder={t('commandPalette.placeholder')}
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
@@ -119,9 +121,9 @@ export const CommandPalette = ({ onSelect }: CommandPaletteProps) => {
               </div>
             ))
           ) : (rootPath ? (
-            <div className="px-4 py-2 text-sm text-gray-400">No matching files.</div>
+            <div className="px-4 py-2 text-sm text-gray-400">{t('commandPalette.noResults')}</div>
           ) : (
-            <div className="px-4 py-2 text-sm text-gray-400">Open a folder to search files.</div>
+            <div className="px-4 py-2 text-sm text-gray-400">{t('commandPalette.openFolder')}</div>
           ))}
         </div>
       </div>

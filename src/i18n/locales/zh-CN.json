@@ -1,0 +1,67 @@
+{
+  "menu": {
+    "file": "文件",
+    "newFile": "新建文件",
+    "openFile": "打开文件",
+    "save": "保存",
+    "saveAs": "另存为"
+  },
+  "sidebar": {
+    "explorer": "资源管理器",
+    "search": "搜索"
+  },
+  "editor": {
+    "welcome": "IfAI 编辑器",
+    "newFile": "新建文件",
+    "openFile": "打开文件...",
+    "openFolder": "打开文件夹...",
+    "toggleChat": "切换 AI 助手",
+    "shortcuts": {
+      "showCommands": "显示所有命令",
+      "goToFile": "前往文件",
+      "findInFiles": "全局搜索",
+      "toggleChat": "切换 AI 助手",
+      "inlineEdit": "内联 AI 编辑"
+    },
+    "contextMenu": {
+      "explain": "AI: 解释代码",
+      "refactor": "AI: 重构代码"
+    },
+    "inlineWidget": {
+        "placeholder": "使用 AI 编辑 (例如 '添加注释')...",
+        "success": "代码已由 AI 更新",
+        "error": "请求 AI 失败"
+    }
+  },
+  "chat": {
+    "title": "AI 助手",
+    "settings": "设置",
+    "apiKeyLabel": "DeepSeek API 密钥",
+    "autocompleteLabel": "AI 代码补全",
+    "saveAndStart": "保存并开始对话",
+    "placeholder": "询问 DeepSeek...",
+    "errorNoKey": "请先在聊天面板设置 DeepSeek API Key"
+  },
+  "search": {
+    "title": "搜索",
+    "placeholder": "搜索",
+    "noResults": "无结果",
+    "openFolder": "请打开文件夹以搜索文件"
+  },
+  "terminal": {
+    "title": "终端"
+  },
+  "commandPalette": {
+    "placeholder": "前往文件、符号或运行命令...",
+    "noResults": "无结果",
+    "openFolder": "打开文件夹以搜索文件"
+  },
+  "common": {
+    "untitled": "未命名",
+    "loading": "加载中...",
+    "fileSaved": "文件已保存",
+    "fileSaveFailed": "保存文件失败",
+    "fileOpenFailed": "打开文件失败",
+    "folderOpenFailed": "打开文件夹失败"
+  }
+}
