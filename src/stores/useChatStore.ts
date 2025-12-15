@@ -107,18 +107,68 @@ const parseToolCall = (content: string): ToolCall | null => {
                     // Search backwards for the last code block
                     // We look for ```lang ... ``` strictly BEFORE the tool call block
                     const beforeTool = content.substring(0, toolCallBlockStart);
-                    const lastCodeBlockEnd = beforeTool.lastIndexOf('```');
-                    if (lastCodeBlockEnd !== -1) {
-                        const lastCodeBlockStart = beforeTool.lastIndexOf('```', lastCodeBlockEnd - 1);
-                        if (lastCodeBlockStart !== -1) {
-                            // Extract content
-                            let codeBlock = beforeTool.substring(lastCodeBlockStart, lastCodeBlockEnd);
-                            // Remove first line (```lang)
-                            const firstLineBreak = codeBlock.indexOf('\n');
-                            if (firstLineBreak !== -1) {
-                                codeBlock = codeBlock.substring(firstLineBreak + 1);
+                    
+                    // Robust extraction strategy:
+                    // 1. Find all code blocks
+                    // 2. Merge adjacent blocks (handling AI continuation artifacts)
+                    // 3. Pick the longest block
+                    
+                    const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g;
+                    const blocks: {start: number, end: number, lang: string, content: string}[] = [];
+                    let match;
+                    while ((match = codeBlockRegex.exec(beforeTool)) !== null) {
+                        blocks.push({
+                            start: match.index,
+                            end: match.index + match[0].length,
+                            lang: match[1] || '',
+                            content: match[2]
+                        });
+                    }
+
+                    const mergedBlocks: typeof blocks = [];
+                    if (blocks.length > 0) {
+                        let current = blocks[0];
+                        for (let i = 1; i < blocks.length; i++) {
+                            const next = blocks[i];
+                            const gap = beforeTool.substring(current.end, next.start);
+                            
+                            // Merge if gap is empty/whitespace, assuming it's a split artifact
+                            if (!gap.trim()) {
+                                current.content += next.content;
+                                current.end = next.end;
+                            } else {
+                                mergedBlocks.push(current);
+                                current = next;
                             }
-                            json.args.content = codeBlock.trim();
+                        }
+                        mergedBlocks.push(current);
+                    }
+
+                    // Find longest block
+                    let bestBlock = null;
+                    let maxLength = -1;
+                    for (const block of mergedBlocks) {
+                        if (block.content.length > maxLength) {
+                            maxLength = block.content.length;
+                            bestBlock = block;
+                        }
+                    }
+
+                    if (bestBlock) {
+                         json.args.content = bestBlock.content.trim();
+                    } else {
+                        // Fallback to old logic if regex fails for some reason (rare)
+                        const lastCodeBlockEnd = beforeTool.lastIndexOf('```');
+                        if (lastCodeBlockEnd !== -1) {
+                            const lastCodeBlockStart = beforeTool.lastIndexOf('```', lastCodeBlockEnd - 1);
+                            if (lastCodeBlockStart !== -1) {
+                                let codeBlock = beforeTool.substring(lastCodeBlockStart, lastCodeBlockEnd);
+                                const firstLineBreak = codeBlock.indexOf('\n');
+                                if (firstLineBreak !== -1) {
+                                    codeBlock = codeBlock.substring(firstLineBreak + 1);
+                                }
+                                json.args.content = codeBlock.trim();
+                            }
                         }
                     }
                 }
