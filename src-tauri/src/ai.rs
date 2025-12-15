@@ -122,7 +122,7 @@ pub async fn stream_chat(
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
-            println!("API Error Body: {}", text);
+            println!("API Error: Status={}, Body={}", response.status(), text);
             app.emit(&format!("{}_error", event_id), format!("API Error: {}", text)).unwrap_or(());
             return Err(format!("API Error: {}", text));
         }
@@ -233,6 +233,7 @@ pub async fn complete_code(
     let status = response.status(); // Get status before consuming response body
     if !status.is_success() {
         let text = response.text().await.unwrap_or_default();
+        println!("API Error: Status={}, Body={}", status, text);
         return Err(format!("API Error: {} - {}", status, text));
     }
 

@@ -403,14 +403,27 @@ export const useChatStore = create<ChatState>()(
 
               if (!providerConfig || !providerConfig.enabled || !providerConfig.apiKey) {
                 setLoading(false);
-                // TODO: Emit an error to the UI for the user
                 console.error("AI Provider not configured or enabled.");
                 return;
+              }
+
+              // Fix Base URL for OpenAI compatible providers if missing /chat/completions
+              // This handles cases where user (or default config) provided just the base path (e.g. .../v4/)
+              let fixedBaseUrl = providerConfig.baseUrl;
+              if (providerConfig.protocol === 'openai' && 
+                  !fixedBaseUrl.includes('/chat/completions') && 
+                  !fixedBaseUrl.includes('minimax')) { // Minimax uses a different endpoint
+                  if (fixedBaseUrl.endsWith('/')) {
+                      fixedBaseUrl += 'chat/completions';
+                  } else {
+                      fixedBaseUrl += '/chat/completions';
+                  }
               }
 
               // Override model if specific modelName is provided
               const currentProviderConfig: AIProviderConfig = { 
                 ...providerConfig, 
+                baseUrl: fixedBaseUrl,
                 models: [modelName] // Temporarily override models with the selected one
               };
 
