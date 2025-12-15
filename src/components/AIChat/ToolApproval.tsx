@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, X, Terminal, FilePlus, Eye, FolderOpen, Search, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, X, Terminal, FilePlus, Eye, FolderOpen, Search, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { ToolCall } from '../../stores/chatStore';
 import { useTranslation } from 'react-i18next';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -29,6 +29,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
     const { t } = useTranslation();
     const [isExpanded, setIsExpanded] = useState(false);
     const isPending = toolCall.status === 'pending';
+    const isPartial = toolCall.isPartial;
 
     const getIcon = () => {
         const toolName = toolCall.tool.trim();
@@ -76,6 +77,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
     };
 
     const getStatusLabel = () => {
+        if (isPartial) return '生成中...';
         switch (toolCall.status) {
             case 'completed': return '已完成';
             case 'failed': return '失败';
@@ -104,9 +106,12 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
                     </span>
                     <span className="truncate">{getToolLabel(toolCall.tool)}</span>
                 </div>
-                <span className={`text-xs font-medium flex-shrink-0 ${getStatusColor()}`}>
-                    {getStatusLabel()}
-                </span>
+                <div className="flex items-center gap-2">
+                    {isPartial && <Loader2 size={12} className="animate-spin text-yellow-400" />}
+                    <span className={`text-xs font-medium flex-shrink-0 ${getStatusColor()}`}>
+                        {getStatusLabel()}
+                    </span>
+                </div>
             </div>
 
             {/* Content */}
@@ -117,34 +122,40 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
                         <div className="flex items-center gap-2 text-gray-400">
                             <span>路径:</span>
                             <code className="text-green-400 bg-gray-900 px-1.5 py-0.5 rounded break-all">
-                                {filePath}
+                                {filePath || (isPartial ? '...' : '')}
                             </code>
                         </div>
 
                         {/* Code Preview */}
-                        {fileContent && (
+                        {(fileContent || isPartial) && (
                             <div className="relative">
-                                <div className="max-h-80 overflow-auto rounded border border-gray-700">
-                                    <SyntaxHighlighter
-                                        language={detectLanguage(filePath)}
-                                        style={vscDarkPlus}
-                                        customStyle={{
-                                            margin: 0,
-                                            fontSize: '11px',
-                                            background: '#1a1a1a',
-                                        }}
-                                        wrapLines={true}
-                                        wrapLongLines={true}
-                                        showLineNumbers={true}
-                                        lineNumberStyle={{
-                                            minWidth: '2.5em',
-                                            paddingRight: '1em',
-                                            color: '#666',
-                                        }}
-                                    >
-                                        {displayContent}
-                                    </SyntaxHighlighter>
-                                </div>
+                                {fileContent ? (
+                                    <div className="max-h-80 overflow-auto rounded border border-gray-700">
+                                        <SyntaxHighlighter
+                                            language={detectLanguage(filePath)}
+                                            style={vscDarkPlus}
+                                            customStyle={{
+                                                margin: 0,
+                                                fontSize: '11px',
+                                                background: '#1a1a1a',
+                                            }}
+                                            wrapLines={true}
+                                            wrapLongLines={true}
+                                            showLineNumbers={true}
+                                            lineNumberStyle={{
+                                                minWidth: '2.5em',
+                                                paddingRight: '1em',
+                                                color: '#666',
+                                            }}
+                                        >
+                                            {displayContent}
+                                        </SyntaxHighlighter>
+                                    </div>
+                                ) : (
+                                    <div className="h-16 bg-gray-900 rounded border border-gray-700 flex items-center justify-center text-gray-600 italic">
+                                        等待文件内容...
+                                    </div>
+                                )}
 
                                 {/* Expand/Collapse Button */}
                                 {shouldCollapse && (
@@ -173,14 +184,14 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
                     <div className="space-y-2">
                         <div className="text-gray-400">参数:</div>
                         <pre className="bg-gray-900 p-2 rounded border border-gray-700 overflow-x-auto whitespace-pre-wrap break-words text-gray-300">
-                            {JSON.stringify(toolCall.args, null, 2)}
+                            {Object.keys(toolCall.args || {}).length > 0 ? JSON.stringify(toolCall.args, null, 2) : (isPartial ? '...' : '{}')}
                         </pre>
                     </div>
                 )}
             </div>
 
-            {/* Approve/Reject Buttons */}
-            {isPending && (
+            {/* Approve/Reject Buttons - Hide when partial */}
+            {isPending && !isPartial && (
                 <div className="flex border-t border-gray-700">
                     <button
                         onClick={() => onApprove(toolCall.id)}

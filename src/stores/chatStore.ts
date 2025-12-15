@@ -6,6 +6,7 @@ export interface ToolCall {
   args: any;
   status: 'pending' | 'approved' | 'rejected' | 'completed' | 'failed';
   result?: string;
+  isPartial?: boolean;
 }
 
 // Frontend display message type

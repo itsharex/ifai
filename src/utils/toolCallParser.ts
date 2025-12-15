@@ -8,6 +8,7 @@ export interface ParsedToolCall {
     startIndex: number;
     endIndex: number;
     status: 'pending' | 'approved' | 'rejected' | 'completed' | 'failed';
+    isPartial?: boolean;
 }
 
 export interface ContentSegment {
@@ -189,6 +190,51 @@ export function parseToolCalls(content: string): ParseResult {
         if (end !== -1) {
             const potentialJson = content.substring(start, end);
             addToolCall(potentialJson, start, end);
+        }
+    }
+
+    // Strategy 3: Incomplete/Streaming Markdown Code Blocks
+    // Matches ```json { "tool": ... at the end of the string that wasn't caught by Strategy 1
+    // This catches the case where the closing ``` hasn't arrived yet.
+    const streamingRegex = /```(?:json)?\s*(\{[\s\S]*?"tool"[\s\S]*)$/i;
+    const streamingMatch = streamingRegex.exec(content);
+    
+    if (streamingMatch) {
+        const start = streamingMatch.index;
+        const potentialJson = streamingMatch[1];
+        const end = content.length;
+        
+        // Check if this range overlaps with existing ones
+        // Use standard interval intersection: [start, end) intersects [r.start, r.end) if start < r.end && r.start < end
+        const isOverlap = replacements.some(r => 
+            start < r.end && r.start < end
+        );
+        
+        if (!isOverlap) {
+            // Attempt to extract partial data
+            const toolNameMatch = /"tool"\s*:\s*"([^"]+)"/.exec(potentialJson);
+            const toolName = toolNameMatch ? toolNameMatch[1] : 'Loading...';
+            
+            // Simple regex extraction for common args to make the UI look better while loading
+            const args: Record<string, any> = {};
+            
+            // Try extract 'path' or 'rel_path'
+            const pathMatch = /"(?:rel_)?path"\s*:\s*"([^"]+)"/.exec(potentialJson);
+            if (pathMatch) args.path = pathMatch[1];
+            
+            const toolCall: ParsedToolCall = {
+                id: 'streaming-tool',
+                tool: toolName,
+                args: args,
+                rawJson: potentialJson,
+                startIndex: start,
+                endIndex: content.length,
+                status: 'pending',
+                isPartial: true
+            };
+            
+            toolCalls.push(toolCall);
+            replacements.push({ start, end: content.length, toolCall });
         }
     }
 
