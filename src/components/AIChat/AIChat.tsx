@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Settings, Bot } from 'lucide-react';
 import { useChatStore } from '../../stores/useChatStore';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { useSettingsStore, AIProviderConfig } from '../../stores/settingsStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useFileStore } from '../../stores/fileStore';
 import { readFileContent } from '../../utils/fileSystem';
@@ -17,8 +17,7 @@ interface AIChatProps {
 export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   const { t } = useTranslation();
   const { messages, isLoading, sendMessage, approveToolCall, rejectToolCall } = useChatStore();
-  const { aiApiKey } = useSettingsStore();
-  const { setSettingsOpen } = useLayoutStore();
+  const { providers, currentProviderId, currentModel, setCurrentProviderAndModel, setSettingsOpen } = useSettingsStore();
   const { openFile } = useFileStore();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -31,11 +30,14 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     scrollToBottom();
   }, [messages]);
 
+  const currentProvider = providers.find(p => p.id === currentProviderId);
+  const isProviderConfigured = currentProvider && currentProvider.apiKey && currentProvider.enabled;
+
   const handleSend = async () => {
-    if (!input.trim() || !aiApiKey) return;
+    if (!input.trim() || !isProviderConfigured) return;
     const msg = input;
     setInput('');
-    await sendMessage(msg);
+    await sendMessage(msg, currentProviderId, currentModel);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -61,7 +63,7 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     }
   };
 
-  if (!aiApiKey) {
+  if (!isProviderConfigured) {
     return (
       <div 
         className="flex flex-col h-full bg-[#1e1e1e] border-l border-gray-700 p-4 items-center justify-center text-center flex-shrink-0 relative"
@@ -74,7 +76,7 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
             />
         )}
         <Bot size={48} className="text-gray-500 mb-4" />
-        <p className="text-gray-400 mb-4">{t('chat.errorNoKey')}</p>
+        <p className="text-gray-400 mb-4">{t('chat.errorNoKey')} {currentProvider ? `(${currentProvider.name})` : ''}</p>
         <button 
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition-colors"
             onClick={() => setSettingsOpen(true)}
@@ -98,9 +100,34 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
       )}
       <div className="flex items-center justify-between p-3 border-b border-gray-700 bg-[#252526]">
         <span className="font-bold text-gray-300 flex items-center"><Bot size={18} className="mr-2"/> {t('chat.title')}</span>
-        <button onClick={() => setSettingsOpen(true)} className="text-gray-400 hover:text-white">
-            <Settings size={16} />
-        </button>
+        
+        <div className="flex items-center space-x-2">
+            <select
+                className="bg-gray-700 text-gray-300 text-sm px-2 py-1 rounded outline-none"
+                value={currentProviderId}
+                onChange={(e) => setCurrentProviderAndModel(e.target.value, (providers.find(p => p.id === e.target.value)?.models[0] || ''))}
+            >
+                {providers.map(p => (
+                    <option key={p.id} value={p.id} disabled={!p.enabled}>{p.name}</option>
+                ))}
+            </select>
+
+            {currentProvider && (
+                <select
+                    className="bg-gray-700 text-gray-300 text-sm px-2 py-1 rounded outline-none"
+                    value={currentModel}
+                    onChange={(e) => setCurrentProviderAndModel(currentProviderId, e.target.value)}
+                >
+                    {currentProvider.models.map(model => (
+                        <option key={model} value={model}>{model}</option>
+                    ))}
+                </select>
+            )}
+
+            <button onClick={() => setSettingsOpen(true)} className="text-gray-400 hover:text-white">
+                <Settings size={16} />
+            </button>
+        </div>
       </div>
       
       <div className="flex-1 overflow-y-auto p-4 space-y-4">

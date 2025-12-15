@@ -5,6 +5,27 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum AIProtocol {
+    #[serde(rename = "openai")]
+    OpenAI,
+    #[serde(rename = "anthropic")]
+    Anthropic,
+    #[serde(rename = "gemini")]
+    Gemini,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AIProviderConfig {
+    pub id: String,
+    pub name: String,
+    pub protocol: AIProtocol,
+    pub base_url: String,
+    pub api_key: String,
+    pub models: Vec<String>,
+    pub enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
     pub role: String,
     pub content: String,
@@ -52,7 +73,7 @@ struct CompletionRequest {
 
 pub async fn stream_chat(
     app: AppHandle,
-    api_key: String,
+    provider_config: AIProviderConfig, // New parameter
     messages: Vec<Message>,
     event_id: String,
 ) -> Result<(), String> {
@@ -64,6 +85,16 @@ pub async fn stream_chat(
     let mut continuation_count = 0;
     const MAX_CONTINUATIONS: i32 = 5;
 
+    let (completions_url, api_key, model_name) = match provider_config.protocol {
+        AIProtocol::OpenAI => {
+            // For OpenAI compatible APIs, the base_url from config should be the full endpoint
+            // e.g., https://api.deepseek.com/chat/completions or https://api.openai.com/v1/chat/completions
+            (provider_config.base_url, provider_config.api_key, provider_config.models[0].clone()) // Assuming models[0] is the selected model from frontend
+        },
+        // Future: Handle other protocols here
+        _ => return Err("Unsupported AI protocol".to_string()),
+    };
+
     loop {
         if continuation_count > MAX_CONTINUATIONS {
             println!("Max continuations reached.");
@@ -71,14 +102,14 @@ pub async fn stream_chat(
         }
 
         let request = ChatRequest {
-            model: "deepseek-chat".to_string(),
+            model: model_name.clone(), // Use dynamic model_name
             messages: current_messages.clone(),
             stream: true,
         };
 
-        println!("Sending request to DeepSeek API (Step {})...", continuation_count + 1);
+        println!("Sending request to {} (Step {})...", completions_url, continuation_count + 1);
         let response = client
-            .post("https://api.deepseek.com/chat/completions")
+            .post(&completions_url) // Use dynamic completions_url
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .json(&request)

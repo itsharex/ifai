@@ -439,7 +439,21 @@ INSTRUCTION: You have received the tool output. Do NOT repeat this action. Proce
     }),
     {
       name: 'chat-storage',
-      partialize: (state) => ({ apiKey: state.apiKey, isAutocompleteEnabled: state.isAutocompleteEnabled }),
+      partialize: (state) => ({
+        messages: state.messages.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: '', // Do not persist large content
+          references: m.references,
+          toolCalls: m.toolCalls?.map(tc => ({
+            id: tc.id,
+            tool: tc.tool,
+            args: tc.args,
+            status: tc.status,
+            // Do NOT persist tc.result as it can be very large (file content)
+          }))
+        })),
+      }),
     }
   )
 );
