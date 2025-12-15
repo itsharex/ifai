@@ -18,8 +18,8 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn ai_chat(app: tauri::AppHandle, api_key: String, messages: Vec<Message>, event_id: String) -> Result<(), String> {
-    ai::stream_chat(app, api_key, messages, event_id).await
+async fn ai_chat(app: tauri::AppHandle, provider_config: ai::AIProviderConfig, messages: Vec<Message>, event_id: String) -> Result<(), String> {
+    ai::stream_chat(app, provider_config, messages, event_id).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
