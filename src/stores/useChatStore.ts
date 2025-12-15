@@ -92,7 +92,7 @@ export const useChatStore = create<ChatState>()(
             // Ensure final content is updated
             updateMessageContent(assistantMsgId, fullResponse);
 
-            const { toolCalls } = parseToolCalls(fullResponse);
+            const { toolCalls: parsedToolCalls } = parseToolCalls(fullResponse);
             
             if (parsedToolCalls && parsedToolCalls.length > 0) {
                 // Map ParsedToolCall to ToolCall
