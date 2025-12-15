@@ -99,6 +99,8 @@ struct CompletionRequest {
     model: String,
     messages: Vec<Message>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ThinkingConfig>,
 }
 
 pub async fn stream_chat(
