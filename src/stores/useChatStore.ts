@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useFileStore } from './fileStore';
 import { useSettingsStore, AIProviderConfig } from './settingsStore';
+import { parseToolCalls } from '../utils/toolCallParser';
 
 // Simplified Prompt definition to avoid construction errors
 const BASE_SYSTEM_PROMPT = "You are IfAI, an expert coding assistant.";
@@ -43,167 +44,6 @@ RULES:
 1. ONLY output ONE tool call per response. Wait for user approval.
 2. DO NOT proactively update other files (like App.js, routes, or indices) to integrate new files unless explicitly asked. Only perform the specific task requested by the user.
 `;
-
-const parseToolCall = (content: string): ToolCall | null => {
-    // Basic regex failed on nested braces. We need to manually find the JSON block.
-    // 1. Find start of JSON
-    let startIndex = -1;
-    let toolCallBlockStart = -1;
-
-    const codeBlockStart = content.lastIndexOf('```json');
-    if (codeBlockStart !== -1) {
-        startIndex = codeBlockStart + 7;
-        toolCallBlockStart = codeBlockStart;
-    } else {
-        startIndex = content.lastIndexOf('{');
-        // Check if it looks like a tool call
-        if (startIndex !== -1) {
-             toolCallBlockStart = startIndex;
-        }
-    }
-
-    if (startIndex === -1) return null;
-
-    // Scan for opening brace
-    let openBraceIndex = content.indexOf('{', startIndex);
-    if (openBraceIndex === -1) return null;
-
-    // Count braces to find the matching closer
-    let braceCount = 0;
-    let endIndex = -1;
-    let inString = false;
-    let escape = false;
-
-    for (let i = openBraceIndex; i < content.length; i++) {
-        const char = content[i];
-        
-        if (!escape && char === '"') {
-            inString = !inString;
-        }
-        
-        if (!escape && char === '\\') {
-            escape = true;
-        } else {
-            escape = false;
-        }
-
-        if (!inString) {
-            if (char === '{') {
-                braceCount++;
-            } else if (char === '}') {
-                braceCount--;
-                if (braceCount === 0) {
-                    endIndex = i + 1;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (endIndex !== -1) {
-        const jsonStr = content.substring(openBraceIndex, endIndex);
-        
-        const tryParse = (str: string) => {
-            try {
-                console.log("Parsing JSON:", str);
-                return JSON.parse(str);
-            } catch (e) {
-                return null;
-            }
-        };
-
-        let json = tryParse(jsonStr);
-        
-        if (!json) {
-            // Attempt repair: remove trailing commas
-            const fixedStr = jsonStr.replace(/,\s*([\]}])/g, '$1');
-            json = tryParse(fixedStr);
-        }
-
-        if (json && json.tool && json.args) {
-                 // Handle <<FILE_CONTENT>> replacement
-                 if (json.args.content === '<<FILE_CONTENT>>') {
-                    // Search backwards for the last code block
-                    // We look for ```lang ... ``` strictly BEFORE the tool call block
-                    const beforeTool = content.substring(0, toolCallBlockStart);
-                    
-                    // Robust extraction strategy:
-                    // 1. Find all code blocks
-                    // 2. Merge adjacent blocks (handling AI continuation artifacts)
-                    // 3. Pick the longest block
-                    
-                    const codeBlockRegex = /```(\w*)\n?([\s\S]*?)```/g;
-                    const blocks: {start: number, end: number, lang: string, content: string}[] = [];
-                    let match;
-                    while ((match = codeBlockRegex.exec(beforeTool)) !== null) {
-                        blocks.push({
-                            start: match.index,
-                            end: match.index + match[0].length,
-                            lang: match[1] || '',
-                            content: match[2]
-                        });
-                    }
-
-                    const mergedBlocks: typeof blocks = [];
-                    if (blocks.length > 0) {
-                        let current = blocks[0];
-                        for (let i = 1; i < blocks.length; i++) {
-                            const next = blocks[i];
-                            const gap = beforeTool.substring(current.end, next.start);
-                            
-                            // Merge if gap is empty/whitespace, assuming it's a split artifact
-                            if (!gap.trim()) {
-                                current.content += next.content;
-                                current.end = next.end;
-                            } else {
-                                mergedBlocks.push(current);
-                                current = next;
-                            }
-                        }
-                        mergedBlocks.push(current);
-                    }
-
-                    // Find longest block
-                    let bestBlock = null;
-                    let maxLength = -1;
-                    for (const block of mergedBlocks) {
-                        if (block.content.length > maxLength) {
-                            maxLength = block.content.length;
-                            bestBlock = block;
-                        }
-                    }
-
-                    if (bestBlock) {
-                         json.args.content = bestBlock.content.trim();
-                    } else {
-                        // Fallback to old logic if regex fails for some reason (rare)
-                        const lastCodeBlockEnd = beforeTool.lastIndexOf('```');
-                        if (lastCodeBlockEnd !== -1) {
-                            const lastCodeBlockStart = beforeTool.lastIndexOf('```', lastCodeBlockEnd - 1);
-                            if (lastCodeBlockStart !== -1) {
-                                let codeBlock = beforeTool.substring(lastCodeBlockStart, lastCodeBlockEnd);
-                                const firstLineBreak = codeBlock.indexOf('\n');
-                                if (firstLineBreak !== -1) {
-                                    codeBlock = codeBlock.substring(firstLineBreak + 1);
-                                }
-                                json.args.content = codeBlock.trim();
-                            }
-                        }
-                    }
-                }
-
-                return {
-                    id: uuidv4(),
-                    tool: String(json.tool).trim(),
-                    args: json.args,
-                    status: 'pending'
-                };
-        } else {
-             console.error("Failed to parse tool call JSON");
-        }
-    }
-    return null;
-};
 
 export const useChatStore = create<ChatState>()(
   persist(
@@ -249,17 +89,27 @@ export const useChatStore = create<ChatState>()(
           });
 
           const cleanup = () => {
-            const toolCall = parseToolCall(fullResponse);
-            if (toolCall) {
-              set((state) => ({
-                messages: state.messages.map(msg =>
-                  msg.id === assistantMsgId ? {
-                    ...msg,
-                    content: fullResponse, // Keep original content (string)
-                    toolCalls: [toolCall]
-                  } : msg
-                )
-              }));
+            // Use robust parser from utils
+            const { toolCalls: parsedToolCalls } = parseToolCalls(fullResponse);
+            
+            if (parsedToolCalls && parsedToolCalls.length > 0) {
+                // Map ParsedToolCall to ToolCall
+                const validToolCalls: ToolCall[] = parsedToolCalls.map(ptc => ({
+                    id: ptc.id,
+                    tool: ptc.tool,
+                    args: ptc.args,
+                    status: 'pending' as const
+                }));
+
+                set((state) => ({
+                    messages: state.messages.map(msg =>
+                      msg.id === assistantMsgId ? {
+                        ...msg,
+                        content: fullResponse, // Keep original content (string)
+                        toolCalls: validToolCalls
+                      } : msg
+                    )
+                }));
             }
       
             setLoading(false);
@@ -317,7 +167,7 @@ export const useChatStore = create<ChatState>()(
             await fileStore.refreshFileTree();
             fileStore.fetchGitStatuses();
 
-            const fullPath = `${fileStore.rootPath}/${toolCall.args.rel_path}`.replace(/\/\//g, '/');
+            const fullPath = `${fileStore.rootPath}/${toolCall.args.rel_path}`.replace(/\/\///g, '/');
             const fileName = toolCall.args.rel_path.split('/').pop() || 'file';
             const ext = fileName.split('.').pop() || '';
             let language = 'plaintext';
