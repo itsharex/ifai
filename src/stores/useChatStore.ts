@@ -296,7 +296,11 @@ export const useChatStore = create<ChatState>()(
                 // Add Tool Result as User Message (simulating feedback)
                 history.push({
                     role: 'user',
-                    content: `Tool '${toolCall.tool}' execution result:\n${result}\n\nProceed with the next step.`
+                    content: `[System] Tool '${toolCall.tool}' executed successfully.
+Result:
+${result}
+
+INSTRUCTION: You have received the tool output. Do NOT repeat this action. Proceed immediately to the next step.`
                 });
                 
                 // Prepend System Prompt (hacky but needed since we don't persist it)
