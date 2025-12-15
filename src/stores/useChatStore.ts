@@ -39,16 +39,6 @@ console.log("Hello");
 ONLY output ONE tool call per response. Wait for user approval.
 `;
 
-// Helper to check if content contains at least one complete markdown code block
-// Used for simple content integrity checks before file writes.
-const isCodeBlockComplete = (content: string): boolean => {
-    const tripleBacktickCount = (content.match(/```/g) || []).length;
-    if (tripleBacktickCount >= 2 && tripleBacktickCount % 2 === 0) {
-        return true;
-    }
-    return false;
-};
-
 const parseToolCall = (content: string): ToolCall | null => {
     // Basic regex failed on nested braces. We need to manually find the JSON block.
     // 1. Find start of JSON
@@ -250,10 +240,11 @@ export const useChatStore = create<ChatState>()(
                 
                 try {
                                   if (toolCall.tool === 'agent_write_file') {
-                                      // Perform a basic content integrity check before writing
-                                      if (!toolCall.args.content || !isCodeBlockComplete(toolCall.args.content)) {
-                                          throw new Error("AI 生成的代码可能不完整。请等待 AI 完成生成或要求 AI 重新生成。");
+                                      // Check if content extraction succeeded
+                                      if (!toolCall.args.content || toolCall.args.content === '<<FILE_CONTENT>>' || toolCall.args.content.trim().length === 0) {
+                                          throw new Error("文件内容解析失败或为空。请要求 AI 重新生成。");
                                       }
+                                      
                                       result = await invoke('agent_write_file', { 
                                           rootPath: fileStore.rootPath, 
                                           relPath: toolCall.args.rel_path, 
