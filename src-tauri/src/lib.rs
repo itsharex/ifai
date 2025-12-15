@@ -7,6 +7,7 @@ mod lsp;
 mod rag; // Added rag module
 mod agent; // Added agent module
 use ai::Message;
+use ai::{AIProviderConfig, ContentPart, ImageUrl}; // Import new AI types
 use terminal::TerminalManager;
 use lsp::LspManager;
 use rag::RagState; // Added RagState
@@ -18,8 +19,16 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn ai_chat(app: tauri::AppHandle, provider_config: ai::AIProviderConfig, messages: Vec<Message>, event_id: String) -> Result<(), String> {
+async fn ai_chat(app: tauri::AppHandle, provider_config: ai::AIProviderConfig, messages: Vec<ai::Message>, event_id: String) -> Result<(), String> {
     ai::stream_chat(app, provider_config, messages, event_id).await
+}
+
+#[tauri::command]
+async fn ai_completion(
+    provider_config: ai::AIProviderConfig,
+    messages: Vec<ai::Message>, // Updated to use ai::Message
+) -> Result<String, String> {
+    ai::complete_code(provider_config, messages).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

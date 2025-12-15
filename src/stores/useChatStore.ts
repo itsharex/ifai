@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ChatState, ToolCall, Message } from './chatStore';
+import { ChatState, ToolCall, Message, ContentPart, ImageUrl } from './chatStore';
 import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -218,7 +218,7 @@ export const useChatStore = create<ChatState>()(
               const assistantMsgId = uuidv4();
               const eventId = `chat_${assistantMsgId}`;
       
-              addMessage({ id: assistantMsgId, role: 'assistant', content: '' });
+              addMessage({ id: assistantMsgId, role: 'assistant', content: '' }); // Initial empty message
               setLoading(true);
       
               try {
@@ -246,7 +246,7 @@ export const useChatStore = create<ChatState>()(
                         messages: state.messages.map(msg => 
                             msg.id === assistantMsgId ? { 
                                 ...msg, 
-                                content: fullResponse, // Keep original content
+                                content: fullResponse, // Keep original content (string)
                                 toolCalls: [toolCall] 
                             } : msg
                         )
@@ -270,7 +270,7 @@ export const useChatStore = create<ChatState>()(
       
                   await invoke('ai_chat', { 
                       providerConfig,
-                      messages: history, 
+                      messages: history, // History is already in AI Message format
                       eventId 
                   });
               } catch (e) {
@@ -361,18 +361,23 @@ export const useChatStore = create<ChatState>()(
       
                 // Continue Loop
                 // Construct history up to this message, plus the tool output
-                const history = messages.slice(0, msgIndex + 1).map(m => ({ role: m.role, content: m.content }));
+                const history = messages.slice(0, msgIndex + 1).map(m => {
+                  // Map to backend Message format
+                  if (m.multiModalContent) {
+                    return { role: m.role, content: m.multiModalContent };
+                  }
+                  return { role: m.role, content: [{ type: 'text', text: m.content }] };
+                });
                 
                 // Add Tool Result as User Message (simulating feedback)
                 history.push({
-                    role: 'user',
-                    content: `[System] Tool '${toolCall.tool}' executed successfully.\nResult:\n${result}\n\nINSTRUCTION: You have received the tool output. Do NOT repeat this action. Proceed immediately to the next step.`
+                  role: 'user',
+                  content: [{ type: 'text', text: `[System] Tool '${toolCall.tool}' executed successfully.\nResult:\n${result}\n\nINSTRUCTION: You have received the tool output. Do NOT repeat this action. Proceed immediately to the next step.` }]
                 });
                 
                 // Prepend System Prompt (hacky but needed since we don't persist it)
-                history.unshift({ role: 'system', content: BASE_SYSTEM_PROMPT + "\n\n" + TOOL_INSTRUCTIONS });
+                history.unshift({ role: 'system', content: [{ type: 'text', text: BASE_SYSTEM_PROMPT + "\n\n" + TOOL_INSTRUCTIONS }] });
       
-                // Get current provider config for continuation
                 const settingsStore = useSettingsStore.getState();
                 const currentProviderConfig = settingsStore.providers.find(p => p.id === settingsStore.currentProviderId);
                 if (currentProviderConfig) {
@@ -393,11 +398,10 @@ export const useChatStore = create<ChatState>()(
                 }));
             },
       
-            sendMessage: async (input: string, providerId: string, modelName: string) => {
+            sendMessage: async (input: string | ContentPart[], providerId: string, modelName: string) => {
               const { messages, isLoading, addMessage, setLoading, generateResponse } = get();
-              if (!input.trim() || isLoading) return;
+              if ((typeof input === 'string' && !input.trim()) || isLoading) return;
       
-              // Get provider config
               const settingsStore = useSettingsStore.getState();
               const providerConfig = settingsStore.providers.find(p => p.id === providerId);
 
@@ -420,54 +424,60 @@ export const useChatStore = create<ChatState>()(
                   }
               }
 
-              // Override model if specific modelName is provided
               const currentProviderConfig: AIProviderConfig = { 
                 ...providerConfig, 
                 baseUrl: fixedBaseUrl,
-                models: [modelName] // Temporarily override models with the selected one
+                models: [modelName] 
               };
 
               const userMsgId = uuidv4();
-              addMessage({ id: userMsgId, role: 'user', content: input });
               
-              // RAG & System Prompt Construction
+              let displayContent: string;
+              let multiModalContentToSend: ContentPart[] | undefined;
+
+              if (typeof input === 'string') {
+                displayContent = input;
+                multiModalContentToSend = [{ type: 'text', text: input }];
+              } else {
+                displayContent = input.map(part => part.type === 'text' && part.text ? part.text : '').join(' ').trim();
+                multiModalContentToSend = input;
+              }
+
+              addMessage({ id: userMsgId, role: 'user', content: displayContent, multiModalContent: multiModalContentToSend }); // Add to frontend message
+
               let finalSystemPrompt = BASE_SYSTEM_PROMPT;
               const rootPath = useFileStore.getState().rootPath;
               
               if (rootPath) {
                    try {
-                       const ragResult = await invoke<{context: string, references: string[]}>('build_context', { query: input, rootPath });
+                       const ragResult = await invoke<{context: string, references: string[]}>('build_context', { query: displayContent, rootPath });
                        if (ragResult && ragResult.context) {
                            finalSystemPrompt += `\n\nProject Context:\n${ragResult.context}`;
                            
                            set((state) => ({
                                messages: state.messages.map(msg => 
-                                   msg.id === userMsgId ? { ...msg, references: ragResult.references } : msg // Attach refs to USER message now? No, to assistant?
-                                   // Wait, we don't have assistant msg yet.
-                                   // Actually, attaching to User message is cleaner for "User asked X with context Y".
-                                   // But our UI renders refs on Assistant message usually.
-                                   // Let's attach to the next Assistant message?
-                                   // generateResponse creates the assistant message. We can't attach here easily.
-                                   // Let's ignore references in UI for now or pass them to generateResponse?
+                                   msg.id === userMsgId ? { ...msg, references: ragResult.references } : msg
                                )
                            }));
-                           // Wait, if we update state here, generateResponse will pick it up?
-                           // generateResponse uses `get().messages`.
-                           // So if we update userMsgId with references, it will be in history.
                        }
                    } catch (e) {}
               }
 
-              // Append Tool Instructions LAST
               finalSystemPrompt += `\n\n${TOOL_INSTRUCTIONS}`;
       
-              const history = [
-                  { role: 'system', content: finalSystemPrompt },
-                  ...messages.map(m => ({ role: m.role, content: m.content })),
-                  { role: 'user', content: input }
+              // Map history to backend Message format
+              const history: Message[] = [
+                  { role: 'system', content: [{ type: 'text', text: finalSystemPrompt }] },
+                  ...messages.map(m => {
+                      if (m.multiModalContent) {
+                          return { role: m.role, content: m.multiModalContent };
+                      }
+                      return { role: m.role, content: [{ type: 'text', text: m.content }] };
+                  }),
+                  { role: 'user', content: multiModalContentToSend } // Use multiModalContent for user message
               ];
       
-              await generateResponse(history, currentProviderConfig); // Pass providerConfig here
+              await generateResponse(history, currentProviderConfig);
             }
     }),
     {
@@ -476,7 +486,8 @@ export const useChatStore = create<ChatState>()(
         messages: state.messages.map(m => ({
           id: m.id,
           role: m.role,
-          content: '', // Do not persist large content
+          content: m.content, // Persist string content (for backward compat)
+          multiModalContent: m.multiModalContent, // Persist multi-modal content
           references: m.references,
           toolCalls: m.toolCalls?.map(tc => ({
             id: tc.id,
