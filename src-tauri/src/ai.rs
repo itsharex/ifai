@@ -28,9 +28,29 @@ pub struct AIProviderConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ImageUrl {
+    pub url: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum ContentPart {
+    Text {
+        #[serde(rename = "type")]
+        part_type: String,
+        text: String,
+    },
+    ImageUrl {
+        #[serde(rename = "type")]
+        part_type: String,
+        image_url: ImageUrl,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
     pub role: String,
-    pub content: String,
+    pub content: Vec<ContentPart>,
 }
 
 #[derive(Serialize, Debug)]
@@ -173,12 +193,18 @@ pub async fn stream_chat(
                 if continuation_count == 0 {
                     current_messages.push(Message {
                         role: "assistant".to_string(),
-                        content: full_response_content.clone(),
+                        content: vec![ContentPart::Text {
+                            part_type: "text".to_string(),
+                            text: full_response_content.clone(),
+                        }],
                     });
                 } else {
                     // Update the last assistant message
                     if let Some(last_msg) = current_messages.last_mut() {
-                        last_msg.content = full_response_content.clone();
+                        last_msg.content = vec![ContentPart::Text {
+                            part_type: "text".to_string(),
+                            text: full_response_content.clone(),
+                        }];
                     }
                 }
                 
