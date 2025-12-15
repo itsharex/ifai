@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ChatState, ToolCall, Message, ContentPart, ImageUrl } from './chatStore';
+import { ChatState, ToolCall, Message, ContentPart, ImageUrl, BackendMessage, BackendContentPart, BackendImageUrl } from './chatStore';
 import { v4 as uuidv4 } from 'uuid';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -197,12 +197,13 @@ export const useChatStore = create<ChatState>()(
     (set, get) => ({
       messages: [],
       isLoading: false,
-      // apiKey and isAutocompleteEnabled are now managed by settingsStore
 
-      addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+      addMessage: (message) => set((state) => ({
+        messages: [...state.messages, message] // message is now chatStore::Message
+      })),
       updateMessageContent: (id, content) => set((state) => ({
         messages: state.messages.map((msg) =>
-          msg.id === id ? { ...msg, content } : msg
+          msg.id === id ? { ...msg, content } : msg // Only updates string content
         ),
       })),
       setLoading: (loading) => set({ isLoading: loading }),
@@ -212,273 +213,262 @@ export const useChatStore = create<ChatState>()(
         settingsStore.updateSettings({ enableAutocomplete: !settingsStore.enableAutocomplete });
       },
       
-            // Helper to continue conversation
-            generateResponse: async (history: any[], providerConfig: AIProviderConfig) => {
-              const { addMessage, setLoading, updateMessageContent } = get();
-              const assistantMsgId = uuidv4();
-              const eventId = `chat_${assistantMsgId}`;
+      generateResponse: async (history: BackendMessage[], providerConfig: AIProviderConfig) => {
+        const { addMessage, setLoading, updateMessageContent } = get();
+        const assistantMsgId = uuidv4();
+        const eventId = `chat_${assistantMsgId}`;
       
-              addMessage({ id: assistantMsgId, role: 'assistant', content: '' }); // Initial empty message
-              setLoading(true);
+        addMessage({ id: assistantMsgId, role: 'assistant', content: '' }); // Initial empty message
+        setLoading(true);
       
-              try {
-            let fullResponse = "";
+        try {
+          let fullResponse = "";
 
-            const unlistenData = await listen<string>(eventId, (event) => {
-                const chunk = event.payload;
-                fullResponse += chunk;
-                
-                const { messages } = get();
-                const msg = messages.find(m => m.id === assistantMsgId);
-                if (msg) {
-                    updateMessageContent(assistantMsgId, msg.content + chunk);
-                }
-            });
-
-            const cleanup = () => {
-                // Parse Tool Calls from full response
-                const toolCall = parseToolCall(fullResponse);
-                if (toolCall) {
-                    // We DO NOT strip the JSON anymore. We keep the full content
-                    // so the UI parser can determine the correct order of text/tools.
-                    
-                    set((state) => ({
-                        messages: state.messages.map(msg => 
-                            msg.id === assistantMsgId ? { 
-                                ...msg, 
-                                content: fullResponse, // Keep original content (string)
-                                toolCalls: [toolCall] 
-                            } : msg
-                        )
-                    }));
-                }
-      
-                      setLoading(false);
-                      unlistenData();
-                      unlistenError();
-                      unlistenFinish();
-                  };
-                  
-                  const unlistenError = await listen<string>(`${eventId}_error`, (event) => {
-                      console.error('Chat error:', event.payload);
-                      cleanup();
-                  });
-      
-                  const unlistenFinish = await listen<string>(`${eventId}_finish`, () => {
-                      cleanup();
-                  });
-      
-                  await invoke('ai_chat', { 
-                      providerConfig,
-                      messages: history, // History is already in AI Message format
-                      eventId 
-                  });
-              } catch (e) {
-                  console.error('Failed to invoke ai_chat', e);
-                  setLoading(false);
-              }
-            },
-      
-            approveToolCall: async (messageId: string, toolCallId: string) => {
-                const fileStore = useFileStore.getState();
-                if (!fileStore.rootPath) return;
-      
-                const { messages, generateResponse } = get();
-                const msgIndex = messages.findIndex(m => m.id === messageId);
-                if (msgIndex === -1) return;
-                
-                const msg = messages[msgIndex];
-                const toolCall = msg.toolCalls?.find(tc => tc.id === toolCallId);
-                if (!toolCall) return;
-      
-                let result = "";
-                let status: ToolCall['status'] = 'completed';
-                
-                try {
-                                  if (toolCall.tool === 'agent_write_file') {
-                                      // Check if content extraction succeeded
-                                      if (!toolCall.args.content || toolCall.args.content === '<<FILE_CONTENT>>' || toolCall.args.content.trim().length === 0) {
-                                          throw new Error("文件内容解析失败或为空。请要求 AI 重新生成。");
-                                      }
-                                      
-                                      result = await invoke('agent_write_file', { 
-                                          rootPath: fileStore.rootPath, 
-                                          relPath: toolCall.args.rel_path, 
-                                          content: toolCall.args.content 
-                                      });
-                                      // Refresh file tree and git status
-                                      await fileStore.refreshFileTree();
-                                      fileStore.fetchGitStatuses();
-
-                                      // Auto-open the file
-                                      const fullPath = `${fileStore.rootPath}/${toolCall.args.rel_path}`.replace(/\/\//g, '/');
-                                      const fileName = toolCall.args.rel_path.split('/').pop() || 'file';
-                                      const ext = fileName.split('.').pop() || '';
-                                      let language = 'plaintext';
-                                      if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) language = 'javascript'; // or typescript, monaco handles it
-                                      if (ext === 'ts' || ext === 'tsx') language = 'typescript';
-                                      if (ext === 'json') language = 'json';
-                                      if (ext === 'html') language = 'html';
-                                      if (ext === 'css') language = 'css';
-                                      if (ext === 'rs') language = 'rust';
-                                      if (ext === 'py') language = 'python';
-                                      if (ext === 'md') language = 'markdown';
-
-                                      fileStore.openFile({
-                                          id: uuidv4(),
-                                          path: fullPath,
-                                          name: fileName,
-                                          content: toolCall.args.content,
-                                          isDirty: false,
-                                          language
-                                      });
-                                  } else if (toolCall.tool === 'agent_read_file') {                        result = await invoke('agent_read_file', { 
-                            rootPath: fileStore.rootPath, 
-                            relPath: toolCall.args.rel_path 
-                        });
-                    } else if (toolCall.tool === 'agent_list_dir') {
-                        const items = await invoke<string[]>('agent_list_dir', { 
-                            rootPath: fileStore.rootPath, 
-                            relPath: toolCall.args.rel_path 
-                        });
-                        result = items.join('\n');
-                    }
-                } catch (e) {
-                    status = 'failed';
-                    result = String(e);
-                }
-      
-                set((state) => ({
-                    messages: state.messages.map(m => 
-                        m.id === messageId ? {
-                            ...m,
-                            toolCalls: m.toolCalls?.map(tc => 
-                                tc.id === toolCallId ? { ...tc, status, result } : tc
-                            )
-                        } : m
-                    )
-                }));
-      
-                // Continue Loop
-                // Construct history up to this message, plus the tool output
-                const history = messages.slice(0, msgIndex + 1).map(m => {
-                  // Map to backend Message format
-                  if (m.multiModalContent) {
-                    return { role: m.role, content: m.multiModalContent };
-                  }
-                  return { role: m.role, content: [{ type: 'text', text: m.content }] };
-                });
-                
-                // Add Tool Result as User Message (simulating feedback)
-                history.push({
-                  role: 'user',
-                  content: [{ type: 'text', text: `[System] Tool '${toolCall.tool}' executed successfully.\nResult:\n${result}\n\nINSTRUCTION: You have received the tool output. Do NOT repeat this action. Proceed immediately to the next step.` }]
-                });
-                
-                // Prepend System Prompt (hacky but needed since we don't persist it)
-                history.unshift({ role: 'system', content: [{ type: 'text', text: BASE_SYSTEM_PROMPT + "\n\n" + TOOL_INSTRUCTIONS }] });
-      
-                const settingsStore = useSettingsStore.getState();
-                const currentProviderConfig = settingsStore.providers.find(p => p.id === settingsStore.currentProviderId);
-                if (currentProviderConfig) {
-                    await generateResponse(history, currentProviderConfig);
-                }
-            },
-      
-            rejectToolCall: async (messageId: string, toolCallId: string) => {
-                set((state) => ({
-                    messages: state.messages.map(m => 
-                        m.id === messageId ? {
-                            ...m,
-                            toolCalls: m.toolCalls?.map(tc => 
-                                tc.id === toolCallId ? { ...tc, status: 'rejected' } : tc
-                            )
-                        } : m
-                    )
-                }));
-            },
-      
-            sendMessage: async (input: string | ContentPart[], providerId: string, modelName: string) => {
-              const { messages, isLoading, addMessage, setLoading, generateResponse } = get();
-              if ((typeof input === 'string' && !input.trim()) || isLoading) return;
-      
-              const settingsStore = useSettingsStore.getState();
-              const providerConfig = settingsStore.providers.find(p => p.id === providerId);
-
-              if (!providerConfig || !providerConfig.enabled || !providerConfig.apiKey) {
-                setLoading(false);
-                console.error("AI Provider not configured or enabled.");
-                return;
-              }
-
-              // Fix Base URL for OpenAI compatible providers if missing /chat/completions
-              // This handles cases where user (or default config) provided just the base path (e.g. .../v4/)
-              let fixedBaseUrl = providerConfig.baseUrl;
-              if (providerConfig.protocol === 'openai' && 
-                  !fixedBaseUrl.includes('/chat/completions') && 
-                  !fixedBaseUrl.includes('minimax')) { // Minimax uses a different endpoint
-                  if (fixedBaseUrl.endsWith('/')) {
-                      fixedBaseUrl += 'chat/completions';
-                  } else {
-                      fixedBaseUrl += '/chat/completions';
-                  }
-              }
-
-              const currentProviderConfig: AIProviderConfig = { 
-                ...providerConfig, 
-                baseUrl: fixedBaseUrl,
-                models: [modelName] 
-              };
-
-              const userMsgId = uuidv4();
-              
-              let displayContent: string;
-              let multiModalContentToSend: ContentPart[] | undefined;
-
-              if (typeof input === 'string') {
-                displayContent = input;
-                multiModalContentToSend = [{ type: 'text', text: input }];
-              } else {
-                displayContent = input.map(part => part.type === 'text' && part.text ? part.text : '').join(' ').trim();
-                multiModalContentToSend = input;
-              }
-
-              addMessage({ id: userMsgId, role: 'user', content: displayContent, multiModalContent: multiModalContentToSend }); // Add to frontend message
-
-              let finalSystemPrompt = BASE_SYSTEM_PROMPT;
-              const rootPath = useFileStore.getState().rootPath;
-              
-              if (rootPath) {
-                   try {
-                       const ragResult = await invoke<{context: string, references: string[]}>('build_context', { query: displayContent, rootPath });
-                       if (ragResult && ragResult.context) {
-                           finalSystemPrompt += `\n\nProject Context:\n${ragResult.context}`;
-                           
-                           set((state) => ({
-                               messages: state.messages.map(msg => 
-                                   msg.id === userMsgId ? { ...msg, references: ragResult.references } : msg
-                               )
-                           }));
-                       }
-                   } catch (e) {}
-              }
-
-              finalSystemPrompt += `\n\n${TOOL_INSTRUCTIONS}`;
-      
-              // Map history to backend Message format
-              const history: Message[] = [
-                  { role: 'system', content: [{ type: 'text', text: finalSystemPrompt }] },
-                  ...messages.map(m => {
-                      if (m.multiModalContent) {
-                          return { role: m.role, content: m.multiModalContent };
-                      }
-                      return { role: m.role, content: [{ type: 'text', text: m.content }] };
-                  }),
-                  { role: 'user', content: multiModalContentToSend } // Use multiModalContent for user message
-              ];
-      
-              await generateResponse(history, currentProviderConfig);
+          const unlistenData = await listen<string>(eventId, (event) => {
+            const chunk = event.payload;
+            fullResponse += chunk;
+            
+            const { messages } = get();
+            const msg = messages.find(m => m.id === assistantMsgId);
+            if (msg) {
+              updateMessageContent(assistantMsgId, msg.content + chunk);
             }
+          });
+
+          const cleanup = () => {
+            const toolCall = parseToolCall(fullResponse);
+            if (toolCall) {
+              set((state) => ({
+                messages: state.messages.map(msg =>
+                  msg.id === assistantMsgId ? {
+                    ...msg,
+                    content: fullResponse, // Keep original content (string)
+                    toolCalls: [toolCall]
+                  } : msg
+                )
+              }));
+            }
+      
+            setLoading(false);
+            unlistenData();
+            unlistenError();
+            unlistenFinish();
+          };
+          
+          const unlistenError = await listen<string>(`${eventId}_error`, (event) => {
+            console.error('Chat error:', event.payload);
+            cleanup();
+          });
+      
+          const unlistenFinish = await listen<string>(`${eventId}_finish`, () => {
+            cleanup();
+          });
+      
+          await invoke('ai_chat', { 
+            providerConfig,
+            messages: history, 
+            eventId 
+          });
+        } catch (e) {
+          console.error('Failed to invoke ai_chat', e);
+          setLoading(false);
+        }
+      },
+      
+      approveToolCall: async (messageId: string, toolCallId: string) => {
+        const fileStore = useFileStore.getState();
+        if (!fileStore.rootPath) return;
+      
+        const { messages, generateResponse } = get();
+        const msgIndex = messages.findIndex(m => m.id === messageId);
+        if (msgIndex === -1) return;
+        
+        const msg = messages[msgIndex];
+        const toolCall = msg.toolCalls?.find(tc => tc.id === toolCallId);
+        if (!toolCall) return;
+      
+        let result = "";
+        let status: ToolCall['status'] = 'completed';
+        
+        try {
+          if (toolCall.tool === 'agent_write_file') {
+            if (!toolCall.args.content || toolCall.args.content === '<<FILE_CONTENT>>' || toolCall.args.content.trim().length === 0) {
+                throw new Error("文件内容解析失败或为空。请要求 AI 重新生成。");
+            }
+            
+            result = await invoke('agent_write_file', {
+                rootPath: fileStore.rootPath,
+                relPath: toolCall.args.rel_path,
+                content: toolCall.args.content
+            });
+            await fileStore.refreshFileTree();
+            fileStore.fetchGitStatuses();
+
+            const fullPath = `${fileStore.rootPath}/${toolCall.args.rel_path}`.replace(/\/\//g, '/');
+            const fileName = toolCall.args.rel_path.split('/').pop() || 'file';
+            const ext = fileName.split('.').pop() || '';
+            let language = 'plaintext';
+            if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) language = 'javascript';
+            if (ext === 'ts' || ext === 'tsx') language = 'typescript';
+            if (ext === 'json') language = 'json';
+            if (ext === 'html') language = 'html';
+            if (ext === 'css') language = 'css';
+            if (ext === 'rs') language = 'rust';
+            if (ext === 'py') language = 'python';
+            if (ext === 'md') language = 'markdown';
+
+            fileStore.openFile({
+                id: uuidv4(),
+                path: fullPath,
+                name: fileName,
+                content: toolCall.args.content,
+                isDirty: false,
+                language
+            });
+          } else if (toolCall.tool === 'agent_read_file') {
+            result = await invoke('agent_read_file', {
+                rootPath: fileStore.rootPath,
+                relPath: toolCall.args.rel_path
+            });
+          } else if (toolCall.tool === 'agent_list_dir') {
+            const items = await invoke<string[]>('agent_list_dir', {
+                rootPath: fileStore.rootPath,
+                relPath: toolCall.args.rel_path
+            });
+            result = items.join('\n');
+          }
+        } catch (e) {
+          status = 'failed';
+          result = String(e);
+        }
+      
+        set((state) => ({
+          messages: state.messages.map(m => 
+            m.id === messageId ? {
+              ...m,
+              toolCalls: m.toolCalls?.map(tc => 
+                tc.id === toolCallId ? { ...tc, status, result } : tc
+              )
+            } : m
+          )
+        }));
+      
+        // Construct history to be sent to backend (backend expects ai::Message format)
+        const history: BackendMessage[] = messages.slice(0, msgIndex + 1).map(m => {
+          return { 
+              role: m.role,
+              // For backend, content is always ContentPart[]
+              content: m.multiModalContent || [{ type: 'text', text: m.content }] 
+          };
+        });
+        
+        // Add Tool Result as User Message (simulating feedback)
+        history.push({
+          role: 'user',
+          content: [{ type: 'text', text: `[System] Tool '${toolCall.tool}' executed successfully.\nResult:\n${result}\n\nINSTRUCTION: You have received the tool output. Do NOT repeat this action. Proceed immediately to the next step.` }]
+        });
+        
+        // Prepend System Prompt (hacky but needed since we don't persist it)
+        history.unshift({ role: 'system', content: [{ type: 'text', text: BASE_SYSTEM_PROMPT + "\n\n" + TOOL_INSTRUCTIONS }] });
+      
+        const settingsStore = useSettingsStore.getState();
+        const currentProviderConfig = settingsStore.providers.find(p => p.id === settingsStore.currentProviderId);
+        if (currentProviderConfig) {
+            await generateResponse(history, currentProviderConfig);
+        }
+      },
+      
+      rejectToolCall: async (messageId: string, toolCallId: string) => {
+        set((state) => ({
+          messages: state.messages.map(m => 
+            m.id === messageId ? {
+              ...m,
+              toolCalls: m.toolCalls?.map(tc => 
+                tc.id === toolCallId ? { ...tc, status: 'rejected' } : tc
+              )
+            } : m
+          )
+        }));
+      },
+      
+      sendMessage: async (input: string | ContentPart[], providerId: string, modelName: string) => {
+        const { messages, isLoading, addMessage, setLoading, generateResponse } = get();
+        if ((typeof input === 'string' && !input.trim()) || isLoading) return;
+      
+        const settingsStore = useSettingsStore.getState();
+        const providerConfig = settingsStore.providers.find(p => p.id === providerId);
+
+        if (!providerConfig || !providerConfig.enabled || !providerConfig.apiKey) {
+          setLoading(false);
+          console.error("AI Provider not configured or enabled.");
+          return;
+        }
+
+        let fixedBaseUrl = providerConfig.baseUrl;
+        if (providerConfig.protocol === 'openai' && 
+            !fixedBaseUrl.includes('/chat/completions') && 
+            !fixedBaseUrl.includes('minimax')) { 
+            if (fixedBaseUrl.endsWith('/')) {
+                fixedBaseUrl += 'chat/completions';
+            } else {
+                fixedBaseUrl += '/chat/completions';
+            }
+        }
+
+        const currentProviderConfig: AIProviderConfig = { 
+          ...providerConfig, 
+          baseUrl: fixedBaseUrl,
+          models: [modelName] 
+        };
+
+        const userMsgId = uuidv4();
+        
+        let displayContent: string;
+        let multiModalContentToSend: ContentPart[];
+
+        if (typeof input === 'string') {
+          displayContent = input;
+          multiModalContentToSend = [{ type: 'text', text: input }];
+        } else {
+          displayContent = input.map(part => part.type === 'text' && part.text ? part.text : '').join(' ').trim();
+          multiModalContentToSend = input;
+        }
+
+        addMessage({ id: userMsgId, role: 'user', content: displayContent, multiModalContent: multiModalContentToSend });
+
+        let finalSystemPrompt = BASE_SYSTEM_PROMPT;
+        const rootPath = useFileStore.getState().rootPath;
+        
+        if (rootPath) {
+             try {
+                 const ragResult = await invoke<{context: string, references: string[]}>('build_context', { query: displayContent, rootPath });
+                 if (ragResult && ragResult.context) {
+                     finalSystemPrompt += `\n\nProject Context:\n${ragResult.context}`;
+                     
+                     set((state) => ({
+                         messages: state.messages.map(msg => 
+                             msg.id === userMsgId ? { ...msg, references: ragResult.references } : msg
+                         )
+                     }));
+                 }
+             } catch (e) {}
+        }
+
+        finalSystemPrompt += `\n\n${TOOL_INSTRUCTIONS}`;
+      
+        const history: BackendMessage[] = [
+            { role: 'system', content: [{ type: 'text', text: finalSystemPrompt }] },
+            ...messages.map(m => {
+                return { 
+                    role: m.role, 
+                    content: m.multiModalContent || [{ type: 'text', text: m.content }] 
+                };
+            }),
+            { role: 'user', content: multiModalContentToSend }
+        ];
+      
+        await generateResponse(history, currentProviderConfig);
+      },
     }),
     {
       name: 'chat-storage',
@@ -486,15 +476,14 @@ export const useChatStore = create<ChatState>()(
         messages: state.messages.map(m => ({
           id: m.id,
           role: m.role,
-          content: m.content, // Persist string content (for backward compat)
-          multiModalContent: m.multiModalContent, // Persist multi-modal content
+          content: m.content, 
+          multiModalContent: m.multiModalContent,
           references: m.references,
           toolCalls: m.toolCalls?.map(tc => ({
             id: tc.id,
             tool: tc.tool,
             args: tc.args,
             status: tc.status,
-            // Do NOT persist tc.result as it can be very large (file content)
           }))
         })),
       }),

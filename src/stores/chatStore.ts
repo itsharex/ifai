@@ -8,6 +8,7 @@ export interface ToolCall {
   result?: string;
 }
 
+// Frontend display message type
 export interface ImageUrl {
     url: string;
 }
@@ -27,6 +28,22 @@ export interface Message {
   toolCalls?: ToolCall[];
 }
 
+// Backend API message types (must match Rust `ai.rs`)
+export interface BackendImageUrl {
+    url: string;
+}
+
+export interface BackendContentPart {
+    type: 'text' | 'image_url';
+    text?: string;
+    image_url?: BackendImageUrl;
+}
+
+export interface BackendMessage {
+    role: string;
+    content: BackendContentPart[];
+}
+
 export interface ChatState {
   messages: Message[];
   isLoading: boolean;
@@ -37,5 +54,5 @@ export interface ChatState {
   toggleAutocomplete: () => void;
   approveToolCall: (messageId: string, toolCallId: string) => Promise<void>;
   rejectToolCall: (messageId: string, toolCallId: string) => Promise<void>;
-  generateResponse: (history: any[], providerConfig: AIProviderConfig) => Promise<void>;
+  generateResponse: (history: BackendMessage[], providerConfig: AIProviderConfig) => Promise<void>; // Use BackendMessage
 }

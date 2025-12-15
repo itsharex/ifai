@@ -7,7 +7,7 @@ mod lsp;
 mod rag; // Added rag module
 mod agent; // Added agent module
 use ai::Message;
-use ai::{AIProviderConfig, ContentPart, ImageUrl}; // Import new AI types
+use ai::AIProviderConfig; // Import new AI types
 use terminal::TerminalManager;
 use lsp::LspManager;
 use rag::RagState; // Added RagState

@@ -120,9 +120,10 @@ pub async fn stream_chat(
                 e.to_string()
             })?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            println!("API Error: Status={}, Body={}", response.status(), text);
+            println!("API Error: Status={}, Body={}", status, text);
             app.emit(&format!("{}_error", event_id), format!("API Error: {}", text)).unwrap_or(());
             return Err(format!("API Error: {}", text));
         }
@@ -192,14 +193,6 @@ pub async fn stream_chat(
     println!("Chat request finished.");
 
     Ok(())
-}
-
-#[command]
-pub async fn ai_completion(
-    provider_config: AIProviderConfig,
-    messages: Vec<Message>,
-) -> Result<String, String> {
-    complete_code(provider_config, messages).await
 }
 
 pub async fn complete_code(
