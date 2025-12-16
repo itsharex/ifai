@@ -25,3 +25,6 @@ dist-ssr
 
 # Gemini AI generated files
 /.gemini-clipboard/
+
+# Core code directory (do not commit)
+../ifainew-core/

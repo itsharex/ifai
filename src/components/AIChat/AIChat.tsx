@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Settings, Bot } from 'lucide-react';
-import { useChatStore } from '../../stores/useChatStore';
+import { useChatStore } from 'ifainew-core';
 import { useSettingsStore, AIProviderConfig } from '../../stores/settingsStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useFileStore } from '../../stores/fileStore';

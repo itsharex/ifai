@@ -2,7 +2,8 @@ import React, { useEffect } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { useEditorStore } from '../../stores/editorStore';
 import { useFileStore } from '../../stores/fileStore';
-import { useChatStore } from '../../stores/useChatStore';
+import { useChatStore } from 'ifainew-core';
+
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useSettingsStore } from '../../stores/settingsStore'; // Import settings store
 import { FilePlus, FolderOpen, MessageSquare } from 'lucide-react';

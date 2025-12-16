@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useEditorStore } from '../../stores/editorStore';
-import { useChatStore } from '../../stores/useChatStore';
+import { useChatStore } from 'ifainew-core';
+
 import { useSettingsStore } from '../../stores/settingsStore';
 import { Sparkles, X, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';

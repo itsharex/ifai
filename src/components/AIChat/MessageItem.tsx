@@ -6,7 +6,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Message, ContentPart, ImageUrl } from '../../stores/chatStore'; // Import ContentPart, ImageUrl
 import { ToolApproval } from './ToolApproval';
 import { useTranslation } from 'react-i18next';
-import { parseToolCalls } from '../../utils/toolCallParser';
+import { parseToolCalls } from 'ifainew-core';
 
 interface MessageItemProps {
     message: Message;

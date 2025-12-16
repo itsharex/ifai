@@ -2498,6 +2498,7 @@ dependencies = [
  "futures",
  "git2",
  "grep",
+ "ifainew-core",
  "ignore",
  "notify",
  "once_cell",
@@ -2514,6 +2515,27 @@ dependencies = [
  "text-splitter",
  "tokio",
  "uuid",
+ "walkdir",
+]
+
+[[package]]
+name = "ifainew-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "eventsource-stream",
+ "fastembed",
+ "futures",
+ "grep",
+ "ignore",
+ "notify",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tauri",
+ "termcolor",
+ "text-splitter",
  "walkdir",
 ]
 

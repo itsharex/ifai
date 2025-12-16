@@ -4,7 +4,7 @@ import { ToolCall } from '../../stores/chatStore';
 import { useTranslation } from 'react-i18next';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { getToolLabel, getToolColor } from '../../utils/toolCallParser';
+import { getToolLabel, getToolColor } from 'ifainew-core';
 
 interface ToolApprovalProps {
     toolCall: ToolCall;
