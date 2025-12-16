@@ -13,6 +13,8 @@ pub enum AIProtocol {
     Anthropic,
     #[serde(rename = "gemini")]
     Gemini,
+    #[serde(rename = "zhipu")] // Added Zhipu AI protocol
+    Zhipu,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -183,7 +185,7 @@ pub async fn stream_chat(
     event_id: String,
     enable_tools: bool,
 ) -> Result<(), String> {
-    println!("Starting chat request with {} messages", messages.len());
+    println!("Starting chat request with {} messages, protocol: {:?}", messages.len(), provider_config.protocol);
     let client = Client::new();
     
     let current_messages = messages;
@@ -251,6 +253,9 @@ pub async fn stream_chat(
         AIProtocol::OpenAI => {
             (provider_config.base_url, provider_config.api_key, provider_config.models[0].clone()) 
         },
+        AIProtocol::Zhipu => { // Handle Zhipu AI
+            (provider_config.base_url, provider_config.api_key, provider_config.models[0].clone())
+        },
         _ => return Err("Unsupported AI protocol".to_string()),
     };
 
@@ -296,6 +301,8 @@ pub async fn stream_chat(
                 if event.data == "[DONE]" {
                     break;
                 }
+                // Debug Log for Zhipu AI diagnosis
+                println!("[DEBUG SSE RAW] {}", event.data); // Log raw SSE data
                 if let Ok(response) = serde_json::from_str::<OpenAIStreamResponse>(&event.data) {
                     if let Some(choice) = response.choices.first() {
                         // Handle Text Content
@@ -319,7 +326,7 @@ pub async fn stream_chat(
                                     } else {
                                         println!("Failed to parse JSON: {}", event.data);
                                         // Fallback: emit raw data to frontend for debugging to diagnose Zhipu AI issues
-                                        let debug_msg = format!("\n[DEBUG: Parse Failed] {}\n", event.data);
+                                        let debug_msg = format!("\n[DEBUG: Parse Failed] RAW_EVENT_DATA: {}\n", event.data); // Include raw data in debug msg
                                         let event_payload = serde_json::to_string(&StreamEvent::Content { 
                                             content: debug_msg 
                                         }).unwrap();

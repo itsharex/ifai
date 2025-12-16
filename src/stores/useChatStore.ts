@@ -165,7 +165,17 @@ export const useChatStore = create<ChatState>()(
                 fileStore.fetchGitStatuses();
                 const fullPath = `${fileStore.rootPath}/${toolCall.args.rel_path}`.replace(/\/\//g, '/');
                 const fileName = toolCall.args.rel_path.split('/').pop() || 'file';
-                fileStore.openFile({ id: uuidv4(), path: fullPath, name: fileName, content: toolCall.args.content || "", isDirty: false });
+                const ext = fileName.split('.').pop() || '';
+                let language = 'plaintext';
+                if (['js', 'jsx', 'ts', 'tsx'].includes(ext)) language = 'javascript';
+                if (ext === 'ts' || ext === 'tsx') language = 'typescript';
+                if (ext === 'json') language = 'json';
+                if (ext === 'html') language = 'html';
+                if (ext === 'css') language = 'css';
+                if (ext === 'rs') language = 'rust';
+                if (ext === 'py') language = 'python';
+                if (ext === 'md') language = 'markdown';
+                fileStore.openFile({ id: uuidv4(), path: fullPath, name: fileName, content: toolCall.args.content || "", isDirty: false, language });
             } else if (toolCall.tool === 'agent_read_file') {
                 result = await invoke('agent_read_file', { rootPath: fileStore.rootPath, relPath: toolCall.args.rel_path });
             } else if (toolCall.tool === 'agent_list_dir') {
