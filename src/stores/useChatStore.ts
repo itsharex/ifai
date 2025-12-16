@@ -16,6 +16,29 @@ interface StreamingTool {
     arguments: string;
 }
 
+/**
+ * Unescapes string fields in tool arguments to handle double-escaped content from AI providers.
+ * This fixes issues where newlines appear as literal "\n" instead of actual line breaks.
+ *
+ * Specifically handles the 'content' field which may contain code with escaped newlines.
+ */
+function unescapeToolArguments(args: Record<string, any>): Record<string, any> {
+    const result = { ...args };
+
+    // Process 'content' field if it exists and is a string
+    if (typeof result.content === 'string') {
+        // Replace common escape sequences with their actual characters
+        result.content = result.content
+            .replace(/\\n/g, '\n')    // newline
+            .replace(/\\r/g, '\r')    // carriage return
+            .replace(/\\t/g, '\t')    // tab
+            .replace(/\\"/g, '"')     // double quote
+            .replace(/\\\\/g, '\\');  // backslash (must be last)
+    }
+
+    return result;
+}
+
 export const useChatStore = create<ChatState>()(
   persist(
     (set, get) => ({
@@ -80,7 +103,7 @@ export const useChatStore = create<ChatState>()(
                 const liveToolCalls: ToolCall[] = Object.values(streamingTools).map(st => ({
                     id: st.id || uuidv4(),
                     tool: st.name,
-                    args: parsePartialJson(st.arguments),
+                    args: unescapeToolArguments(parsePartialJson(st.arguments)),
                     status: 'pending' as const,
                     isPartial: true
                 }));
@@ -95,15 +118,15 @@ export const useChatStore = create<ChatState>()(
 
             const nativeToolCalls: ToolCall[] = Object.values(streamingTools).map(st => {
                 let args = {};
-                try { 
-                    if (st.arguments) args = JSON.parse(st.arguments); 
+                try {
+                    if (st.arguments) args = JSON.parse(st.arguments);
                 } catch(e) {
                     console.warn("Failed to parse tool arguments:", st.arguments);
                 }
                 return {
                     id: st.id || uuidv4(),
                     tool: st.name,
-                    args: args,
+                    args: unescapeToolArguments(args),
                     status: 'pending' as const
                 };
             });
