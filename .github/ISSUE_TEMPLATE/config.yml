@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/peterfei/ifai/discussions
+    about: 用于一般性讨论、问题和想法分享
+  - name: 📚 文档
+    url: https://github.com/peterfei/ifai/blob/main/README.md
+    about: 查看项目文档和使用指南
+  - name: 🤝 贡献指南
+    url: https://github.com/peterfei/ifai/blob/main/CONTRIBUTING.md
+    about: 了解如何为项目做出贡献

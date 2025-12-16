@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useEditorStore } from '../../stores/editorStore';
-import { useChatStore } from 'ifainew-core';
+import { useChatStore } from '../../stores/useChatStore';
 
 import { useSettingsStore } from '../../stores/settingsStore';
 import { Sparkles, X, Loader2 } from 'lucide-react';

@@ -1,0 +1,53 @@
+MIT License
+
+Copyright (c) 2024-2025 IfAI Team
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+注意事项 (Notice)
+================
+
+本开源协议仅适用于 IfAI Editor 的开源框架部分。核心 AI 能力模块 (ifainew-core)
+采用独立的商业授权协议,不包含在本 MIT 许可范围内。
+
+This MIT License applies only to the open-source framework portion of IfAI Editor.
+The core AI capability modules (ifainew-core) are subject to a separate commercial
+license and are not included in this MIT License.
+
+开源部分包括但不限于:
+- 用户界面和交互逻辑
+- 文件系统管理
+- 编辑器集成 (Monaco Editor)
+- 终端模拟器
+- Git 集成界面
+- LSP 客户端实现
+- 项目构建和配置工具
+
+核心 AI 能力 (不包含在开源范围) 包括但不限于:
+- AI 模型集成和协议适配
+- RAG (检索增强生成) 引擎
+- Agent 工具链和智能代码操作
+- 向量化语义搜索
+- 上下文理解和构建算法
+
+如需使用完整的 AI 功能,请联系 IfAI Team 获取商业授权。
+
+For full AI capabilities, please contact IfAI Team for commercial licensing.

@@ -6,7 +6,8 @@ import { useFileStore } from './fileStore';
 import { useSettingsStore } from './settingsStore';
 
 // Register stores on first import
-registerStores(useFileStore, useSettingsStore);
+// Pass getState functions so core library can access current state
+registerStores(useFileStore.getState, useSettingsStore.getState);
 
 // Re-export the core chatStore
 export const useChatStore = coreUseChatStore;

@@ -38,6 +38,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(TerminalManager::new())
         .manage(LspManager::new())
+        .manage(ifainew_core::RagState::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())

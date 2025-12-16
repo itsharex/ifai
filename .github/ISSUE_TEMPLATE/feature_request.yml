@@ -1,0 +1,111 @@
+name: 💡 功能建议
+description: 建议一个新功能或改进
+title: "[Feature]: "
+labels: ["enhancement", "需要分类"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你的功能建议！请详细描述你的想法。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题背景
+      description: 描述你想解决的问题或痛点。
+      placeholder: |
+        当我尝试...时,我发现...
+        这给我带来了...的困扰
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 建议的解决方案
+      description: 详细描述你期望的功能或改进。
+      placeholder: |
+        我希望能够...
+        具体来说...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 备选方案
+      description: 你考虑过哪些其他的解决方法?
+      placeholder: |
+        方案 A: ...
+        方案 B: ...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 优先级
+      description: 这个功能对你有多重要?
+      options:
+        - 低 - 锦上添花,有了更好
+        - 中 - 重要但不紧急
+        - 高 - 非常需要,会显著改善体验
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: 功能类别
+      description: 这个功能属于哪个类别?
+      options:
+        - 编辑器功能
+        - AI 助手
+        - 用户界面
+        - 性能优化
+        - 开发工具
+        - 文档
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: 使用场景
+      description: 描述这个功能在实际使用中的场景。
+      placeholder: |
+        场景 1: 当我...时
+        场景 2: 在...情况下
+    validations:
+      required: false
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: 原型或示例
+      description: 如果有,可以提供原型图、截图或其他参考。
+      placeholder: 可以直接拖拽图片到这里...
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 其他信息
+      description: 添加任何其他有用的信息或上下文。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 检查清单
+      description: 在提交前,请确认以下事项
+      options:
+        - label: 我已搜索现有的 Issues,确认这不是重复建议
+          required: true
+        - label: 我已阅读贡献指南 (CONTRIBUTING.md)
+          required: true
+        - label: 这个功能符合项目的目标和愿景
+          required: false

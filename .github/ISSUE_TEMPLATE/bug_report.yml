@@ -1,0 +1,126 @@
+name: 🐛 Bug 报告
+description: 报告一个问题或错误
+title: "[Bug]: "
+labels: ["bug", "需要分类"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间填写这个 Bug 报告！请尽可能详细地描述问题。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清晰简洁地描述遇到的问题。
+      placeholder: 告诉我们发生了什么...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 提供详细的复现步骤。
+      placeholder: |
+        1. 打开应用
+        2. 点击 '...'
+        3. 执行 '...'
+        4. 看到错误
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+      description: 描述你期望发生什么。
+      placeholder: 应该...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 描述实际发生了什么。
+      placeholder: 但实际...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      description: 你在哪个操作系统上遇到这个问题?
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS (Intel)
+        - macOS (Apple Silicon)
+        - Ubuntu 22.04
+        - Ubuntu 20.04
+        - 其他 Linux
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: IfAI 版本
+      description: 你使用的 IfAI 版本是什么? (可以在设置 -> 关于中查看)
+      placeholder: "例如: 0.1.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息
+      description: 提供相关的环境信息
+      placeholder: |
+        - Node.js 版本:
+        - Rust 版本:
+        - 屏幕分辨率:
+        - 其他相关信息:
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误日志
+      description: 如果有相关的错误日志,请粘贴在这里。
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图
+      description: 如果可以,添加截图来帮助解释问题。
+      placeholder: 可以直接拖拽图片到这里...
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 其他信息
+      description: 添加任何其他关于问题的上下文信息。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 检查清单
+      description: 在提交前,请确认以下事项
+      options:
+        - label: 我已搜索现有的 Issues,确认这不是重复报告
+          required: true
+        - label: 我已阅读贡献指南 (CONTRIBUTING.md)
+          required: true
+        - label: 这个问题是可以复现的
+          required: true
