@@ -8,7 +8,7 @@ import { useFileStore } from './fileStore';
 import { useSettingsStore, AIProviderConfig } from './settingsStore';
 import { parsePartialJson } from '../utils/partialJsonParser';
 
-const BASE_SYSTEM_PROMPT = "You are IfAI, an expert coding assistant. You have access to file system tools. Use them to fulfill user requests involving file creation, reading, or modification. You can use multiple tools in sequence if needed.";
+const BASE_SYSTEM_PROMPT = "You are IfAI, an expert coding assistant. You have access to file system tools. Use them to fulfill user requests involving file creation, reading, or modification. You can use multiple tools in sequence if needed.\n\nIMPORTANT: When generating code, ALWAYS use standard Markdown code blocks (e.g., ```typescript) with the appropriate language identifier. Ensure code is properly formatted with newlines and indentation for readability. NEVER collapse multi-line code into a single line.";
 
 interface StreamingTool {
     id: string;

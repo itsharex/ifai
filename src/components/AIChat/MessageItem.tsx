@@ -53,13 +53,10 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                             return !isInline && match ? (
                                 <SyntaxHighlighter
                                     {...propsToPass}
-                                    children={String(children).replace(/\n$/, '')}
+                                    children={String(children)}
                                     style={vscDarkPlus}
                                     language={match[1]}
-                                    PreTag="div"
-                                    wrapLines={true}
-                                    wrapLongLines={true}
-                                    customStyle={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                                    customStyle={{ margin: 0, borderRadius: '0.375rem', fontSize: '0.75rem' }}
                                 />
                             ) : (
                                 <code {...rest} className={className}>
