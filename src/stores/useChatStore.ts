@@ -6,8 +6,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useFileStore } from './fileStore';
 import { useSettingsStore, AIProviderConfig } from './settingsStore';
+import { parsePartialJson } from '../utils/partialJsonParser';
 
-const BASE_SYSTEM_PROMPT = "You are IfAI, an expert coding assistant. You have access to file system tools. When you need to perform an action, call the corresponding function using the native tool calling mechanism. DO NOT describe the tool call in text or code blocks. Just invoke it.";
+const BASE_SYSTEM_PROMPT = "You are IfAI, an expert coding assistant. You have access to file system tools. Use them to fulfill user requests involving file creation, reading, or modification. You can use multiple tools in sequence if needed.";
 
 interface StreamingTool {
     id: string;
@@ -24,9 +25,9 @@ export const useChatStore = create<ChatState>()(
       addMessage: (message) => set((state) => ({
         messages: [...state.messages, message]
       })),
-      updateMessageContent: (id, content) => set((state) => ({
+      updateMessageContent: (id, content, toolCalls) => set((state) => ({
         messages: state.messages.map((msg) =>
-          msg.id === id ? { ...msg, content } : msg
+          msg.id === id ? { ...msg, content, toolCalls: toolCalls || msg.toolCalls } : msg
         ),
       })),
       setLoading: (loading) => set({ isLoading: loading }),
@@ -36,7 +37,7 @@ export const useChatStore = create<ChatState>()(
         settingsStore.updateSettings({ enableAutocomplete: !settingsStore.enableAutocomplete });
       },
       
-      generateResponse: async (history: BackendMessage[], providerConfig: AIProviderConfig) => {
+      generateResponse: async (history: BackendMessage[], providerConfig: AIProviderConfig, options?: { enableTools?: boolean }) => {
         const { addMessage, setLoading, updateMessageContent } = get();
         const assistantMsgId = uuidv4();
         const eventId = `chat_${assistantMsgId}`;
@@ -48,6 +49,10 @@ export const useChatStore = create<ChatState>()(
           let fullResponse = "";
           let lastUpdate = 0;
           let streamingTools: Record<number, StreamingTool> = {};
+
+          const unlistenDebug = await listen<string>(`${eventId}_debug`, (event) => {
+             // console.log("[RAW SSE]", event.payload);
+          });
 
           const unlistenData = await listen<string>(eventId, (event) => {
             try {
@@ -66,13 +71,21 @@ export const useChatStore = create<ChatState>()(
                     if (chunk.function?.arguments) streamingTools[idx].arguments += chunk.function.arguments;
                 }
             } catch (e) {
-                // Fallback for legacy raw text events
+                // Fallback for legacy raw text events or parse errors
                 fullResponse += event.payload;
             }
             
             const now = Date.now();
             if (now - lastUpdate > 100) {
-                updateMessageContent(assistantMsgId, fullResponse);
+                const liveToolCalls: ToolCall[] = Object.values(streamingTools).map(st => ({
+                    id: st.id || uuidv4(),
+                    tool: st.name,
+                    args: parsePartialJson(st.arguments),
+                    status: 'pending' as const,
+                    isPartial: true
+                }));
+
+                updateMessageContent(assistantMsgId, fullResponse, liveToolCalls.length > 0 ? liveToolCalls : undefined);
                 lastUpdate = now;
             }
           });
@@ -109,6 +122,7 @@ export const useChatStore = create<ChatState>()(
       
             setLoading(false);
             unlistenData();
+            unlistenDebug();
             unlistenError();
             unlistenFinish();
           };
@@ -125,7 +139,8 @@ export const useChatStore = create<ChatState>()(
           await invoke('ai_chat', { 
             providerConfig,
             messages: history, 
-            eventId 
+            eventId,
+            enableTools: options?.enableTools 
           });
         } catch (e) {
           console.error('Failed to invoke ai_chat', e);
@@ -164,7 +179,7 @@ export const useChatStore = create<ChatState>()(
             await fileStore.refreshFileTree();
             fileStore.fetchGitStatuses();
 
-            const fullPath = `${fileStore.rootPath}/${toolCall.args.rel_path}`.replace(/\/\//g, '/');
+            const fullPath = `${fileStore.rootPath}/${toolCall.args.rel_path}`.replace(new RegExp('//', 'g'), '/');
             const fileName = toolCall.args.rel_path.split('/').pop() || 'file';
             const ext = fileName.split('.').pop() || '';
             let language = 'plaintext';
@@ -226,20 +241,29 @@ export const useChatStore = create<ChatState>()(
               const textContent = (m.content && m.content.trim().length > 0) ? m.content : ".";
               contentParts = [{ type: 'text', text: textContent }];
           }
-          return { role: m.role, content: contentParts };
+          return { 
+            role: m.role, 
+            content: contentParts, 
+            tool_calls: m.toolCalls && m.toolCalls.length > 0 ? m.toolCalls.map(tc => ({
+                id: tc.id,
+                function: { name: tc.tool, arguments: JSON.stringify(tc.args) },
+                index: 0,
+                type: 'function'
+            })) : undefined,
+            tool_call_id: m.role === 'tool' ? (m as any).tool_call_id : undefined
+          }; 
         });
         
         history.push({
-          role: 'user',
-          content: [{ type: 'text', text: `[System] Tool '${toolCall.tool}' executed successfully.\nResult:\n${result}` }]
+          role: 'tool',
+          content: [{ type: 'text', text: result }],
+          tool_call_id: toolCall.id
         });
         
-        history.unshift({ role: 'system', content: [{ type: 'text', text: BASE_SYSTEM_PROMPT }] });
-      
         const settingsStore = useSettingsStore.getState();
         const currentProviderConfig = settingsStore.providers.find(p => p.id === settingsStore.currentProviderId);
         if (currentProviderConfig) {
-            await generateResponse(history, currentProviderConfig);
+            await generateResponse(history, currentProviderConfig, { enableTools: false });
         }
       },
       
@@ -334,12 +358,22 @@ export const useChatStore = create<ChatState>()(
                     const textContent = (m.content && m.content.trim().length > 0) ? m.content : ".";
                     contentParts = [{ type: 'text', text: textContent }];
                 }
-                return { role: m.role, content: contentParts };
+                return { 
+                  role: m.role, 
+                  content: contentParts, 
+                  tool_calls: m.toolCalls && m.toolCalls.length > 0 ? m.toolCalls.map(tc => ({
+                      id: tc.id,
+                      function: { name: tc.tool, arguments: JSON.stringify(tc.args) },
+                      index: 0,
+                      type: 'function'
+                  })) : undefined,
+                  tool_call_id: m.role === 'tool' ? (m as any).tool_call_id : undefined
+                }; 
             }),
             { role: 'user', content: multiModalContentToSend }
         ];
       
-        await generateResponse(history, currentProviderConfig);
+        await generateResponse(history, currentProviderConfig, { enableTools: true }); // Default to enable tools
       },
     }),
     {

@@ -49,7 +49,7 @@ export interface ChatState {
   messages: Message[];
   isLoading: boolean;
   addMessage: (message: Message) => void;
-  updateMessageContent: (id: string, content: string) => void;
+  updateMessageContent: (id: string, content: string, toolCalls?: ToolCall[]) => void;
   setLoading: (loading: boolean) => void;
   sendMessage: (content: string | ContentPart[], providerId: string, modelName: string) => Promise<void>;
   toggleAutocomplete: () => void;
