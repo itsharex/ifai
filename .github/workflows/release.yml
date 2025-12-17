@@ -18,6 +18,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout Private Core
+        uses: actions/checkout@v4
+        with:
+          repository: peterfei/ifainew-core # 您的私有核心库
+          token: ${{ secrets.GH_PAT }}      # 必须在仓库 Secrets 中配置此 Token
+          path: .ifainew-core-temp          # 先下载到当前工作区的临时目录
+
+      - name: Restore Core Directory Structure
+        shell: bash
+        run: |
+          # 将核心库移动到上级目录，以匹配本地开发的相对路径 (../ifainew-core)
+          mv .ifainew-core-temp ../ifainew-core
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
