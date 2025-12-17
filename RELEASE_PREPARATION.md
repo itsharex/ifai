@@ -17,6 +17,7 @@
   - 核心理念和功能特性
   - 详细的技术架构图
   - 快速开始指南
+  - 应用截图展示 (3张界面截图)
   - 开发指南
   - 产品路线图 (v0.1.0 - v1.0.0)
   - 未来愿景 (技术、产品、社区)
@@ -29,6 +30,14 @@
   - 完整的技术栈说明
   - 清晰的架构图示
   - 详细的版本规划
+  - 精美的界面截图
+
+#### ✅ README_EN.md
+- **位置**: `/Users/mac/project/aieditor/ifainew/README_EN.md`
+- **内容**: 完整的英文版 README
+- **语言**: English
+- **字数**: 约 5000+ 字
+- **说明**: 与中文版内容对应，方便国际用户
 
 #### ✅ LICENSE
 - **位置**: `/Users/mac/project/aieditor/ifainew/LICENSE`
@@ -37,7 +46,7 @@
   - 明确开源部分的范围
   - 说明核心 AI 能力采用独立商业协议
   - 中英文双语说明
-- **版权**: IfAI Team (2024-2025)
+- **版权**: peterfei (2024-2025)
 
 #### ✅ CHANGELOG.md
 - **位置**: `/Users/mac/project/aieditor/ifainew/CHANGELOG.md`
@@ -70,7 +79,21 @@
   - 详细的 PR 模板
   - 完整的检查清单
 
-### 2. GitHub 配置
+### 2. 应用截图
+
+#### ✅ 界面截图
+- **位置**: `imgs/`
+- **文件**:
+  - `ifai2025001.png` - 主界面 (代码编辑与文件管理)
+  - `ifai2025002.png` - AI 助手界面 (代码生成与对话)
+  - `ifai2025003.png` - 集成终端 (命令执行)
+- **用途**:
+  - README.md 展示
+  - CHANGELOG.md 展示
+  - GitHub 项目主页展示
+  - 发布说明配图
+
+### 3. GitHub 配置
 
 #### ✅ Issue 模板
 
@@ -123,14 +146,14 @@
   - 给审查者的提示
 - **语言**: 中文
 
-### 3. 项目元信息
+### 4. 项目元信息
 
 #### ✅ package.json
 - **更新内容**:
   - `name`: "ifainew" → "ifai"
   - `private`: true → false
   - 新增 `description`: 双语描述
-  - 新增 `author`: IfAI Team
+  - 新增 `author`: peterfei
   - 新增 `license`: "MIT"
   - 新增 `homepage`: GitHub 项目主页
   - 新增 `repository`: Git 仓库地址
@@ -373,4 +396,4 @@ git push -u origin main
 
 *文档生成时间: 2024-12-17*
 *版本: v0.1.0*
-*作者: IfAI Team*
+*作者: peterfei*

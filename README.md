@@ -189,13 +189,24 @@ npm run tauri build
 
 ## 📸 截图展示
 
-> 🚧 截图即将添加
+### 主界面 - 代码编辑与文件管理
+![IfAI 主界面](./imgs/ifai2025001.png)
 
-- 代码编辑界面
-- AI 对话助手
-- 文件管理器
-- 集成终端
-- 主题设置
+*Monaco 编辑器 + 文件树 + 多标签页，流畅的开发体验*
+
+---
+
+### AI 智能助手 - 代码生成与对话
+![AI 助手界面](./imgs/ifai2025002.png)
+
+*支持多模型对话，流式响应，Markdown 渲染，代码高亮*
+
+---
+
+### 集成终端 - 无缝命令执行
+![集成终端](./imgs/ifai2025003.png)
+
+*内置终端模拟器，支持多会话管理，ANSI 转义序列*
 
 ---
 
@@ -361,6 +372,6 @@ node tests/spec_agent_flow.cjs
 
 **如果这个项目对你有帮助,请给我们一个 ⭐️**
 
-Made with ❤️ by IfAI Team
+Made with ❤️ by [peterfei](https://github.com/peterfei)
 
 </div>

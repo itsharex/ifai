@@ -3,9 +3,9 @@
   "description": "若爱 (IfAI) - 基于 Tauri 2.0 构建的跨平台 AI 代码编辑器 | A cross-platform AI code editor built with Tauri 2.0",
   "version": "0.1.0",
   "author": {
-    "name": "IfAI Team",
-    "email": "peter@ifai.dev",
-    "url": "https://github.com/peterfei/ifai"
+    "name": "peterfei",
+    "email": "peterfeispace@gmail.com",
+    "url": "https://github.com/peterfei"
   },
   "license": "MIT",
   "homepage": "https://github.com/peterfei/ifai",

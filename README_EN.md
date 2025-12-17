@@ -1,0 +1,377 @@
+# IfAI - AI Code Editor
+
+<div align="center">
+
+**A Cross-Platform AI Code Editor Built with Tauri 2.0**
+
+[简体中文](./README.md) | English
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tauri](https://img.shields.io/badge/Tauri-2.0-blue)](https://tauri.app/)
+[![React](https://img.shields.io/badge/React-19-61dafb)](https://reactjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-Latest-orange)](https://www.rust-lang.org/)
+
+</div>
+
+---
+
+## 📖 Introduction
+
+**IfAI (若爱)** is a modern cross-platform code editor that perfectly integrates powerful AI assistance with traditional code editing. The name "若爱" (IfAI) means "if there is love, code will be warm" - we believe AI should be the most caring programming companion for developers.
+
+### Core Philosophy
+
+- 🎯 **Focus on Developer Experience** - Smooth editing experience with zero latency
+- 🤖 **Intelligent Programming Assistance** - Deep AI integration that understands your code intent
+- 🚀 **Lightweight & Efficient** - Built with Rust + Tauri, fast startup, low memory footprint
+- 🌍 **Cross-Platform** - Consistent experience on Windows, macOS, and Linux
+- 🔒 **Local-First** - Controllable data privacy with local LLM support
+
+---
+
+## ✨ Features
+
+### 🎨 Modern Editor
+
+- **Monaco Editor Core** - Same editor engine as VSCode
+- **Syntax Highlighting** - Support for mainstream programming languages
+- **Code Intelligence** - Auto-completion, code navigation, refactoring
+- **Multi-Tab** - Efficiently manage multiple files
+- **File Tree** - Intuitive project structure browsing
+- **Theme Customization** - Dark/Light themes, eye-friendly
+
+### 🤖 AI Assistant
+
+- **Multi-Model Support** - OpenAI, Anthropic Claude, Zhipu AI, and other mainstream LLMs
+- **Context Understanding** - RAG retrieval enhancement for precise project code comprehension
+- **Code Generation** - Generate code from natural language descriptions
+- **Smart Refactoring** - AI-assisted code optimization and refactoring
+- **Bug Diagnosis** - Intelligent error analysis with fix suggestions
+- **Technical Q&A** - Instant answers to programming questions
+
+### 🛠 Development Tools Integration
+
+- **Integrated Terminal** - Built-in terminal for seamless command execution
+- **Git Integration** - File status tracking, visual version control
+- **LSP Support** - Language Server Protocol for intelligent code analysis
+- **Quick Search** - Global file and content search
+- **Multi-Language Support** - English/Chinese interface switching
+
+---
+
+## 🏗 Technical Architecture
+
+### Tech Stack
+
+```
+┌─────────────────────────────────────────────────────┐
+│                      IfAI                            │
+├─────────────────────────────────────────────────────┤
+│  Frontend Layer                                      │
+│  ├─ React 19         - UI Framework                 │
+│  ├─ TypeScript 5.8   - Type Safety                  │
+│  ├─ Zustand          - State Management             │
+│  ├─ TailwindCSS      - Styling System               │
+│  ├─ Monaco Editor    - Code Editor                  │
+│  └─ Vite             - Build Tool                   │
+├─────────────────────────────────────────────────────┤
+│  Backend Layer (Rust/Tauri)                         │
+│  ├─ Tauri 2.0        - Cross-Platform Framework     │
+│  ├─ tokio            - Async Runtime                │
+│  ├─ serde            - Serialization                │
+│  ├─ reqwest          - HTTP Client                  │
+│  ├─ git2             - Git Integration              │
+│  ├─ portable-pty     - Terminal Emulation           │
+│  └─ walkdir          - File Traversal               │
+├─────────────────────────────────────────────────────┤
+│  Core Capability Layer (Private Extension)          │
+│  ├─ AI Model Integration - Multi-model adapters    │
+│  ├─ Agent Toolchain     - Smart code operations    │
+│  ├─ RAG Retrieval       - Vector semantic search   │
+│  └─ Context Building    - Intelligent understanding │
+└─────────────────────────────────────────────────────┘
+```
+
+### Core Design
+
+- **Tauri Architecture** - Web frontend + Rust backend, combining performance with development efficiency
+- **Event-Driven** - Async communication between frontend and backend through event system
+- **Dependency Injection** - Core package accesses main app state through registry mechanism
+- **Plugin Design** - Core AI capabilities as independent packages, easy to extend
+- **Local-First** - File operations and Git management all performed locally
+
+### Project Structure
+
+```
+ifainew/
+├── src/                      # React frontend code
+│   ├── components/          # UI components
+│   │   ├── Editor/         # Monaco editor
+│   │   ├── FileTree/       # File tree
+│   │   ├── AIChat/         # AI chat interface
+│   │   └── Terminal/       # Terminal emulator
+│   ├── stores/             # Zustand state management
+│   │   ├── fileStore.ts    # File state
+│   │   ├── chatStore.ts    # AI chat state
+│   │   └── settingsStore.ts # Settings state
+│   └── utils/              # Utility functions
+│
+├── src-tauri/               # Rust backend code
+│   ├── src/
+│   │   ├── lib.rs          # Main entry
+│   │   ├── file_walker.rs  # File traversal
+│   │   ├── terminal.rs     # Terminal management
+│   │   ├── git.rs          # Git integration
+│   │   ├── lsp.rs          # LSP client
+│   │   └── search.rs       # File search
+│   └── Cargo.toml
+│
+├── tests/                   # Test cases
+│   ├── spec_agent_flow.cjs
+│   ├── spec_escape_fix.cjs
+│   └── spec_tool_history.cjs
+│
+└── package.json
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+Ensure the following tools are installed:
+
+- **Node.js** >= 18.0
+- **Rust** >= 1.70 (install via [rustup](https://rustup.rs/))
+- **System Dependencies**:
+  - **Windows**: Visual Studio Build Tools
+  - **macOS**: Xcode Command Line Tools
+  - **Linux**: `build-essential`, `libgtk-3-dev`, `libwebkit2gtk-4.0-dev`
+
+### Installation Steps
+
+1. **Clone Repository**
+
+   ```bash
+   git clone https://github.com/peterfei/ifai.git
+   cd ifai
+   ```
+
+2. **Install Dependencies**
+
+   ```bash
+   npm install
+   ```
+
+3. **Start Development Server**
+
+   ```bash
+   npm run tauri dev
+   ```
+
+   The app will automatically compile and start, usually within seconds.
+
+### Build Release Version
+
+```bash
+# Build frontend
+npm run build
+
+# Build Tauri app
+npm run tauri build
+```
+
+Build artifacts are located in `src-tauri/target/release/bundle/`.
+
+---
+
+## 📸 Screenshots
+
+### Main Interface - Code Editing & File Management
+![IfAI Main Interface](./imgs/ifai2025001.png)
+
+*Monaco Editor + File Tree + Multi-Tab, Smooth Development Experience*
+
+---
+
+### AI Assistant - Code Generation & Conversation
+![AI Assistant Interface](./imgs/ifai2025002.png)
+
+*Multi-model support, streaming responses, Markdown rendering, code highlighting*
+
+---
+
+### Integrated Terminal - Seamless Command Execution
+![Integrated Terminal](./imgs/ifai2025003.png)
+
+*Built-in terminal emulator, multi-session management, ANSI escape sequences*
+
+---
+
+## 🛠 Development Guide
+
+### Local Development
+
+```bash
+# Start development mode
+npm run tauri dev
+
+# Run frontend dev server only
+npm run dev
+
+# Run tests
+node tests/spec_agent_flow.cjs
+```
+
+### Code Standards
+
+- **Frontend**: Use TypeScript strict mode, follow React Hooks best practices
+- **Backend**: Follow Rust official code standards, run `cargo fmt` and `cargo clippy`
+- **Commits**: Follow Conventional Commits specification
+
+### Tech Stack Rationale
+
+**Why Tauri?**
+- Excellent performance: Fast startup, low memory (90% less than Electron)
+- Secure & reliable: Rust memory safety prevents common vulnerabilities
+- Cross-platform: Write once, run everywhere
+- Small bundle size: 5-10MB release packages (vs Electron's 100MB+)
+
+**Why React 19?**
+- Latest features: React Server Components, concurrent rendering
+- Rich ecosystem: Abundant component libraries and tooling
+- Developer experience: Hot reload, DevTools, TypeScript support
+
+---
+
+## 🗺 Roadmap
+
+### v0.1.0 (Current) - MVP Foundation
+
+- ✅ Monaco editor integration
+- ✅ File system management
+- ✅ Multi-tab editing
+- ✅ AI chat integration (core capability)
+- ✅ Basic Git integration
+- ✅ Integrated terminal
+- ✅ LSP support
+
+### v0.2.0 (Planned) - Enhanced Experience
+
+- 🔄 Plugin system
+- 🔄 Custom keyboard shortcuts
+- 🔄 Code snippet manager
+- 🔄 Markdown preview
+- 🔄 Multi-cursor editing
+- 🔄 File diff comparison
+
+### v0.3.0 (Future) - Intelligence Upgrade
+
+- 📋 AI code review
+- 📋 Smart test generation
+- 📋 Performance analysis tools
+- 📋 Team collaboration features
+- 📋 Cloud settings sync
+
+### v1.0.0 (Vision) - Production-Ready
+
+- 📋 Enterprise features
+- 📋 Private deployment solution
+- 📋 Extension marketplace
+- 📋 Real-time collaboration
+- 📋 Complete debugger integration
+
+---
+
+## 🌟 Future Vision
+
+### Technical Vision
+
+**IfAI** is committed to becoming the smartest programming companion for developers:
+
+1. **AI-Native Editor** - Not simple AI feature stacking, but AI thinking integrated from the ground up
+2. **Local-First** - Fully offline capable, protecting code privacy
+3. **Open Ecosystem** - Open-source core framework, community-driven plugins and extensions
+4. **Cross-Platform Experience** - Unified operation experience, seamless environment switching
+
+### Product Vision
+
+We hope **IfAI** can:
+
+- 🎯 **Lower Programming Barriers** - Enable beginners to quickly get started with AI assistance
+- 💡 **Boost Development Efficiency** - Reduce repetitive work, focus on creative tasks
+- 🤝 **Facilitate Knowledge Transfer** - AI assistant as code knowledge carrier
+- 🌍 **Serve Global Developers** - Multi-language support, adapt to different cultures
+
+### Community Vision
+
+- **Open-Source Collaboration** - Open core framework, welcome code and ideas
+- **Knowledge Sharing** - Build developer community, share best practices
+- **Continuous Innovation** - Keep up with AI tech evolution, explore new possibilities
+
+---
+
+## 🤝 Contributing
+
+We welcome all forms of contribution!
+
+### How to Contribute
+
+1. **Fork this repository**
+2. **Create feature branch** (`git checkout -b feature/AmazingFeature`)
+3. **Commit changes** (`git commit -m 'Add some AmazingFeature'`)
+4. **Push to branch** (`git push origin feature/AmazingFeature`)
+5. **Submit Pull Request**
+
+For detailed contribution guide, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+### Ways to Participate
+
+- 🐛 **Report Bugs** - Submit detailed issue reports
+- 💡 **Feature Suggestions** - Share your ideas and needs
+- 📝 **Improve Documentation** - Enhance docs and examples
+- 💻 **Contribute Code** - Fix bugs or add features
+- 🌍 **Translation** - Help translate to other languages
+
+---
+
+## 📄 License
+
+This project is licensed under **MIT License**.
+
+Core AI capabilities are provided by proprietary commercial modules and are not included in the open-source scope. The open-source portion provides a complete editor framework and extension interfaces.
+
+See [LICENSE](./LICENSE) file for details.
+
+---
+
+## 💬 Community & Support
+
+- **GitHub Issues**: [Bug Reports](https://github.com/peterfei/ifai/issues)
+- **GitHub Discussions**: [Discussions](https://github.com/peterfei/ifai/discussions)
+- **Project Homepage**: [https://github.com/peterfei/ifai](https://github.com/peterfei/ifai)
+
+---
+
+## 🙏 Acknowledgments
+
+Thanks to the following open-source projects:
+
+- [Tauri](https://tauri.app/) - Cross-platform framework
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/) - Code editor
+- [React](https://reactjs.org/) - UI framework
+- [Rust](https://www.rust-lang.org/) - System programming language
+
+And all developers who have contributed to this project! ❤️
+
+---
+
+<div align="center">
+
+**If this project helps you, please give us a ⭐️**
+
+Made with ❤️ by [peterfei](https://github.com/peterfei)
+
+</div>
