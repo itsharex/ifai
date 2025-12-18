@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import clsx from 'clsx';
 
 export const KeyboardShortcuts = () => {
-  const { keybindings, updateShortcut, resetShortcuts, hasConflict } = useShortcutStore();
+  const { keybindings, updateShortcut, resetShortcuts, hasConflict, activeScheme, setScheme } = useShortcutStore();
   const { t } = useTranslation();
   const [filter, setFilter] = useState('');
   const [recordingId, setRecordingId] = useState<string | null>(null);
@@ -69,16 +69,35 @@ export const KeyboardShortcuts = () => {
     setCurrentConflictId(undefined);
   };
 
+  const handleSchemeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newScheme = e.target.value as 'ifai' | 'vscode' | 'intellij';
+    setScheme(newScheme);
+    toast.success(t('shortcuts.schemeChanged', { scheme: t(`shortcuts.${newScheme}Scheme`) }));
+    setRecordingId(null); // Stop any active recording
+    setFilter(''); // Clear filter
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e] text-white p-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-3">
         <h2 className="text-xl font-semibold">{t('shortcuts.keyboardShortcuts')}</h2>
-        <button 
-            onClick={handleReset}
-            className="p-2 text-gray-400 hover:text-white rounded hover:bg-gray-700 flex items-center gap-2 text-sm"
-        >
-            <RotateCcw size={16} /> {t('shortcuts.resetDefaults')}
-        </button>
+        <div className="flex items-center space-x-2">
+          <select
+            value={activeScheme}
+            onChange={handleSchemeChange}
+            className="bg-[#252526] border border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-500"
+          >
+            <option value="ifai">{t('shortcuts.ifaiScheme')}</option>
+            <option value="vscode">{t('shortcuts.vscodeScheme')}</option>
+            <option value="intellij">{t('shortcuts.intellijScheme')}</option>
+          </select>
+          <button 
+              onClick={handleReset}
+              className="p-2 text-gray-400 hover:text-white rounded hover:bg-gray-700 flex items-center gap-2 text-sm"
+          >
+              <RotateCcw size={16} /> {t('shortcuts.resetDefaults')}
+          </button>
+        </div>
       </div>
 
       <div className="relative mb-4">

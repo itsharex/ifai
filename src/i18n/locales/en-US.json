@@ -75,7 +75,8 @@
     "off": "Off",
     "rename": "Rename",
     "delete": "Delete",
-    "confirmDeleteFile": "Delete {{fileName}}?"
+    "confirmDeleteFile": "Delete {{fileName}}?",
+    "renameTo": "Rename to:"
   },
   "settings": {
     "general": "General",
@@ -105,6 +106,10 @@
     "source": "Source",
     "user": "User",
     "clickToEdit": "Click to edit",
-    "pressKeys": "Press keys..."
+    "pressKeys": "Press keys...",
+    "ifaiScheme": "IfAI Default",
+    "vscodeScheme": "VS Code",
+    "intellijScheme": "IntelliJ IDEA",
+    "schemeChanged": "Scheme changed to {{scheme}}"
   }
 }

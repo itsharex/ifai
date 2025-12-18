@@ -8,38 +8,78 @@ export interface KeyBinding {
   label: string;
   description?: string;
   category?: string;
+  scheme?: 'ifai' | 'vscode' | 'intellij'; // Add scheme property
 }
 
 export interface ShortcutState {
   keybindings: KeyBinding[];
+  activeScheme: 'ifai' | 'vscode' | 'intellij'; // New state variable
   
   // Actions
   registerShortcut: (binding: KeyBinding) => void;
   updateShortcut: (id: string, newKeys: string) => string | boolean;
   resetShortcuts: () => void;
+  setScheme: (scheme: 'ifai' | 'vscode' | 'intellij') => void; // New action
   getKeybinding: (commandId: string) => string | undefined;
   hasConflict: (keys: string, excludeId?: string) => string | undefined; // Returns id of conflicting shortcut or undefined
 }
 
-const DEFAULT_KEYBINDINGS: KeyBinding[] = [
-  { id: 'file.save', commandId: 'file.save', keys: 'Mod+s', label: 'Save File', category: 'File' },
-  { id: 'editor.find', commandId: 'editor.find', keys: 'Mod+f', label: 'Find', category: 'Editor' },
-  { id: 'view.toggleChat', commandId: 'view.toggleChat', keys: 'Mod+l', label: 'Toggle Chat', category: 'View' },
-  { id: 'view.commandPalette', commandId: 'view.commandPalette', keys: 'Mod+p', label: 'Command Palette', category: 'View' },
-  { id: 'view.toggleTerminal', commandId: 'view.toggleTerminal', keys: 'Mod+j', label: 'Toggle Terminal', category: 'View' },
-  { id: 'layout.splitVertical', commandId: 'layout.splitVertical', keys: 'Mod+Shift+\\', label: 'Split Vertical', category: 'Layout' },
-  { id: 'layout.splitHorizontal', commandId: 'layout.splitHorizontal', keys: 'Mod+\\', label: 'Split Horizontal', category: 'Layout' },
-  { id: 'layout.closePane', commandId: 'layout.closePane', keys: 'Mod+w', label: 'Close Pane', category: 'Layout' },
-  { id: 'layout.focusPane1', commandId: 'layout.focusPane1', keys: 'Mod+1', label: 'Focus Pane 1', category: 'Layout' },
-  { id: 'layout.focusPane2', commandId: 'layout.focusPane2', keys: 'Mod+2', label: 'Focus Pane 2', category: 'Layout' },
-  { id: 'layout.focusPane3', commandId: 'layout.focusPane3', keys: 'Mod+3', label: 'Focus Pane 3', category: 'Layout' },
-  { id: 'layout.focusPane4', commandId: 'layout.focusPane4', keys: 'Mod+4', label: 'Focus Pane 4', category: 'Layout' },
+const IFAI_DEFAULT_KEYBINDINGS: KeyBinding[] = [
+  { id: 'file.save', commandId: 'file.save', keys: 'Mod+s', label: 'Save File', category: 'File', scheme: 'ifai' },
+  { id: 'editor.find', commandId: 'editor.find', keys: 'Mod+f', label: 'Find', category: 'Editor', scheme: 'ifai' },
+  { id: 'view.toggleChat', commandId: 'view.toggleChat', keys: 'Mod+l', label: 'Toggle Chat', category: 'View', scheme: 'ifai' },
+  { id: 'view.commandPalette', commandId: 'view.commandPalette', keys: 'Mod+p', label: 'Command Palette', category: 'View', scheme: 'ifai' },
+  { id: 'view.toggleTerminal', commandId: 'view.toggleTerminal', keys: 'Mod+j', label: 'Toggle Terminal', category: 'View', scheme: 'ifai' },
+  { id: 'layout.splitVertical', commandId: 'layout.splitVertical', keys: 'Mod+Shift+\\', label: 'Split Vertical', category: 'Layout', scheme: 'ifai' },
+  { id: 'layout.splitHorizontal', commandId: 'layout.splitHorizontal', keys: 'Mod+\\', label: 'Split Horizontal', category: 'Layout', scheme: 'ifai' },
+  { id: 'layout.closePane', commandId: 'layout.closePane', keys: 'Mod+w', label: 'Close Pane', category: 'Layout', scheme: 'ifai' },
+  { id: 'layout.focusPane1', commandId: 'layout.focusPane1', keys: 'Mod+1', label: 'Focus Pane 1', category: 'Layout', scheme: 'ifai' },
+  { id: 'layout.focusPane2', commandId: 'layout.focusPane2', keys: 'Mod+2', label: 'Focus Pane 2', category: 'Layout', scheme: 'ifai' },
+  { id: 'layout.focusPane3', commandId: 'layout.focusPane3', keys: 'Mod+3', label: 'Focus Pane 3', category: 'Layout', scheme: 'ifai' },
+  { id: 'layout.focusPane4', commandId: 'layout.focusPane4', keys: 'Mod+4', label: 'Focus Pane 4', category: 'Layout', scheme: 'ifai' },
 ];
+
+const VSCODE_KEYBINDINGS: KeyBinding[] = [
+  { id: 'file.save', commandId: 'file.save', keys: 'Mod+s', label: 'Save File', category: 'File', scheme: 'vscode' },
+  { id: 'editor.find', commandId: 'editor.find', keys: 'Mod+f', label: 'Find', category: 'Editor', scheme: 'vscode' },
+  { id: 'view.toggleChat', commandId: 'view.toggleChat', keys: 'Mod+l', label: 'Toggle Chat', category: 'View', scheme: 'vscode' },
+  { id: 'view.commandPalette', commandId: 'view.commandPalette', keys: 'Mod+Shift+p', label: 'Command Palette', category: 'View', scheme: 'vscode' }, // Different binding
+  { id: 'view.toggleTerminal', commandId: 'view.toggleTerminal', keys: 'Ctrl+`', label: 'Toggle Terminal', category: 'View', scheme: 'vscode' }, // Different binding
+  { id: 'layout.splitVertical', commandId: 'layout.splitVertical', keys: 'Mod+Shift+\\', label: 'Split Vertical', category: 'Layout', scheme: 'vscode' },
+  { id: 'layout.splitHorizontal', commandId: 'layout.splitHorizontal', keys: 'Mod+`', label: 'Split Horizontal', category: 'Layout', scheme: 'vscode' }, // Different binding
+  { id: 'layout.closePane', commandId: 'layout.closePane', keys: 'Mod+w', label: 'Close Pane', category: 'Layout', scheme: 'vscode' },
+  { id: 'layout.focusPane1', commandId: 'layout.focusPane1', keys: 'Mod+1', label: 'Focus Pane 1', category: 'Layout', scheme: 'vscode' },
+  { id: 'layout.focusPane2', commandId: 'layout.focusPane2', keys: 'Mod+2', label: 'Focus Pane 2', category: 'Layout', scheme: 'vscode' },
+  { id: 'layout.focusPane3', commandId: 'layout.focusPane3', keys: 'Mod+3', label: 'Focus Pane 3', category: 'Layout', scheme: 'vscode' },
+  { id: 'layout.focusPane4', commandId: 'layout.focusPane4', keys: 'Mod+4', label: 'Focus Pane 4', category: 'Layout', scheme: 'vscode' },
+];
+
+const INTELLIJ_KEYBINDINGS: KeyBinding[] = [
+  { id: 'file.save', commandId: 'file.save', keys: 'Mod+s', label: 'Save File', category: 'File', scheme: 'intellij' },
+  { id: 'editor.find', commandId: 'editor.find', keys: 'Mod+f', label: 'Find', category: 'Editor', scheme: 'intellij' },
+  { id: 'view.toggleChat', commandId: 'view.toggleChat', keys: 'Mod+l', label: 'Toggle Chat', category: 'View', scheme: 'intellij' },
+  { id: 'view.commandPalette', commandId: 'view.commandPalette', keys: 'Shift+Shift', label: 'Search Everywhere', category: 'View', scheme: 'intellij' }, // Example different binding
+  { id: 'view.toggleTerminal', commandId: 'view.toggleTerminal', keys: 'Alt+F12', label: 'Toggle Terminal', category: 'View', scheme: 'intellij' }, // Example different binding
+  { id: 'layout.splitVertical', commandId: 'layout.splitVertical', keys: 'Mod+Shift+v', label: 'Split Vertical', category: 'Layout', scheme: 'intellij' }, // Different binding
+  { id: 'layout.splitHorizontal', commandId: 'layout.splitHorizontal', keys: 'Mod+Alt+h', label: 'Split Horizontal', category: 'Layout', scheme: 'intellij' }, // Different binding
+  { id: 'layout.closePane', commandId: 'layout.closePane', keys: 'Mod+Shift+f4', label: 'Close Pane', category: 'Layout', scheme: 'intellij' }, // Different binding
+  { id: 'layout.focusPane1', commandId: 'layout.focusPane1', keys: 'Alt+1', label: 'Focus Pane 1', category: 'Layout', scheme: 'intellij' }, // Different binding
+  { id: 'layout.focusPane2', commandId: 'layout.focusPane2', keys: 'Alt+2', label: 'Focus Pane 2', category: 'Layout', scheme: 'intellij' }, // Different binding
+  { id: 'layout.focusPane3', commandId: 'layout.focusPane3', keys: 'Alt+3', label: 'Focus Pane 3', category: 'Layout', scheme: 'intellij' }, // Different binding
+  { id: 'layout.focusPane4', commandId: 'layout.focusPane4', keys: 'Alt+4', label: 'Focus Pane 4', category: 'Layout', scheme: 'intellij' }, // Different binding
+];
+
+const PRESET_SCHEMES = {
+  'ifai': IFAI_DEFAULT_KEYBINDINGS,
+  'vscode': VSCODE_KEYBINDINGS,
+  'intellij': INTELLIJ_KEYBINDINGS,
+};
 
 export const useShortcutStore = create<ShortcutState>()(
   persist(
     (set, get) => ({
-      keybindings: DEFAULT_KEYBINDINGS,
+      keybindings: IFAI_DEFAULT_KEYBINDINGS, // Use new default
+      activeScheme: 'ifai', // Set initial active scheme
 
       registerShortcut: (binding) => set((state) => {
         if (state.keybindings.find(k => k.id === binding.id)) return state;
@@ -59,7 +99,15 @@ export const useShortcutStore = create<ShortcutState>()(
         }));
         return true; // Indicate success
       },
-      resetShortcuts: () => set({ keybindings: DEFAULT_KEYBINDINGS }),
+
+      resetShortcuts: () => {
+        const currentScheme = get().activeScheme;
+        set({ keybindings: PRESET_SCHEMES[currentScheme] });
+      },
+
+      setScheme: (scheme) => {
+        set({ activeScheme: scheme, keybindings: PRESET_SCHEMES[scheme] });
+      },
 
       getKeybinding: (commandId) => {
         return get().keybindings.find(kb => kb.commandId === commandId)?.keys;

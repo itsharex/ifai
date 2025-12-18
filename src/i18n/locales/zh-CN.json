@@ -71,7 +71,8 @@
     "off": "关闭",
     "rename": "重命名",
     "delete": "删除",
-    "confirmDeleteFile": "删除 {{fileName}}？"
+    "confirmDeleteFile": "删除 {{fileName}}？",
+    "renameTo": "重命名为:"
   },
   "settings": {
     "general": "通用",
@@ -101,6 +102,10 @@
     "source": "来源",
     "user": "用户",
     "clickToEdit": "点击编辑",
-    "pressKeys": "按键..."
+    "pressKeys": "按键...",
+    "ifaiScheme": "IfAI 默认",
+    "vscodeScheme": "VS Code",
+    "intellijScheme": "IntelliJ IDEA",
+    "schemeChanged": "方案已切换到 {{scheme}}"
   }
 }
