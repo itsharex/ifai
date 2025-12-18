@@ -2,6 +2,8 @@
 
 <div align="center">
 
+<img src="imgs/ifai.png" alt="若爱 (IfAI)" width="150" height="150"/>
+
 **一款基于 Tauri 2.0 构建的跨平台 AI 代码编辑器**
 
 [English](./README_EN.md) | 简体中文
