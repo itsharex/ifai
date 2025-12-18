@@ -1,14 +1,12 @@
 import React from 'react';
 import { MonacoEditor } from '../Editor/MonacoEditor';
-import { Pane } from '../../stores/layoutStore';
-import { useDrag, useDrop } from 'react-dnd';
+import { Pane, useLayoutStore } from '../../stores/layoutStore';
 import { useTranslation } from 'react-i18next';
 
 interface PaneViewProps {
   pane: Pane;
   isActive: boolean;
   splitDirection: 'horizontal' | 'vertical';
-  onResize: (paneId: string, delta: number) => void;
   onClick: () => void;
   index: number;
 }
@@ -17,11 +15,12 @@ export const PaneView: React.FC<PaneViewProps> = ({
   pane,
   isActive,
   splitDirection,
-  onResize,
   onClick,
   index,
 }) => {
   const { t } = useTranslation();
+  const { splitPane, closePane } = useLayoutStore();
+
   const paneStyle: React.CSSProperties = {
     width: splitDirection === 'horizontal' ? `${pane.size}%` : '100%',
     height: splitDirection === 'vertical' ? `${pane.size}%` : '100%',
@@ -34,31 +33,8 @@ export const PaneView: React.FC<PaneViewProps> = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
+    // allow clicking on header/border to activate pane
     onClick();
-  };
-
-  // 处理拖拽调整大小
-  const handleMouseMove = (e: MouseEvent) => {
-    if (splitDirection === 'horizontal') {
-      onResize(pane.id, e.movementX);
-    } else {
-      onResize(pane.id, e.movementY);
-    }
-  };
-
-  const handleMouseUp = () => {
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'default';
-  };
-
-  const handleMouseDownResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = splitDirection === 'horizontal' ? 'ew-resize' : 'ns-resize';
   };
 
   return (
@@ -77,7 +53,7 @@ export const PaneView: React.FC<PaneViewProps> = ({
             className="px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded"
             onClick={(e) => {
               e.stopPropagation();
-              // TODO: 实现分屏菜单
+              splitPane('horizontal', pane.id);
             }}
             title={t('editor.splitPane')}
           >
@@ -88,7 +64,7 @@ export const PaneView: React.FC<PaneViewProps> = ({
               className="px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-700 rounded"
               onClick={(e) => {
                 e.stopPropagation();
-                // TODO: 关闭窗格
+                closePane(pane.id);
               }}
               title={t('editor.closePane')}
             >
@@ -102,20 +78,6 @@ export const PaneView: React.FC<PaneViewProps> = ({
       <div className="pane-editor flex-1 relative">
         <MonacoEditor paneId={pane.id} />
       </div>
-
-      {/* 调整大小的手柄 */}
-      {(splitDirection === 'horizontal' && index < 4 - 1) && (
-        <div
-          className="resize-handle cursor-ew-resise absolute right-0 top-0 bottom-0 w-1 hover:bg-blue-500"
-          onMouseDown={handleMouseDownResize}
-        />
-      )}
-      {(splitDirection === 'vertical' && index < 4 - 1) && (
-        <div
-          className="resize-handle cursor-ns-resize absolute left-0 right-0 bottom-0 h-1 hover:bg-blue-500"
-          onMouseDown={handleMouseDownResize}
-        />
-      )}
     </div>
   );
 };

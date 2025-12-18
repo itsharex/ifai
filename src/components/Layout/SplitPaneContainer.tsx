@@ -39,7 +39,6 @@ export const SplitPaneContainer: React.FC<SplitPaneContainerProps> = ({ classNam
             pane={pane}
             isActive={pane.id === activePaneId}
             splitDirection={splitDirection}
-            onResize={handleResize}
             onClick={() => handlePaneClick(pane.id)}
             index={index}
           />
