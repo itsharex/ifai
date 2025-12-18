@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Check, X, Terminal, FilePlus, Eye, FolderOpen, Search, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { ToolCall } from '../../stores/chatStore';
 import { useTranslation } from 'react-i18next';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { readFileContent } from '../../utils/fileSystem';
+import { MonacoDiffView } from '../Editor/MonacoDiffView';
 import { getToolLabel, getToolColor } from 'ifainew-core';
 
 interface ToolApprovalProps {
@@ -28,6 +28,9 @@ const PREVIEW_LINES = 8;
 export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProps) => {
     const { t } = useTranslation();
     const [isExpanded, setIsExpanded] = useState(false);
+    const [oldContent, setOldContent] = useState<string | null>(null);
+    const [isLoadingOld, setIsLoadingOld] = useState(false);
+
     const isPending = toolCall.status === 'pending';
     const isPartial = toolCall.isPartial;
 
@@ -90,12 +93,31 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
     // 处理文件写入类工具
     const isWriteFile = toolCall.tool.includes('write_file');
     const filePath = toolCall.args?.rel_path || toolCall.args?.path || '';
-    const fileContent = toolCall.args?.content || '';
-    const contentLines = fileContent.split('\n');
-    const shouldCollapse = contentLines.length > PREVIEW_LINES;
-    const displayContent = isExpanded
-        ? fileContent
-        : contentLines.slice(0, PREVIEW_LINES).join('\n');
+    const newContent = toolCall.args?.content || '';
+
+    // Load original content for diff (only when NOT streaming)
+    useEffect(() => {
+        // Only load when:
+        // 1. It's a write file operation
+        // 2. Generation is complete (!isPartial)
+        // 3. Still pending approval
+        // 4. Haven't loaded yet
+        if (isWriteFile && filePath && !isPartial && isPending && !oldContent && !isLoadingOld) {
+            const loadOld = async () => {
+                setIsLoadingOld(true);
+                try {
+                    const content = await readFileContent(filePath);
+                    setOldContent(content || '');
+                } catch (e) {
+                    console.log("[Diff] Original file not found, likely new file.");
+                    setOldContent(''); // Assume new file if not found
+                } finally {
+                    setIsLoadingOld(false);
+                }
+            };
+            loadOld();
+        }
+    }, [isWriteFile, filePath, isPartial, isPending]);
 
     return (
         <div className="mt-2 mb-2 bg-gray-800 rounded-lg border border-gray-600 overflow-hidden w-full max-w-full">
@@ -126,54 +148,76 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
                             </code>
                         </div>
 
-                        {/* Code Preview */}
-                        {(fileContent || isPartial) && (
+                        {/* Code Preview / Diff */}
+                        {(newContent || isPartial) && (
                             <div className="relative">
-                                {fileContent ? (
-                                    <div className="max-h-80 overflow-auto rounded border border-gray-700">
-                                        <SyntaxHighlighter
+                                {isPartial ? (
+                                    // During streaming: show simple preview with streaming effect and collapse
+                                    (() => {
+                                        const contentLines = newContent.split('\n');
+                                        const shouldCollapse = contentLines.length > PREVIEW_LINES;
+                                        const displayContent = isExpanded
+                                            ? newContent
+                                            : contentLines.slice(0, PREVIEW_LINES).join('\n');
+
+                                        return (
+                                            <>
+                                                <div className="max-h-80 overflow-auto rounded border border-gray-700 bg-gray-900">
+                                                    <pre className="p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">
+                                                        <code>{displayContent || '正在生成代码...'}</code>
+                                                    </pre>
+                                                </div>
+                                                {/* Expand/Collapse during streaming */}
+                                                {shouldCollapse && newContent && (
+                                                    <button
+                                                        onClick={() => setIsExpanded(!isExpanded)}
+                                                        className="w-full mt-1 py-1 text-xs text-gray-400 hover:text-gray-200 flex items-center justify-center gap-1 bg-gray-900 rounded border border-gray-700 hover:bg-gray-800 transition-colors"
+                                                    >
+                                                        {isExpanded ? (
+                                                            <>
+                                                                <ChevronUp size={12} />
+                                                                收起 ({contentLines.length} 行)
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <ChevronDown size={12} />
+                                                                展开全部 ({contentLines.length} 行)
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </>
+                                        );
+                                    })()
+                                ) : isLoadingOld ? (
+                                    // Loading original file for diff
+                                    <div className="h-16 bg-gray-900 rounded border border-gray-700 flex items-center justify-center text-gray-500 italic">
+                                        加载当前内容以显示差异...
+                                    </div>
+                                ) : oldContent !== null && newContent ? (
+                                    // Show diff when generation complete and old content loaded
+                                    <div className="rounded border border-gray-700 overflow-hidden">
+                                        <MonacoDiffView
+                                            oldValue={oldContent}
+                                            newValue={newContent}
                                             language={detectLanguage(filePath)}
-                                            style={vscDarkPlus}
-                                            customStyle={{
-                                                margin: 0,
-                                                fontSize: '11px',
-                                                background: '#1a1a1a',
-                                            }}
-                                            wrapLines={true}
-                                            wrapLongLines={true}
-                                            showLineNumbers={true}
-                                            lineNumberStyle={{
-                                                minWidth: '2.5em',
-                                                paddingRight: '1em',
-                                                color: '#666',
-                                            }}
-                                        >
-                                            {displayContent}
-                                        </SyntaxHighlighter>
+                                            height={isExpanded ? 500 : 250}
+                                        />
                                     </div>
                                 ) : (
+                                    // Fallback
                                     <div className="h-16 bg-gray-900 rounded border border-gray-700 flex items-center justify-center text-gray-600 italic">
                                         等待文件内容...
                                     </div>
                                 )}
 
-                                {/* Expand/Collapse Button */}
-                                {shouldCollapse && (
+                                {/* Expand Button (only for diff view) */}
+                                {newContent && !isPartial && oldContent !== null && (
                                     <button
                                         onClick={() => setIsExpanded(!isExpanded)}
                                         className="w-full mt-1 py-1 text-xs text-gray-400 hover:text-gray-200 flex items-center justify-center gap-1 bg-gray-900 rounded border border-gray-700 hover:bg-gray-800 transition-colors"
                                     >
-                                        {isExpanded ? (
-                                            <>
-                                                <ChevronUp size={12} />
-                                                收起 ({contentLines.length} 行)
-                                            </>
-                                        ) : (
-                                            <>
-                                                <ChevronDown size={12} />
-                                                展开全部 ({contentLines.length} 行)
-                                            </>
-                                        )}
+                                        {isExpanded ? <><ChevronUp size={12} /> 收起</> : <><ChevronDown size={12} /> 展开全屏预览</>}
                                     </button>
                                 )}
                             </div>

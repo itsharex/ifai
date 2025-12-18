@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { FileNode, OpenedFile, GitStatus } from './types';
-import { invoke } from '@tauri-apps/api/core';
 import { readFileContent, readDirectory } from '../utils/fileSystem';
 
 interface FileState {
@@ -120,6 +119,7 @@ export const useFileStore = create<FileState>()(
         const { rootPath } = get();
         if (!rootPath) return;
         try {
+            const { invoke } = await import('@tauri-apps/api/core');
             const statuses = await invoke<Record<string, GitStatus>>('get_git_statuses', { repoPath: rootPath });
             const statusMap = new Map(Object.entries(statuses));
             get().setGitStatuses(statusMap);

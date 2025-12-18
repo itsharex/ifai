@@ -19,10 +19,58 @@ fn greet(name: &str) -> String {
 async fn ai_chat(
     app: tauri::AppHandle,
     provider_config: ifainew_core::ai::AIProviderConfig,
-    messages: Vec<ifainew_core::ai::Message>,
+    mut messages: Vec<ifainew_core::ai::Message>,
     event_id: String,
     enable_tools: Option<bool>,
 ) -> Result<(), String> {
+    // =============================================================================
+    // Message Sanitization Logic (Single Source of Truth)
+    // =============================================================================
+    // Fix: "An assistant message with 'tool_calls' must be followed by tool messages
+    //       responding to each 'tool_call_id'"
+    //
+    // OpenAI/DeepSeek API Requirements:
+    // 1. Every tool_call in an assistant message MUST have a corresponding tool response
+    // 2. Tool messages must reference a valid tool_call_id
+    // 3. Assistant messages with empty tool_calls should have the field removed
+    //
+    // This is the authoritative sanitization - frontend no longer does this.
+    // =============================================================================
+
+    let mut i = 0;
+    while i < messages.len() {
+        // Only process assistant messages that have tool_calls
+        if messages[i].role == "assistant" && messages[i].tool_calls.as_ref().map_or(false, |tc| !tc.is_empty()) {
+            let tool_calls = messages[i].tool_calls.clone().unwrap();
+            let mut completed_ids = std::collections::HashSet::new();
+
+            // Scan forward to find all tool response messages
+            let mut j = i + 1;
+            while j < messages.len() && messages[j].role == "tool" {
+                if let Some(id) = &messages[j].tool_call_id {
+                    completed_ids.insert(id.clone());
+                }
+                j += 1;
+            }
+
+            // Filter to keep only tool_calls that have responses
+            let filtered_calls: Vec<_> = tool_calls.into_iter()
+                .filter(|tc| completed_ids.contains(&tc.id))
+                .collect();
+
+            if filtered_calls.is_empty() {
+                // No completed calls - remove tool_calls field entirely
+                // The assistant message will be kept if it has text content
+                messages[i].tool_calls = None;
+            } else {
+                // Update with only completed calls
+                messages[i].tool_calls = Some(filtered_calls);
+            }
+        }
+        i += 1;
+    }
+    // =============================================================================
+
     ifainew_core::ai::stream_chat(app, provider_config, messages, event_id, enable_tools.unwrap_or(true)).await
 }
 

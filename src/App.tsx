@@ -16,7 +16,6 @@ import { Toaster, toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 import { useShortcuts } from './hooks/useShortcuts';
-import { initializeSync } from './utils/sync';
 import { openFileFromPath } from './utils/fileActions';
 
 function App() {
@@ -28,13 +27,16 @@ function App() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     
-    // Defer initialization to ensure DOM and Vite preamble are settled
-    const timer = setTimeout(() => {
-        initializeSync().then(c => cleanup = c);
-    }, 100);
+    const init = async () => {
+      // Defer initialization to ensure DOM and Vite preamble are settled
+      await new Promise(resolve => setTimeout(resolve, 150));
+      const { initializeSync } = await import('./utils/sync');
+      cleanup = await initializeSync();
+    };
+
+    init();
 
     return () => {
-      clearTimeout(timer);
       cleanup?.();
     };
   }, []);

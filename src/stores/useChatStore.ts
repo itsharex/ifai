@@ -12,41 +12,28 @@ registerStores(useFileStore.getState, useSettingsStore.getState);
 // --- Monkey-patching Core Store ---
 // Fixes for API errors and UI updates that reside in the core library
 
+// =============================================================================
+// Frontend Wrapper - Message Sanitization Removed
+// =============================================================================
+// Message sanitization is now handled authoritatively in the Rust backend
+// (src-tauri/src/lib.rs in ai_chat function) to ensure consistency and avoid
+// duplicate logic. The backend sanitizes messages immediately before sending
+// to the AI API, which is the optimal place for this validation.
+// =============================================================================
+
 const originalSendMessage = coreUseChatStore.getState().sendMessage;
 const originalApproveToolCall = coreUseChatStore.getState().approveToolCall;
 
-const sanitizeMessages = (messages: Message[]): Message[] => {
-    // Fix: "An assistant message with 'tool_calls' must be followed by tool messages"
-    // Remove assistant messages that have tool_calls but no subsequent tool message
-    return messages.filter((msg, index) => {
-        if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
-            const nextMsg = messages[index + 1];
-            // If next message is missing or not a tool message, this is a dangling tool call
-            if (!nextMsg || nextMsg.role !== 'tool') {
-                console.warn('[Patch] Dropping dangling assistant tool_call message:', msg.id);
-                return false;
-            }
-        }
-        return true;
-    });
-};
-
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string) => {
-    const state = coreUseChatStore.getState();
-    const cleanMessages = sanitizeMessages(state.messages);
-    
-    if (state.messages.length !== cleanMessages.length) {
-        console.log('[Patch] Sanitized chat history before sending.');
-        coreUseChatStore.setState({ messages: cleanMessages });
-    }
-    
+    // Message sanitization now happens in Rust backend before API call
     return originalSendMessage(content, providerId, modelName);
 };
 
 const patchedApproveToolCall = async (messageId: string, toolCallId: string) => {
+    // Message sanitization now happens in Rust backend before API call
     await originalApproveToolCall(messageId, toolCallId);
-    // Refresh file tree after tool execution to ensure new files created by tools are shown
-    console.log('[Patch] Refreshing file tree after tool execution');
+
+    // Refresh file tree after tool execution
     useFileStore.getState().refreshFileTree();
 };
 
