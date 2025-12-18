@@ -12,15 +12,11 @@
   },
   "editor": {
     "welcome": "IfAI 编辑器",
-    "newFile": "新建文件",
-    "openFile": "打开文件...",
-    "openFolder": "打开文件夹...",
-    "toggleChat": "切换 AI 助手",
     "shortcuts": {
       "showCommands": "显示所有命令",
       "goToFile": "前往文件",
       "findInFiles": "全局搜索",
-      "toggleChat": "切换 AI 助手",
+      "toggleChat": "切换若爱助手",
       "inlineEdit": "内联 AI 编辑",
       "addCursorAbove": "向上添加光标",
       "addCursorBelow": "向下添加光标",
@@ -28,17 +24,21 @@
       "selectAllOccurrences": "选择所有匹配"
     },
     "contextMenu": {
-      "explain": "AI: 解释代码",
-      "refactor": "AI: 重构代码"
+      "explain": "若爱: 解释代码",
+      "refactor": "若爱: 重构代码"
     },
     "inlineWidget": {
-        "placeholder": "使用 AI 编辑 (例如 '添加注释')...",
-        "success": "代码已由 AI 更新",
-        "error": "请求 AI 失败"
-    }
+        "placeholder": "使用若爱编辑 (例如 '添加注释')...",
+        "success": "代码已由若爱更新",
+        "error": "请求若爱失败"
+    },
+    "splitPane": "分屏",
+    "closePane": "关闭分屏",
+    "splitRight": "向右分屏",
+    "splitDown": "向下分屏"
   },
   "chat": {
-    "title": "AI 助手",
+    "title": "若爱助手",
     "settings": "设置",
     "apiKeyLabel": "DeepSeek API 密钥",
     "autocompleteLabel": "AI 代码补全",
@@ -55,17 +55,17 @@
   "terminal": {
     "title": "终端"
   },
-  "commandPalette": {
-    "placeholder": "前往文件、符号或运行命令...",
-    "noResults": "无结果",
-    "openFolder": "打开文件夹以搜索文件"
-  },
   "common": {
     "untitled": "未命名",
     "loading": "加载中...",
     "fileSaved": "文件已保存",
     "fileSaveFailed": "保存文件失败",
     "fileOpenFailed": "打开文件失败",
-    "folderOpenFailed": "打开文件夹失败"
+    "folderOpenFailed": "打开文件夹失败",
+    "emptyPane": "空窗格",
+    "newFile": "新建文件",
+    "openFile": "打开文件...",
+    "openFolder": "打开文件夹...",
+    "toggleChat": "切换若爱助手"
   }
 }

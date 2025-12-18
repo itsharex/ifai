@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Settings, Bot } from 'lucide-react';
+import { Send, Settings } from 'lucide-react';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSettingsStore, AIProviderConfig } from '../../stores/settingsStore';
 import { useLayoutStore } from '../../stores/layoutStore';
@@ -8,6 +8,7 @@ import { readFileContent } from '../../utils/fileSystem';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 import { MessageItem } from './MessageItem';
+import ifaiLogo from '../../../imgs/ifai.png'; // Import the IfAI logo
 
 interface AIChatProps {
   width?: number;
@@ -76,7 +77,7 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
                 onMouseDown={onResizeStart}
             />
         )}
-        <Bot size={48} className="text-gray-500 mb-4" />
+        <img src={ifaiLogo} alt="IfAI Logo" className="w-10 h-10 text-gray-500 mb-4 opacity-70" /> {/* Replaced Bot icon with IfAI logo */}
         <p className="text-gray-400 mb-4">{t('chat.errorNoKey')} {currentProvider ? `(${currentProvider.name})` : ''}</p>
         <button 
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition-colors"
@@ -100,7 +101,10 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
         />
       )}
       <div className="flex items-center justify-between p-3 border-b border-gray-700 bg-[#252526]">
-        <span className="font-bold text-gray-300 flex items-center"><Bot size={18} className="mr-2"/> {t('chat.title')}</span>
+        <span className="font-bold text-gray-300 flex items-center">
+          <img src={ifaiLogo} alt="IfAI Logo" className="w-4 h-4 mr-2 opacity-70" /> {/* Replaced Bot icon with IfAI logo */}
+          {t('chat.title')}
+        </span>
         
         <div className="flex items-center space-x-2">
             <select
@@ -121,7 +125,8 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
                 >
                     {currentProvider.models.map(model => (
                         <option key={model} value={model}>{model}</option>
-                    ))}
+                    ))
+}
                 </select>
             )}
 

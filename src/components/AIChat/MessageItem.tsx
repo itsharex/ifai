@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Bot, FileCode, Image } from 'lucide-react'; // Import Image
+import { User, FileCode, Image } from 'lucide-react'; // Removed Bot icon
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -7,6 +7,7 @@ import { Message, ContentPart, ImageUrl } from '../../stores/chatStore'; // Impo
 import { ToolApproval } from './ToolApproval';
 import { useTranslation } from 'react-i18next';
 import { parseToolCalls } from 'ifainew-core';
+import ifaiLogo from '../../../imgs/ifai.png'; // Import IfAI logo
 
 interface MessageItemProps {
     message: Message;
@@ -104,7 +105,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                     {isUser ? (
                         <User size={16} className="mr-2 min-w-[16px] mt-1" />
                     ) : (
-                        <Bot size={16} className="mr-2 min-w-[16px] mt-1" />
+                        <img src={ifaiLogo} alt="IfAI Logo" className="w-4 h-4 mr-2 min-w-[16px] mt-1 opacity-70" /> // IfAI logo
                     )}
                     
                     <div className="flex-1 min-w-0">

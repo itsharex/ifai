@@ -6,6 +6,7 @@ import { useChatStore } from '../../stores/useChatStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { InlineEditWidget } from './InlineEditWidget';
+import { WelcomeScreen } from './WelcomeScreen';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -151,6 +152,10 @@ ${textBefore}[CURSOR]${textAfter}
   };
 
   const theme = useEditorStore(state => state.theme);
+
+  if (!file) {
+    return <WelcomeScreen />;
+  }
 
   return (
     <div className="relative h-full w-full">
