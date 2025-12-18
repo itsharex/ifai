@@ -35,7 +35,11 @@
         "placeholder": "Edit with AI (e.g. 'Add comments')...",
         "success": "Code updated by AI",
         "error": "Failed to request AI"
-    }
+    },
+    "splitPane": "Split Pane",
+    "closePane": "Close Pane",
+    "splitRight": "Split Right",
+    "splitDown": "Split Down"
   },
   "chat": {
     "title": "AI Assistant",
@@ -66,6 +70,41 @@
     "fileSaved": "File saved",
     "fileSaveFailed": "Failed to save file",
     "fileOpenFailed": "Failed to open file",
-    "folderOpenFailed": "Failed to open folder"
+    "folderOpenFailed": "Failed to open folder",
+    "on": "On",
+    "off": "Off",
+    "rename": "Rename",
+    "delete": "Delete",
+    "confirmDeleteFile": "Delete {{fileName}}?"
+  },
+  "settings": {
+    "general": "General",
+    "editor": "Editor",
+    "ai": "AI",
+    "theme": "Theme",
+    "dark": "Dark",
+    "light": "Light",
+    "fontSize": "Font Size",
+    "showMinimap": "Show Minimap",
+    "showLineNumbers": "Show Line Numbers",
+    "wordWrap": "Word Wrap",
+    "aiProviders": "AI Providers",
+    "apiKey": "API Key",
+    "baseUrl": "Base URL",
+    "enableAutocomplete": "Enable Autocomplete",
+    "apiKeyFor": "{{providerName}} API Key"
+  },
+  "shortcuts": {
+    "updatedSuccessfully": "Shortcut updated successfully",
+    "conflict": "Conflict: {{keys}} already assigned to {{command}}",
+    "resetDefaults": "Reset to Defaults",
+    "keyboardShortcuts": "Keyboard Shortcuts",
+    "searchKeybindings": "Search keybindings...",
+    "command": "Command",
+    "keybinding": "Keybinding",
+    "source": "Source",
+    "user": "User",
+    "clickToEdit": "Click to edit",
+    "pressKeys": "Press keys..."
   }
 }

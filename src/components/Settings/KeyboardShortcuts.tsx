@@ -1,0 +1,165 @@
+import React, { useState } from 'react';
+import { useShortcutStore, KeyBinding } from '../../stores/shortcutStore';
+import { useTranslation } from 'react-i18next';
+import { Search, RotateCcw } from 'lucide-react';
+import { formatKeybinding } from '../../utils/keyboard';
+import { toast } from 'sonner';
+import clsx from 'clsx';
+
+export const KeyboardShortcuts = () => {
+  const { keybindings, updateShortcut, resetShortcuts, hasConflict } = useShortcutStore();
+  const { t } = useTranslation();
+  const [filter, setFilter] = useState('');
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [currentConflictId, setCurrentConflictId] = useState<string | undefined>(undefined);
+
+  const filteredBindings = keybindings.filter(kb => 
+    kb.label.toLowerCase().includes(filter.toLowerCase()) || 
+    kb.keys.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  const handleRecord = (id: string) => {
+    setRecordingId(id);
+    setCurrentConflictId(undefined); // Clear conflict when starting to record
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Ignore modifier-only keydowns
+    if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return;
+
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const parts = [];
+    
+    if (isMac) {
+        if (e.metaKey) parts.push('Mod');
+        if (e.ctrlKey) parts.push('Ctrl');
+        if (e.altKey) parts.push('Alt');
+        if (e.shiftKey) parts.push('Shift');
+    } else {
+        if (e.ctrlKey) parts.push('Mod');
+        if (e.altKey) parts.push('Alt');
+        if (e.shiftKey) parts.push('Shift');
+    }
+
+    parts.push(e.key.toLowerCase());
+    
+    const newKeys = parts.join('+');
+    
+    const result = updateShortcut(id, newKeys);
+    if (result === true) {
+        toast.success(t('shortcuts.updatedSuccessfully'));
+        setCurrentConflictId(undefined);
+        setRecordingId(null);
+    } else if (typeof result === 'string') {
+        const conflictingKb = keybindings.find(kb => kb.id === result);
+        if (conflictingKb) {
+            toast.error(t('shortcuts.conflict', { keys: formatKeybinding(newKeys), command: conflictingKb.label }));
+        }
+        setCurrentConflictId(result);
+        // Do NOT close the recording input on conflict, let user retry
+    }
+  };
+
+  const handleReset = () => {
+    resetShortcuts();
+    toast.success(t('shortcuts.resetDefaults'));
+    setCurrentConflictId(undefined);
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-[#1e1e1e] text-white p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold">{t('shortcuts.keyboardShortcuts')}</h2>
+        <button 
+            onClick={handleReset}
+            className="p-2 text-gray-400 hover:text-white rounded hover:bg-gray-700 flex items-center gap-2 text-sm"
+        >
+            <RotateCcw size={16} /> {t('shortcuts.resetDefaults')}
+        </button>
+      </div>
+
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={16} />
+        <input 
+            type="text" 
+            placeholder={t('shortcuts.searchKeybindings')}
+            className="w-full bg-[#252526] border border-gray-700 rounded pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-blue-500"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <table className="w-full text-left text-sm">
+            <thead className="bg-[#252526] text-gray-400 sticky top-0">
+                <tr>
+                    <th className="p-3 font-medium">{t('shortcuts.command')}</th>
+                    <th className="p-3 font-medium">{t('shortcuts.keybinding')}</th>
+                    <th className="p-3 font-medium">{t('shortcuts.source')}</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-800">
+                {filteredBindings.map(kb => (
+                    <tr key={kb.id} className="hover:bg-[#2d2d2d] group">
+                        <td className="p-3">
+                            <div className="font-medium">{kb.label}</div>
+                            <div className="text-xs text-gray-500">{kb.commandId}</div>
+                        </td>
+                        <td className="p-3">
+                            {recordingId === kb.id ? (
+                                <div className="flex flex-col w-full">
+                                    <input 
+                                        autoFocus
+                                        className={clsx(
+                                            "bg-blue-900 border rounded px-2 py-1 outline-none text-white w-full",
+                                            currentConflictId ? "border-red-500" : "border-blue-500"
+                                        )}
+                                        placeholder={t('shortcuts.pressKeys') || 'Press keys...'}
+                                        onKeyDown={(e) => handleKeyDown(e, kb.id)}
+                                        onBlur={() => { setRecordingId(null); setCurrentConflictId(undefined); }}
+                                    />
+                                    {currentConflictId && (
+                                        <div className="text-red-400 text-xs mt-1 animate-pulse">
+                                            {(() => {
+                                                const conflictCmd = keybindings.find(k => k.id === currentConflictId);
+                                                return t('shortcuts.conflict', { 
+                                                    keys: conflictCmd ? formatKeybinding(conflictCmd.keys) : '', 
+                                                    command: conflictCmd?.label 
+                                                });
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div 
+                                    className={clsx(
+                                        "inline-flex items-center gap-1 cursor-pointer hover:bg-gray-700 rounded px-2 py-1 border",
+                                        hasConflict(kb.keys, kb.id) ? "border-red-500" : "border-transparent hover:border-gray-600"
+                                    )}
+                                    onClick={() => handleRecord(kb.id)}
+                                    title={t('shortcuts.clickToEdit')}
+                                >
+                                    {kb.keys.split('+').map((part, i) => (
+                                        <span key={i} className="bg-[#333] border-b border-[#111] rounded px-1.5 min-w-[20px] text-center font-mono text-xs">
+                                            {part === 'Mod' ? (navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl') : 
+                                             part.charAt(0).toUpperCase() + part.slice(1)}
+                                        </span>
+                                    ))}
+                                    <span className="ml-2 text-gray-500 opacity-0 group-hover:opacity-100 text-xs">✎</span>
+                                </div>
+                            )}
+                        </td>
+                        <td className="p-3 text-gray-500">
+                            {kb.category || t('shortcuts.user')}
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};

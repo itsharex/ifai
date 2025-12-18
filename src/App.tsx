@@ -15,6 +15,7 @@ import { writeFileContent, readFileContent } from './utils/fileSystem';
 import { Toaster, toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
+import { useShortcuts } from './hooks/useShortcuts';
 
 function App() {
   const { t } = useTranslation();
@@ -51,72 +52,85 @@ function App() {
     };
   }, [isResizingChat, setChatWidth]);
 
-  useEffect(() => {
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault();
-        const activeFile = openedFiles.find(f => f.id === activeFileId);
-        if (activeFile) {
-          try {
-            await writeFileContent(activeFile.path, activeFile.content);
-            setFileDirty(activeFile.id, false);
-            toast.success(t('common.fileSaved'));
-            fetchGitStatuses();
-          } catch (error) {
-            console.error('Failed to save file:', error);
-            toast.error(t('common.fileSaveFailed'));
-          }
-        }
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
-        e.preventDefault();
-        const activeEditor = useEditorStore.getState().getActiveEditor();
-        if (activeEditor) {
-          activeEditor.getAction('actions.find')?.run();
-        }
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'l') {
-        e.preventDefault();
-        toggleChat();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'p') { // Cmd+P for Command Palette
-        e.preventDefault();
-        toggleCommandPalette();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'j') { // Cmd+J for Terminal
-        e.preventDefault();
-        toggleTerminal();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === '\\') { // Cmd+\ for Split Pane
-        e.preventDefault();
-        if (e.shiftKey) {
-          // Cmd+Shift+\ - Vertical split
-          useLayoutStore.getState().splitPane('vertical');
-        } else {
-          // Cmd+\ - Horizontal split
-          useLayoutStore.getState().splitPane('horizontal');
-        }
-      } else if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '4') {
-        // Cmd+1/2/3/4 - Focus pane by number
-        e.preventDefault();
-        const paneIndex = parseInt(e.key) - 1;
-        const { panes } = useLayoutStore.getState();
-        if (paneIndex < panes.length) {
-          useLayoutStore.getState().setActivePane(panes[paneIndex].id);
-        }
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
-        // Cmd+W - Close active pane (if more than one)
-        e.preventDefault();
-        const { panes, activePaneId } = useLayoutStore.getState();
-        if (panes.length > 1 && activePaneId) {
-          useLayoutStore.getState().closePane(activePaneId);
+  // Define shortcut handlers
+  const shortcutHandlers = {
+    'file.save': async (e: KeyboardEvent) => {
+      e.preventDefault();
+      const activeFile = openedFiles.find(f => f.id === activeFileId);
+      if (activeFile) {
+        try {
+          await writeFileContent(activeFile.path, activeFile.content);
+          setFileDirty(activeFile.id, false);
+          toast.success(t('common.fileSaved'));
+          fetchGitStatuses();
+        } catch (error) {
+          console.error('Failed to save file:', error);
+          toast.error(t('common.fileSaveFailed'));
         }
       }
-    };
+    },
+    'editor.find': (e: KeyboardEvent) => {
+      e.preventDefault();
+      const activeEditor = useEditorStore.getState().getActiveEditor();
+      if (activeEditor) {
+        activeEditor.getAction('actions.find')?.run();
+      }
+    },
+    'view.toggleChat': (e: KeyboardEvent) => {
+      e.preventDefault();
+      toggleChat();
+    },
+    'view.commandPalette': (e: KeyboardEvent) => {
+      e.preventDefault();
+      toggleCommandPalette();
+    },
+    'view.toggleTerminal': (e: KeyboardEvent) => {
+      e.preventDefault();
+      toggleTerminal();
+    },
+    'layout.splitVertical': (e: KeyboardEvent) => {
+      e.preventDefault();
+      useLayoutStore.getState().splitPane('vertical');
+    },
+    'layout.splitHorizontal': (e: KeyboardEvent) => {
+      e.preventDefault();
+      useLayoutStore.getState().splitPane('horizontal');
+    },
+    'layout.focusPane1': (e: KeyboardEvent) => {
+      e.preventDefault();
+      const { panes } = useLayoutStore.getState();
+      if (panes.length > 0) useLayoutStore.getState().setActivePane(panes[0].id);
+    },
+    'layout.focusPane2': (e: KeyboardEvent) => {
+      e.preventDefault();
+      const { panes } = useLayoutStore.getState();
+      if (panes.length > 1) useLayoutStore.getState().setActivePane(panes[1].id);
+    },
+    'layout.focusPane3': (e: KeyboardEvent) => {
+      e.preventDefault();
+      const { panes } = useLayoutStore.getState();
+      if (panes.length > 2) useLayoutStore.getState().setActivePane(panes[2].id);
+    },
+    'layout.focusPane4': (e: KeyboardEvent) => {
+      e.preventDefault();
+      const { panes } = useLayoutStore.getState();
+      if (panes.length > 3) useLayoutStore.getState().setActivePane(panes[3].id);
+    },
+    'layout.closePane': (e: KeyboardEvent) => {
+      e.preventDefault();
+      const { panes, activePaneId } = useLayoutStore.getState();
+      if (panes.length > 1 && activePaneId) {
+        useLayoutStore.getState().closePane(activePaneId);
+      }
+    }
+  };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeFileId, openedFiles, setFileDirty, toggleChat, toggleCommandPalette, toggleTerminal, fetchGitStatuses, t]);
+  useShortcuts(shortcutHandlers);
 
   const handleSelectFileFromPalette = async (path: string) => {
     try {
       const content = await readFileContent(path);
-      openFile({
+      const openedFileId = openFile({
         id: uuidv4(),
         path: path,
         name: path.split('/').pop() || t('common.untitled'),
@@ -128,14 +142,7 @@ function App() {
       
       const { activePaneId, assignFileToPane } = useLayoutStore.getState();
       if (activePaneId) {
-          // Use the newly created file ID. 
-          // Note: Ideally openFile should return the ID, but for now we find it from openedFiles or generate it deterministically.
-          // Since openFile uses uuidv4(), we need to find the file we just opened.
-          const { openedFiles } = useFileStore.getState();
-          const justOpened = openedFiles.find(f => f.path === path);
-          if (justOpened) {
-              assignFileToPane(activePaneId, justOpened.id);
-          }
+          assignFileToPane(activePaneId, openedFileId);
       }
       setCommandPaletteOpen(false);
     } catch (e) {
@@ -168,8 +175,6 @@ function App() {
         {isChatOpen && <AIChat width={chatWidth} onResizeStart={() => setIsResizingChat(true)} />}
       </div>
       
-      {/* Floating modals and toaster, they are mounted as direct children of the root app div. */}
-      {/* React Fragment is used to group them without adding an extra DOM node to the layout flow. */}
       <Fragment>
         <CommandPalette onSelect={handleSelectFileFromPalette} />
         <SettingsModal />

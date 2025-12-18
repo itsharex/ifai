@@ -66,6 +66,41 @@
     "newFile": "新建文件",
     "openFile": "打开文件...",
     "openFolder": "打开文件夹...",
-    "toggleChat": "切换若爱助手"
+    "toggleChat": "切换若爱助手",
+    "on": "开启",
+    "off": "关闭",
+    "rename": "重命名",
+    "delete": "删除",
+    "confirmDeleteFile": "删除 {{fileName}}？"
+  },
+  "settings": {
+    "general": "通用",
+    "editor": "编辑器",
+    "ai": "AI",
+    "theme": "主题",
+    "dark": "深色",
+    "light": "浅色",
+    "fontSize": "字体大小",
+    "showMinimap": "显示迷你地图",
+    "showLineNumbers": "显示行号",
+    "wordWrap": "自动换行",
+    "aiProviders": "若爱提供商",
+    "apiKey": "API 密钥",
+    "baseUrl": "基础 URL",
+    "enableAutocomplete": "启用自动补全",
+    "apiKeyFor": "{{providerName}} 的 API 密钥"
+  },
+  "shortcuts": {
+    "updatedSuccessfully": "快捷键更新成功",
+    "conflict": "冲突：{{keys}} 已分配给 {{command}}",
+    "resetDefaults": "重置为默认值",
+    "keyboardShortcuts": "键盘快捷键",
+    "searchKeybindings": "搜索快捷键...",
+    "command": "命令",
+    "keybinding": "快捷键",
+    "source": "来源",
+    "user": "用户",
+    "clickToEdit": "点击编辑",
+    "pressKeys": "按键..."
   }
 }

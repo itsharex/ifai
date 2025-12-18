@@ -6,6 +6,7 @@ import { FileNode, GitStatus } from '../../stores/types';
 import { readFileContent, readDirectory, renameFile, deleteFile } from '../../utils/fileSystem';
 import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from 'react-i18next';
 
 interface ContextMenuState {
   x: number;
@@ -145,6 +146,7 @@ export const FileTree = () => {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ x: 0, y: 0, node: null });
   const [renamingNode, setRenamingNode] = useState<FileNode | null>(null);
   const [renameInput, setRenameInput] = useState('');
+  const { t } = useTranslation(); // Import useTranslation
 
   // Load Git Status when rootPath changes
   useEffect(() => {
@@ -179,7 +181,7 @@ export const FileTree = () => {
     if (contextMenu.node) {
         setRenamingNode(contextMenu.node);
         setRenameInput(contextMenu.node.name);
-        const newName = window.prompt("Rename to:", contextMenu.node.name);
+        const newName = window.prompt(t('common.renameTo') || "Rename to:", contextMenu.node.name);
         if (newName && newName !== contextMenu.node.name) {
              performRename(contextMenu.node, newName);
         }
@@ -192,22 +194,22 @@ export const FileTree = () => {
         pathParts.pop();
         const newPath = [...pathParts, newName].join('/');
         await renameFile(node.path, newPath);
-        toast.success(`Renamed to ${newName}`);
+        toast.success(t('common.renamedSuccessfully', { newName }));
     } catch (e) {
         console.error("Rename failed", e);
-        toast.error("Rename failed");
+        toast.error(t('common.renameFailed'));
     }
   };
 
   const handleDelete = async () => {
     if (contextMenu.node) {
-        if (window.confirm(`Delete ${contextMenu.node.name}?`)) {
+        if (window.confirm(t('common.confirmDeleteFile', { fileName: contextMenu.node.name }))) {
             try {
                 await deleteFile(contextMenu.node.path);
-                toast.success("Deleted");
+                toast.success(t('common.deletedSuccessfully'));
             } catch (e) {
                 console.error("Delete failed", e);
-                toast.error("Delete failed");
+                toast.error(t('common.deleteFailed'));
             }
         }
     }
@@ -232,13 +234,13 @@ export const FileTree = () => {
                 className="px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer"
                 onClick={handleRename}
             >
-                Rename
+                {t('common.rename')}
             </div>
             <div 
                 className="px-3 py-1.5 text-sm text-red-400 hover:bg-gray-700 cursor-pointer"
                 onClick={handleDelete}
             >
-                Delete
+                {t('common.delete')}
             </div>
         </div>
       )}

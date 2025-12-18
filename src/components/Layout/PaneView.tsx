@@ -135,13 +135,13 @@ export const PaneView: React.FC<PaneViewProps> = ({
                 className="px-3 py-2 hover:bg-[#094771] hover:text-white cursor-pointer flex items-center"
                 onClick={() => splitPane('horizontal', pane.id)}
             >
-                <span className="mr-2">◫</span> Split Right
+                <span className="mr-2">◫</span> {t('editor.splitRight')}
             </div>
             <div 
                 className="px-3 py-2 hover:bg-[#094771] hover:text-white cursor-pointer flex items-center"
                 onClick={() => splitPane('vertical', pane.id)}
             >
-                <span className="mr-2">⊟</span> Split Down
+                <span className="mr-2">⊟</span> {t('editor.splitDown')}
             </div>
              {panes.length > 1 && (
                 <>
@@ -150,7 +150,7 @@ export const PaneView: React.FC<PaneViewProps> = ({
                         className="px-3 py-2 hover:bg-[#094771] hover:text-white cursor-pointer flex items-center text-red-400"
                         onClick={() => closePane(pane.id)}
                     >
-                        <span className="mr-2">✕</span> Close Pane
+                        <span className="mr-2">✕</span> {t('editor.closePane')}
                     </div>
                 </>
              )}
