@@ -20,6 +20,8 @@ export interface ShortcutState {
   updateShortcut: (id: string, newKeys: string) => string | boolean;
   resetShortcuts: () => void;
   setScheme: (scheme: 'ifai' | 'vscode' | 'intellij') => void; // New action
+  importKeybindings: (newBindings: KeyBinding[]) => boolean;
+  exportKeybindings: () => KeyBinding[];
   getKeybinding: (commandId: string) => string | undefined;
   hasConflict: (keys: string, excludeId?: string) => string | undefined; // Returns id of conflicting shortcut or undefined
 }
@@ -108,6 +110,19 @@ export const useShortcutStore = create<ShortcutState>()(
       setScheme: (scheme) => {
         set({ activeScheme: scheme, keybindings: PRESET_SCHEMES[scheme] });
       },
+
+      importKeybindings: (newBindings: KeyBinding[]) => {
+        if (!Array.isArray(newBindings)) return false;
+        
+        // Basic validation
+        const isValid = newBindings.every(b => b.id && b.commandId && b.keys);
+        if (!isValid) return false;
+
+        set({ keybindings: newBindings });
+        return true;
+      },
+
+      exportKeybindings: () => get().keybindings,
 
       getKeybinding: (commandId) => {
         return get().keybindings.find(kb => kb.commandId === commandId)?.keys;

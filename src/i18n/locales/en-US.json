@@ -110,6 +110,11 @@
     "ifaiScheme": "IfAI Default",
     "vscodeScheme": "VS Code",
     "intellijScheme": "IntelliJ IDEA",
-    "schemeChanged": "Scheme changed to {{scheme}}"
+    "schemeChanged": "Scheme changed to {{scheme}}",
+    "import": "Import",
+    "export": "Export",
+    "importSuccess": "Shortcuts imported successfully",
+    "importError": "Failed to import shortcuts: Invalid format",
+    "exportSuccess": "Shortcuts exported successfully"
   }
 }

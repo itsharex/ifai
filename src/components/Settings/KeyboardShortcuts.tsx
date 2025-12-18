@@ -1,17 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useShortcutStore, KeyBinding } from '../../stores/shortcutStore';
 import { useTranslation } from 'react-i18next';
-import { Search, RotateCcw } from 'lucide-react';
+import { Search, RotateCcw, Download, Upload } from 'lucide-react';
 import { formatKeybinding } from '../../utils/keyboard';
 import { toast } from 'sonner';
 import clsx from 'clsx';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 
 export const KeyboardShortcuts = () => {
-  const { keybindings, updateShortcut, resetShortcuts, hasConflict, activeScheme, setScheme } = useShortcutStore();
+  const { keybindings, updateShortcut, resetShortcuts, hasConflict, activeScheme, setScheme, importKeybindings, exportKeybindings } = useShortcutStore();
   const { t } = useTranslation();
   const [filter, setFilter] = useState('');
   const [recordingId, setRecordingId] = useState<string | null>(null);
   const [currentConflictId, setCurrentConflictId] = useState<string | undefined>(undefined);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredBindings = keybindings.filter(kb => 
     kb.label.toLowerCase().includes(filter.toLowerCase()) || 
@@ -77,6 +80,55 @@ export const KeyboardShortcuts = () => {
     setFilter(''); // Clear filter
   };
 
+  const handleExport = async () => {
+    try {
+        const data = exportKeybindings();
+        const path = await save({
+            filters: [{
+                name: 'JSON',
+                extensions: ['json']
+            }],
+            defaultPath: 'keybindings.json'
+        });
+
+        if (path) {
+            await writeTextFile(path, JSON.stringify(data, null, 2));
+            toast.success(t('shortcuts.exportSuccess'));
+        }
+    } catch (e) {
+        console.error('Export failed:', e);
+        toast.error(t('shortcuts.exportError') || 'Export failed');
+    }
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const json = JSON.parse(event.target?.result as string);
+            const success = importKeybindings(json);
+            if (success) {
+                toast.success(t('shortcuts.importSuccess'));
+            } else {
+                toast.error(t('shortcuts.importError'));
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error(t('shortcuts.importError'));
+        }
+        // Reset input
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e] text-white p-6">
       <div className="flex items-center justify-between mb-3">
@@ -92,10 +144,32 @@ export const KeyboardShortcuts = () => {
             <option value="intellij">{t('shortcuts.intellijScheme')}</option>
           </select>
           <button 
+              onClick={handleImportClick}
+              className="p-2 text-gray-400 hover:text-white rounded hover:bg-gray-700 flex items-center gap-2 text-sm"
+              title={t('shortcuts.import')}
+          >
+              <Upload size={16} />
+          </button>
+          <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImportFile} 
+              accept=".json" 
+              className="hidden" 
+          />
+          <button 
+              onClick={handleExport}
+              className="p-2 text-gray-400 hover:text-white rounded hover:bg-gray-700 flex items-center gap-2 text-sm"
+              title={t('shortcuts.export')}
+          >
+              <Download size={16} />
+          </button>
+          <button 
               onClick={handleReset}
               className="p-2 text-gray-400 hover:text-white rounded hover:bg-gray-700 flex items-center gap-2 text-sm"
+              title={t('shortcuts.resetDefaults')}
           >
-              <RotateCcw size={16} /> {t('shortcuts.resetDefaults')}
+              <RotateCcw size={16} />
           </button>
         </div>
       </div>
