@@ -1,3 +1,4 @@
+use tauri::Emitter;
 use ifainew_core;
 
 mod file_walker;
@@ -38,6 +39,14 @@ pub fn run() {
     tauri::Builder::default()
         .manage(TerminalManager::new())
         .manage(LspManager::new())
+                .on_window_event(|window, event| {
+                    match event {
+                        tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
+                            let _ = window.emit("tauri://file-drop", paths.clone());
+                        }
+                        _ => {}
+                    }
+                })
         .manage(ifainew_core::RagState::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

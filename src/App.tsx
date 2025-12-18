@@ -1,4 +1,5 @@
 import React, { useEffect, Fragment } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { Titlebar } from './components/Layout/Titlebar';
 import { Sidebar } from './components/Layout/Sidebar';
 import { Statusbar } from './components/Layout/Statusbar';
@@ -26,6 +27,21 @@ function App() {
   useEffect(() => {
     // Validate layout on startup to ensure panes reference valid files
     useLayoutStore.getState().validateLayout();
+  }, []);
+
+  // File drop listener
+  useEffect(() => {
+    const unlisten = listen<string[]>('tauri://file-drop', async (event) => {
+      console.log('File drop event received!', event.payload);
+      for (const path of event.payload) {
+        console.log('Attempting to open file:', path);
+        await openFileFromPath(path);
+      }
+    });
+
+    return () => {
+      unlisten.then(f => f());
+    };
   }, []);
 
   useEffect(() => {
@@ -132,7 +148,7 @@ function App() {
 
   useShortcuts(shortcutHandlers);
 
-  const handleSelectFileFromPalette = async (path: string) => {
+  const openFileFromPath = async (path: string) => {
     try {
       const content = await readFileContent(path);
       const openedFileId = openFile({
@@ -149,10 +165,18 @@ function App() {
       if (activePaneId) {
           assignFileToPane(activePaneId, openedFileId);
       }
-      setCommandPaletteOpen(false);
+      return true;
     } catch (e) {
       console.error(e);
       toast.error(t('common.fileOpenFailed'));
+      return false;
+    }
+  };
+
+  const handleSelectFileFromPalette = async (path: string) => {
+    const success = await openFileFromPath(path);
+    if (success) {
+      setCommandPaletteOpen(false);
     }
   };
 

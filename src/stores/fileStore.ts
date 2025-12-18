@@ -51,35 +51,35 @@ export const useFileStore = create<FileState>()(
       setRootPath: (path) => set({ rootPath: path }),
 
       openFile: (file) => {
-        const state = get();
-        const existing = state.openedFiles.find(f => f.path === file.path);
+        let fileIdToActivate = file.id;
 
-        if (existing) {
-          // If file is already open, update it if needed
-          const shouldUpdateContent = file.content !== undefined &&
-                                     (!existing.isDirty || !file.isDirty);
-
-          set((state) => {
-             const updatedFiles = state.openedFiles.map(f => {
-                if (f.id === existing.id) {
-                  return {
-                    ...f,
-                    initialLine: file.initialLine,
-                    ...(shouldUpdateContent ? { content: file.content, isDirty: file.isDirty } : {})
-                  };
-                }
-                return f;
-              });
-              return { activeFileId: existing.id, openedFiles: updatedFiles };
-          });
-          return existing.id;
-        }
-
-        set((state) => ({
-          openedFiles: [...state.openedFiles, file],
-          activeFileId: file.id,
-        }));
-        return file.id;
+        set((state) => {
+          const existing = state.openedFiles.find(f => f.path === file.path);
+      
+          if (existing) {
+            fileIdToActivate = existing.id;
+            const shouldUpdateContent = file.content !== undefined && (!existing.isDirty || !file.isDirty);
+            
+            const updatedFiles = state.openedFiles.map(f => {
+              if (f.id === existing.id) {
+                return {
+                  ...f,
+                  initialLine: file.initialLine,
+                  ...(shouldUpdateContent ? { content: file.content, isDirty: file.isDirty } : {})
+                };
+              }
+              return f;
+            });
+      
+            return { openedFiles: updatedFiles, activeFileId: fileIdToActivate };
+          }
+      
+          // If not existing, add it
+          const newFiles = [...state.openedFiles, file];
+          return { openedFiles: newFiles, activeFileId: fileIdToActivate };
+        });
+      
+        return fileIdToActivate;
       },
 
       closeFile: (id) => set((state) => {
