@@ -135,8 +135,28 @@ pub async fn run_agent_task(
 
     // 3. Finalize
     println!("[AgentRunner] Agent {} finished.", id);
+
+    // Collect final output from the last assistant message
+    let final_output = history.iter()
+        .rev()
+        .find(|msg| msg.role == "assistant")
+        .and_then(|msg| {
+            if let Content::Text(text) = &msg.content {
+                Some(text.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "Agent completed successfully.".to_string());
+
     let _ = supervisor.update_status(&id, AgentStatus::Completed).await;
     let _ = app.emit("agent:status", json!({ "id": id, "status": "completed", "progress": 1.0 }));
+
+    // Send agent:result event with the final output
+    let _ = app.emit("agent:result", json!({
+        "id": id,
+        "output": final_output
+    }));
 }
 
 fn system_content_with_tools(base: &str) -> String {

@@ -13,12 +13,15 @@ import { GlobalAgentMonitor } from './components/AIChat/GlobalAgentMonitor';
 import { useFileStore } from './stores/fileStore';
 import { useEditorStore } from './stores/editorStore';
 import { useLayoutStore } from './stores/layoutStore';
+import { useAgentStore } from './stores/agentStore';
 import { writeFileContent, readFileContent } from './utils/fileSystem';
 import { Toaster, toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 import { useShortcuts } from './hooks/useShortcuts';
 import { openFileFromPath } from './utils/fileActions';
+import { listen } from '@tauri-apps/api/event';
+import { useChatStore } from './stores/useChatStore';
 
 function App() {
   const { t } = useTranslation();
@@ -45,6 +48,30 @@ function App() {
 
   useEffect(() => {
     useLayoutStore.getState().validateLayout();
+    useAgentStore.getState().initEventListeners();
+
+    // Global listener for agent results to sync with Chat UI
+    // This decouples agentStore from chatStore to avoid circular dependencies
+    const unlistenPromise = listen('agent:result', (event: any) => {
+        const { id, output } = event.payload;
+        // Wait a tick to ensure agentStore has updated the agent details
+        setTimeout(() => {
+            const agent = useAgentStore.getState().runningAgents.find(a => a.id === id);
+            const agentType = agent ? agent.type : "Agent";
+            
+            console.log('[App] Injecting agent result to chat for:', id);
+            
+            useChatStore.getState().addMessage({
+                id: crypto.randomUUID(),
+                role: 'assistant',
+                content: `✅ **${agentType}** task finished.\n\n**Result Summary:**\n${output}\n\n*Detailed logs are available in the task monitor.*`
+            });
+        }, 100);
+    });
+
+    return () => {
+        unlistenPromise.then(unlisten => unlisten());
+    };
   }, []);
 
   useEffect(() => {

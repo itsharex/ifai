@@ -8,6 +8,7 @@ export interface Agent {
   progress: number; // 0.0 to 1.0
   logs: string[];
   content?: string;
+  expiresAt?: number; // Timestamp when the card should auto-close
   currentStep?: string;
 }
 

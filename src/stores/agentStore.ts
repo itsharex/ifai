@@ -10,6 +10,7 @@ interface AgentState {
   activeListeners: Record<string, UnlistenFn>;
   launchAgent: (agentType: string, task: string) => Promise<string>;
   removeAgent: (id: string) => void;
+  initEventListeners: () => Promise<void>;
 }
 
 export const useAgentStore = create<AgentState>((set, get) => ({
@@ -31,7 +32,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         providerConfig
     });
 
-    // 1. Add to local list
     const newAgent: Agent = {
         id,
         name: `${agentType} Task`,
@@ -39,26 +39,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         status: 'idle',
         progress: 0,
         logs: [],
-        content: "" // Initialize content
+        content: ""
     };
 
     set(state => ({ runningAgents: [newAgent, ...state.runningAgents] }));
 
-    // 2. Setup dynamic AI stream listener
     const eventId = `agent_${id}`;
     const unlisten = await listen<any>(eventId, (event) => {
         const payload = event.payload;
-        
-        // Handle structured object payload (from our new runner.rs)
         if (payload && typeof payload === 'object' && payload.type === 'content') {
             set(state => ({
                 runningAgents: state.runningAgents.map(a => 
                     a.id === id ? { ...a, content: (a.content || "") + (payload.content || "") } : a
                 )
             }));
-        } 
-        // Handle raw string fallback
-        else if (typeof payload === 'string') {
+        } else if (typeof payload === 'string') {
             set(state => ({
                 runningAgents: state.runningAgents.map(a => 
                     a.id === id ? { ...a, content: (a.content || "") + payload } : a
@@ -77,7 +72,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   removeAgent: (id: string) => {
       const { activeListeners } = get();
       if (activeListeners[id]) {
-          activeListeners[id](); // Unsubscribe
+          activeListeners[id]();
       }
       set(state => {
           const { [id]: _, ...remainingListeners } = state.activeListeners;
@@ -86,34 +81,56 @@ export const useAgentStore = create<AgentState>((set, get) => ({
               activeListeners: remainingListeners
           };
       });
+  },
+
+  initEventListeners: async () => {
+      console.log('[AgentStore] Initializing global event listeners');
+      
+      await listen('agent:status', (event: any) => {
+        const payload = event.payload;
+        const id = payload.id;
+        useAgentStore.setState(state => ({
+            runningAgents: state.runningAgents.map(a => a.id === id ? { ...a, status: payload.status, progress: payload.progress } : a)
+        }));
+      });
+
+      await listen('agent:log', (event: any) => {
+        const payload = event.payload;
+        const id = payload.id;
+        useAgentStore.setState(state => ({
+            runningAgents: state.runningAgents.map(a => 
+                a.id === id ? { ...a, logs: [...a.logs, payload.message] } : a
+            )
+        }));
+      });
+
+      await listen('agent:result', (event: any) => {
+        const payload = event.payload;
+        const id = payload.id;
+        const output = payload.output;
+        const expiresAt = Date.now() + 10000;
+
+        console.log('[AgentStore] Agent finished:', id);
+
+        useAgentStore.setState(state => ({
+            runningAgents: state.runningAgents.map(a => 
+                a.id === id ? { 
+                    ...a, 
+                    status: 'completed', 
+                    progress: 1.0,
+                    expiresAt,
+                    logs: [...a.logs, `RESULT: ${output}`] 
+                } : a
+            )
+        }));
+
+        // Auto-close timer
+        setTimeout(() => {
+            const { runningAgents, removeAgent } = useAgentStore.getState();
+            if (runningAgents.find(a => a.id === id)) {
+                removeAgent(id);
+            }
+        }, 10000);
+      });
   }
 }));
-
-// Global Status Listeners
-listen('agent:status', (event: any) => {
-    const { id, status, progress } = event.payload;
-    useAgentStore.setState(state => ({
-        runningAgents: state.runningAgents.map(a => a.id === id ? { ...a, status, progress } : a)
-    }));
-});
-
-listen('agent:log', (event: any) => {
-    const { id, message } = event.payload;
-    useAgentStore.setState(state => ({
-        runningAgents: state.runningAgents.map(a => 
-            a.id === id ? { ...a, logs: [...a.logs, message] } : a
-        )
-    }));
-});
-
-listen('agent:result', (event: any) => {
-    const payload = event.payload;
-    const id = payload.id;
-    const output = payload.output;
-    
-    useAgentStore.setState(state => ({
-        runningAgents: state.runningAgents.map(a => 
-            a.id === id ? { ...a, status: 'completed', logs: [...a.logs, `RESULT: ${output}`] } : a
-        )
-    }));
-});
