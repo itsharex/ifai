@@ -24,7 +24,22 @@ async fn ai_chat(
     mut messages: Vec<ifainew_core::ai::Message>,
     event_id: String,
     enable_tools: Option<bool>,
+    project_root: Option<String>,
 ) -> Result<(), String> {
+    // =============================================================================
+    // Prompt Ecosystem Integration
+    // =============================================================================
+    if let Some(root) = &project_root {
+        let system_content = prompt_manager::get_main_system_prompt(root);
+        // Prepend system message with correct enum type and fields
+        messages.insert(0, ifainew_core::ai::Message {
+            role: "system".to_string(),
+            content: ifainew_core::ai::Content::Text(system_content),
+            tool_calls: None,
+            tool_call_id: None,
+        });
+    }
+
     // =============================================================================
     // Message Sanitization Logic (Single Source of Truth)
     // =============================================================================
