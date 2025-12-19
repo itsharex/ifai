@@ -11,23 +11,23 @@
 ### Day 1-3: 文件树右键菜单
 
 #### 前端任务
-- [ ] 实现右键菜单组件 (`FileTreeContextMenu.tsx`)
-  - [ ] 新建文件菜单项
-  - [ ] 新建文件夹菜单项
-  - [ ] 重命名菜单项
-  - [ ] 删除菜单项
-  - [ ] 复制路径菜单项
-- [ ] 实现创建文件对话框 (`CreateFileDialog.tsx`)
-- [ ] 实现重命名对话框 (`RenameDialog.tsx`)
-- [ ] 实现删除确认对话框 (`DeleteConfirmDialog.tsx`)
-- [ ] 更新 `FileTree.tsx` 集成右键菜单
+- [x] 实现右键菜单组件 (`FileTreeContextMenu.tsx`)
+  - [x] 新建文件菜单项
+  - [x] 新建文件夹菜单项
+  - [x] 重命名菜单项
+  - [x] 删除菜单项
+  - [x] 复制路径菜单项
+- [x] 实现创建文件对话框 (`CreateFileDialog.tsx`)
+- [x] 实现重命名对话框 (`RenameDialog.tsx`)
+- [x] 实现删除确认对话框 (`DeleteConfirmDialog.tsx`)
+- [x] 更新 `FileTree.tsx` 集成右键菜单
 
 #### 后端任务
-- [ ] 添加 Tauri 命令：`create_file`
-- [ ] 添加 Tauri 命令：`create_directory`
-- [ ] 添加 Tauri 命令：`rename_file`
-- [ ] 添加 Tauri 命令：`delete_file`
-- [ ] 错误处理和验证
+- [x] 添加 Tauri 命令：`create_file`
+- [x] 添加 Tauri 命令：`create_directory`
+- [x] 添加 Tauri 命令：`rename_file`
+- [x] 添加 Tauri 命令：`delete_file`
+- [x] 错误处理和验证
 
 #### 测试
 - [ ] 单元测试：文件操作命令
@@ -39,20 +39,20 @@
 ### Day 4-5: 拖拽支持
 
 #### 前端任务
-- [ ] 安装 `react-dnd` 或使用原生 Drag API
-- [ ] 实现文件拖拽源 (`FileTreeItem.tsx`)
-  - [ ] `onDragStart` 处理
-  - [ ] 拖拽视觉反馈
-- [ ] 实现文件拖拽目标 (`FileTree.tsx`)
-  - [ ] `onDragOver` 处理
-  - [ ] `onDrop` 处理
-  - [ ] 拖拽高亮效果
-- [ ] 实现外部文件拖入
-- [ ] 实现拖拽到编辑器区域打开文件
+- [x] 安装 `react-dnd` 或使用原生 Drag API
+- [x] 实现文件拖拽源 (`FileTreeItem.tsx`)
+  - [x] `onDragStart` 处理
+  - [x] 拖拽视觉反馈
+- [x] 实现文件拖拽目标 (`FileTree.tsx`)
+  - [x] `onDragOver` 处理
+  - [x] `onDrop` 处理
+  - [x] 拖拽高亮效果
+- [x] 实现外部文件拖入
+- [x] 实现拖拽到编辑器区域打开文件
 
 #### 后端任务
-- [ ] 添加 Tauri 命令：`move_file`
-- [ ] 文件移动冲突处理
+- [x] 添加 Tauri 命令：`move_file`
+- [x] 文件移动冲突处理
 
 #### 测试
 - [ ] 测试：文件夹内拖拽
@@ -149,8 +149,8 @@ interface CodeSnippet {
 ### Day 4-5: 多光标和查找替换
 
 #### 多光标增强
-- [ ] 确认 Monaco 多光标快捷键
-- [ ] 添加快捷键提示
+- [x] 确认 Monaco 多光标快捷键
+- [x] 添加快捷键提示
 - [ ] 创建多光标教程
 
 #### 全局查找替换
@@ -317,18 +317,18 @@ interface PromptTemplate {
 ### Day 5-7: 快捷键和 Markdown 预览
 
 #### 快捷键系统
-- [ ] 创建快捷键配置界面 (`KeybindingSettings.tsx`)
-  - [ ] 快捷键列表
-  - [ ] 搜索过滤
-  - [ ] 冲突检测
-- [ ] 快捷键编辑
-  - [ ] 录制新快捷键
-  - [ ] 重置默认
-- [ ] 预设方案
-  - [ ] VSCode 快捷键
-  - [ ] Sublime 快捷键
-  - [ ] Vim 快捷键（基础）
-- [ ] 快捷键导入/导出
+- [x] 创建快捷键配置界面 (`KeybindingSettings.tsx`)
+  - [x] 快捷键列表
+  - [x] 搜索过滤
+  - [x] 冲突检测
+- [x] 快捷键编辑
+  - [x] 录制新快捷键
+  - [x] 重置默认
+- [x] 预设方案
+  - [x] VSCode 快捷键
+  - [x] Sublime 快捷键
+  - [x] Vim 快捷键（基础）
+- [x] 快捷键导入/导出
 
 #### Markdown 预览
 - [ ] 创建预览面板 (`MarkdownPreview.tsx`)
