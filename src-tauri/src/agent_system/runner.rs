@@ -15,11 +15,13 @@ pub async fn run_agent_task(
     context: AgentContext,
 ) {
     println!("[AgentRunner] Starting task for: {} ({})", id, agent_type);
-    
-    // 1. Initial Setup
+
+    // Initial Setup
     let mut history: Vec<Message> = Vec::new();
+    let mut created_files: Vec<String> = Vec::new(); // Track created/modified files
+
     let system_prompt = prompt_manager::get_agent_prompt(&agent_type, &context.project_root, &context.task_description);
-    
+
     history.push(Message {
         role: "system".to_string(),
         content: Content::Text(system_content_with_tools(&system_prompt)),
@@ -35,8 +37,8 @@ pub async fn run_agent_task(
     });
 
     let _ = supervisor.update_status(&id, AgentStatus::Running).await;
-    
-    // Define available tools for the AI
+
+    // Define available tools
     let tools = vec![
         json!({
             "type": "function",
@@ -64,57 +66,68 @@ pub async fn run_agent_task(
                     "required": ["rel_path"]
                 }
             }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "agent_write_file",
+                "description": "Write content to a file",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rel_path": { "type": "string", "description": "Relative path to file" },
+                        "content": { "type": "string", "description": "File content" }
+                    },
+                    "required": ["rel_path", "content"]
+                }
+            }
         })
     ];
 
-    // 2. Main Loop (Autonomous Thinking)
     let mut loop_count = 0;
-    const MAX_LOOPS: usize = 12; // Increased slightly
+    const MAX_LOOPS: usize = 12;
+    let mut final_ai_summary = String::new();
 
     while loop_count < MAX_LOOPS {
         loop_count += 1;
-        println!("[AgentRunner] Loop {} for agent {}", loop_count, id);
-
         let _ = app.emit("agent:status", json!({ "id": id, "status": "running", "progress": 0.15 + (loop_count as f32 * 0.05) }));
         let _ = app.emit("agent:log", json!({ "id": id, "message": "AI is thinking..." }));
 
-        // Call AI using shared utility
         match ai_utils::fetch_ai_completion(&context.provider_config, history.clone(), Some(tools.clone())).await {
             Ok(ai_message) => {
-                // Check for text content
                 if let Content::Text(ref text) = ai_message.content {
                     if !text.is_empty() {
+                         final_ai_summary = text.clone();
                          let event_name = format!("agent_{}", id);
                          let _ = app.emit(&event_name, json!({ "type": "content", "content": text }));
                     }
                 }
 
-                // Check for tool calls
                 if let Some(tool_calls) = &ai_message.tool_calls {
-                    if tool_calls.is_empty() {
-                        break;
-                    }
-
-                    // Pre-push AI message to history
+                    if tool_calls.is_empty() { break; }
                     history.push(ai_message.clone());
 
                     for tool_call in tool_calls {
                         let tool_name = &tool_call.function.name;
                         let args_res: Result<Value, _> = serde_json::from_str(&tool_call.function.arguments);
-                        
+
                         let _ = app.emit("agent:log", json!({ "id": id, "message": format!("Executing tool: {}", tool_name) }));
 
-                        let tool_result = match args_res {
+                        let (tool_result, _success) = match args_res {
                             Ok(args) => {
+                                if tool_name == "agent_write_file" {
+                                    if let Some(path) = args["rel_path"].as_str() {
+                                        created_files.push(path.to_string());
+                                    }
+                                }
                                 match tools::execute_tool_internal(tool_name, &args, &context.project_root).await {
-                                    Ok(res) => res,
-                                    Err(e) => format!("Error: {}", e)
+                                    Ok(res) => (res, true),
+                                    Err(e) => (format!("Error: {}", e), false)
                                 }
                             },
-                            Err(e) => format!("Failed to parse arguments: {}", e)
+                            Err(e) => (format!("Failed to parse arguments: {}", e), false)
                         };
 
-                        // Add tool result to history
                         history.push(Message {
                             role: "tool".to_string(),
                             content: Content::Text(tool_result),
@@ -122,9 +135,7 @@ pub async fn run_agent_task(
                             tool_call_id: Some(tool_call.id.clone()),
                         });
                     }
-                } else {
-                    break;
-                }
+                } else { break; }
             },
             Err(e) => {
                 let _ = app.emit("agent:status", json!({ "id": id, "status": "failed", "error": e }));
@@ -133,24 +144,28 @@ pub async fn run_agent_task(
         }
     }
 
-    // 3. Finalize
+    // Build the final output message with file details
+    let mut final_output = if !final_ai_summary.is_empty() {
+        final_ai_summary
+    } else {
+        format!("Agent {} has completed the task.", agent_type)
+    };
+
+    if !created_files.is_empty() {
+        final_output.push_str("\n\n### 📝 File Changes:\n");
+
+        for file in &created_files {
+            final_output.push_str(&format!("- `{}`\n", file));
+        }
+    }
+
     println!("[AgentRunner] Agent {} finished.", id);
-
-    // Collect final output from the last assistant message
-    let final_output = history.iter()
-        .rev()
-        .find(|msg| msg.role == "assistant")
-        .and_then(|msg| {
-            if let Content::Text(text) = &msg.content {
-                Some(text.clone())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| "Agent completed successfully.".to_string());
-
     let _ = supervisor.update_status(&id, AgentStatus::Completed).await;
-    let _ = app.emit("agent:status", json!({ "id": id, "status": "completed", "progress": 1.0 }));
+    let _ = app.emit("agent:status", json!({
+        "id": id,
+        "status": "completed",
+        "progress": 1.0
+    }));
 
     // Send agent:result event with the final output
     let _ = app.emit("agent:result", json!({
@@ -162,4 +177,3 @@ pub async fn run_agent_task(
 fn system_content_with_tools(base: &str) -> String {
     format!("{}\n\nAlways use tools to explore the codebase or read files when needed. Do not guess.", base)
 }
-// Removed private fetch_ai_completion from here

@@ -8,6 +8,7 @@ import { readFileContent } from '../../utils/fileSystem';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 import { MessageItem } from './MessageItem';
+import { SlashCommandList } from './SlashCommandList';
 import ifaiLogo from '../../../imgs/ifai.png'; // Import the IfAI logo
 
 interface AIChatProps {
@@ -22,7 +23,9 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   const { setSettingsOpen } = useLayoutStore();
   const { openFile } = useFileStore();
   const [input, setInput] = useState('');
+  const [showCommands, setShowCommands] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -39,13 +42,37 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     if (!input.trim() || !isProviderConfigured) return;
     const msg = input;
     setInput('');
+    setShowCommands(false);
     await sendMessage(msg, currentProviderId, currentModel);
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setInput(val);
+    // Show commands if input starts with / and doesn't have spaces yet (or is just /)
+    setShowCommands(val.startsWith('/') && !val.includes(' '));
+  };
+
+  const handleSelectCommand = (cmd: string) => {
+      setInput(cmd + ' ');
+      setShowCommands(false);
+      inputRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // If command list is visible, let it handle arrows/enter
+    // Note: SlashCommandList uses window listener with capture, so it might handle it first.
+    // However, to be safe and prevent double handling:
+    if (showCommands && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter')) {
+        // We let the SlashCommandList handle it via its own listener
+        return;
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    } else if (e.key === 'Escape' && showCommands) {
+        setShowCommands(false);
     }
   };
 
@@ -150,13 +177,21 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="border-t border-gray-700 p-3 bg-[#252526] flex items-center">
+      <div className="border-t border-gray-700 p-3 bg-[#252526] flex items-center relative">
+        {showCommands && (
+            <SlashCommandList 
+                filter={input} 
+                onSelect={handleSelectCommand}
+                onClose={() => setShowCommands(false)}
+            />
+        )}
         <input
+          ref={inputRef}
           type="text"
           className="flex-1 bg-transparent outline-none text-white text-sm placeholder-gray-500 mr-2"
           placeholder={t('chat.placeholder')}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           disabled={isLoading}
         />
