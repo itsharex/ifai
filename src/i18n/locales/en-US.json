@@ -115,8 +115,16 @@
     "schemeChanged": "Scheme changed to {{scheme}}",
     "import": "Import",
     "export": "Export",
-    "importSuccess": "Shortcuts imported successfully",
-    "importError": "Failed to import shortcuts: Invalid format",
-    "exportSuccess": "Shortcuts exported successfully"
+    "importSuccess": "Keyboard shortcuts imported successfully",
+    "importError": "Failed to import shortcuts: invalid format",
+    "exportSuccess": "Keyboard shortcuts exported successfully"
+  },
+  "commands": {
+    "title": "System Commands",
+    "explore": { "label": "Explore Agent", "description": "Deep codebase search & context gathering" },
+    "review": { "label": "Review Agent", "description": "Code review, security audit & best practices" },
+    "test": { "label": "Test Agent", "description": "Generate unit tests & integration scenarios" },
+    "doc": { "label": "Doc Agent", "description": "Generate documentation & comments" },
+    "refactor": { "label": "Refactor Agent", "description": "Code improvement & architectural changes" }
   }
 }

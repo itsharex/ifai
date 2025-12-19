@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Search, ShieldCheck, TestTube, FileText, Zap, Terminal } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface Command {
   id: string;
@@ -9,14 +10,6 @@ interface Command {
   color: string;
 }
 
-const COMMANDS: Command[] = [
-  { id: '/explore', label: 'Explore Agent', description: 'Deep codebase search & context gathering', icon: <Search size={16} />, color: 'bg-blue-500' },
-  { id: '/review', label: 'Review Agent', description: 'Code review, security audit & best practices', icon: <ShieldCheck size={16} />, color: 'bg-purple-500' },
-  { id: '/test', label: 'Test Agent', description: 'Generate unit tests & integration scenarios', icon: <TestTube size={16} />, color: 'bg-green-500' },
-  { id: '/doc', label: 'Doc Agent', description: 'Generate documentation & comments', icon: <FileText size={16} />, color: 'bg-orange-500' },
-  { id: '/refactor', label: 'Refactor Agent', description: 'Code improvement & architectural changes', icon: <Zap size={16} />, color: 'bg-yellow-500' },
-];
-
 interface Props {
   filter: string;
   onSelect: (cmd: string) => void;
@@ -24,13 +17,23 @@ interface Props {
 }
 
 export const SlashCommandList: React.FC<Props> = ({ filter, onSelect, onClose }) => {
+  const { t } = useTranslation();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   
-  const filteredCommands = COMMANDS.filter(c => 
-    c.id.toLowerCase().startsWith(filter.toLowerCase()) || 
-    c.label.toLowerCase().includes(filter.toLowerCase())
-  );
+  const COMMANDS: Command[] = useMemo(() => [
+    { id: '/explore', label: t('commands.explore.label'), description: t('commands.explore.description'), icon: <Search size={16} />, color: 'bg-blue-500' },
+    { id: '/review', label: t('commands.review.label'), description: t('commands.review.description'), icon: <ShieldCheck size={16} />, color: 'bg-purple-500' },
+    { id: '/test', label: t('commands.test.label'), description: t('commands.test.description'), icon: <TestTube size={16} />, color: 'bg-green-500' },
+    { id: '/doc', label: t('commands.doc.label'), description: t('commands.doc.description'), icon: <FileText size={16} />, color: 'bg-orange-500' },
+    { id: '/refactor', label: t('commands.refactor.label'), description: t('commands.refactor.description'), icon: <Zap size={16} />, color: 'bg-yellow-500' },
+  ], [t]);
+
+  const filteredCommands = useMemo(() => 
+    COMMANDS.filter(c => 
+      c.id.toLowerCase().startsWith(filter.toLowerCase()) || 
+      c.label.toLowerCase().includes(filter.toLowerCase())
+    ), [COMMANDS, filter]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -77,7 +80,7 @@ export const SlashCommandList: React.FC<Props> = ({ filter, onSelect, onClose })
       <div className="flex items-center justify-between px-3 py-2 bg-gray-50/80 dark:bg-[#252526] border-b border-gray-100 dark:border-[#3e3e42] backdrop-blur-sm">
         <span className="text-[10px] uppercase font-bold text-gray-500 dark:text-gray-400 tracking-wider flex items-center gap-1">
             <Terminal size={10} />
-            Commands
+            {t('commands.title')}
         </span>
         <span className="text-[9px] text-gray-400 bg-gray-200 dark:bg-[#333] px-1.5 py-0.5 rounded">
             ↑↓ to navigate
@@ -103,9 +106,14 @@ export const SlashCommandList: React.FC<Props> = ({ filter, onSelect, onClose })
             {/* Content */}
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center justify-between">
-                  <span className={`text-sm font-bold truncate ${index === selectedIndex ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-200'}`}>
-                      {cmd.id}
-                  </span>
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className={`text-sm font-bold truncate ${index === selectedIndex ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                        {cmd.id}
+                    </span>
+                    <span className={`text-[10px] opacity-60 font-medium truncate ${index === selectedIndex ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}`}>
+                        {cmd.label}
+                    </span>
+                  </div>
                   {index === selectedIndex && (
                       <span className="text-[10px] text-gray-400 bg-white dark:bg-black/20 px-1.5 rounded shadow-sm border border-gray-100 dark:border-white/5">
                           Enter
