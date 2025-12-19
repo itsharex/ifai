@@ -9,7 +9,8 @@
   },
   "sidebar": {
     "explorer": "Explorer",
-    "search": "Search"
+    "search": "Search",
+    "prompts": "Prompts"
   },
   "editor": {
     "welcome": "IfAI Editor",

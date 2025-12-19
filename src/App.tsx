@@ -7,6 +7,7 @@ import { TabBar } from './components/Editor/TabBar';
 import { AIChat } from './components/AIChat/AIChat';
 import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
+import { PromptManager } from './components/PromptManager/PromptManager';
 import { SettingsModal } from './components/Settings/SettingsModal';
 import { useFileStore } from './stores/fileStore';
 import { useEditorStore } from './stores/editorStore';
@@ -21,7 +22,7 @@ import { openFileFromPath } from './utils/fileActions';
 function App() {
   const { t } = useTranslation();
   const { activeFileId, openedFiles, setFileDirty, fetchGitStatuses } = useFileStore();
-  const { isChatOpen, toggleChat, toggleCommandPalette, setCommandPaletteOpen, isTerminalOpen, toggleTerminal, chatWidth, setChatWidth } = useLayoutStore();
+  const { isChatOpen, toggleChat, toggleCommandPalette, setCommandPaletteOpen, isTerminalOpen, toggleTerminal, chatWidth, setChatWidth, isPromptManagerOpen } = useLayoutStore();
   const [isResizingChat, setIsResizingChat] = React.useState(false);
 
   useEffect(() => {
@@ -167,7 +168,11 @@ function App() {
         <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e] overflow-hidden">
           <TabBar />
           <div className="flex-1 relative overflow-hidden">
-            <SplitPaneContainer className="split-pane-container" />
+            {isPromptManagerOpen ? (
+              <PromptManager />
+            ) : (
+              <SplitPaneContainer className="split-pane-container" />
+            )}
           </div>
           {isTerminalOpen && (
             <div className="h-64 border-t border-gray-700 relative">

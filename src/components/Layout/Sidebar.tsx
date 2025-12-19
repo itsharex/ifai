@@ -2,16 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { FileTree } from '../FileTree/FileTree';
 import { useFileStore } from '../../stores/fileStore';
 import { openDirectory, readDirectory } from '../../utils/fileSystem';
-import { FolderOpen, Files, Search as SearchIcon } from 'lucide-react';
+import { FolderOpen, Files, Search as SearchIcon, Cpu } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { SearchPanel } from '../Search/SearchPanel';
 import { useTranslation } from 'react-i18next';
-import { invoke } from '@tauri-apps/api/core'; // Moved to top
+import { invoke } from '@tauri-apps/api/core';
+import { useLayoutStore } from '../../stores/layoutStore';
 
 export const Sidebar = () => {
   const { t } = useTranslation();
   const { setFileTree, rootPath, fileTree } = useFileStore();
   const [activeTab, setActiveTab] = useState<'explorer' | 'search'>('explorer');
+  const { isPromptManagerOpen, togglePromptManager } = useLayoutStore();
 
   useEffect(() => {
     // Restore file tree from rootPath if exists
@@ -50,18 +52,32 @@ export const Sidebar = () => {
       {/* Activity Bar */}
       <div className="w-12 flex flex-col items-center py-2 border-r border-gray-700 bg-[#1e1e1e]">
         <button 
-          className={`p-2 mb-2 rounded ${activeTab === 'explorer' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          onClick={() => setActiveTab('explorer')}
+          className={`p-2 mb-2 rounded ${activeTab === 'explorer' && !isPromptManagerOpen ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+          onClick={() => {
+            setActiveTab('explorer');
+            if (isPromptManagerOpen) togglePromptManager();
+          }}
           title={t('sidebar.explorer')}
         >
           <Files size={24} />
         </button>
         <button 
-          className={`p-2 mb-2 rounded ${activeTab === 'search' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          onClick={() => setActiveTab('search')}
+          className={`p-2 mb-2 rounded ${activeTab === 'search' && !isPromptManagerOpen ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+          onClick={() => {
+            setActiveTab('search');
+            if (isPromptManagerOpen) togglePromptManager();
+          }}
           title={t('sidebar.search')}
         >
           <SearchIcon size={24} />
+        </button>
+        <div className="flex-1" />
+        <button 
+          className={`p-2 mb-2 rounded ${isPromptManagerOpen ? 'text-blue-400 bg-blue-900/20' : 'text-gray-500 hover:text-gray-300'}`}
+          onClick={() => togglePromptManager()}
+          title={t('sidebar.prompts')}
+        >
+          <Cpu size={24} />
         </button>
       </div>
 

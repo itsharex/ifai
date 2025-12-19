@@ -9,7 +9,8 @@
   },
   "sidebar": {
     "explorer": "资源管理器",
-    "search": "搜索"
+    "search": "搜索",
+    "prompts": "提示词管理"
   },
   "editor": {
     "welcome": "IfAI 编辑器",

@@ -16,6 +16,7 @@ export interface LayoutState {
   isCommandPaletteOpen: boolean;
   isTerminalOpen: boolean;
   isSettingsOpen: boolean;
+  isPromptManagerOpen: boolean;
   chatWidth: number;
 
   // 分屏状态
@@ -26,6 +27,8 @@ export interface LayoutState {
   // 操作函数
   setChatOpen: (isOpen: boolean) => void;
   toggleChat: () => void;
+  setPromptManagerOpen: (isOpen: boolean) => void;
+  togglePromptManager: () => void;
   setCommandPaletteOpen: (isOpen: boolean) => void;
   toggleCommandPalette: () => void;
   setTerminalOpen: (isOpen: boolean) => void;
@@ -56,6 +59,7 @@ export const useLayoutStore = create<LayoutState>()(
       isCommandPaletteOpen: false,
       isTerminalOpen: false,
       isSettingsOpen: false,
+      isPromptManagerOpen: false,
       chatWidth: 384,
 
       // 分屏状态
@@ -75,6 +79,8 @@ export const useLayoutStore = create<LayoutState>()(
       // 现有操作函数
       setChatOpen: (isOpen) => set({ isChatOpen: isOpen }),
       toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
+      setPromptManagerOpen: (isOpen) => set({ isPromptManagerOpen: isOpen }),
+      togglePromptManager: () => set((state) => ({ isPromptManagerOpen: !state.isPromptManagerOpen })),
       setCommandPaletteOpen: (isOpen) => set({ isCommandPaletteOpen: isOpen }),
       toggleCommandPalette: () => set((state) => ({ isCommandPaletteOpen: !state.isCommandPaletteOpen })),
       setTerminalOpen: (isOpen) => set({ isTerminalOpen: isOpen }),
