@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { listen } from '@tauri-apps/api/event';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { Agent } from '../types/agent';
 import { useFileStore } from './fileStore';
@@ -7,11 +7,14 @@ import { useSettingsStore } from './settingsStore';
 
 interface AgentState {
   runningAgents: Agent[];
+  activeListeners: Record<string, UnlistenFn>;
   launchAgent: (agentType: string, task: string) => Promise<string>;
+  removeAgent: (id: string) => void;
 }
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   runningAgents: [],
+  activeListeners: {},
   
   launchAgent: async (agentType: string, task: string) => {
     const projectRoot = useFileStore.getState().rootPath;
@@ -28,22 +31,64 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         providerConfig
     });
 
-    // Add to local list
+    // 1. Add to local list
     const newAgent: Agent = {
         id,
         name: `${agentType} Task`,
         type: agentType,
         status: 'idle',
         progress: 0,
-        logs: []
+        logs: [],
+        content: "" // Initialize content
     };
 
     set(state => ({ runningAgents: [newAgent, ...state.runningAgents] }));
+
+    // 2. Setup dynamic AI stream listener
+    const eventId = `agent_${id}`;
+    const unlisten = await listen<string>(eventId, (event) => {
+        try {
+            const payload = JSON.parse(event.payload);
+            if (payload.type === 'content') {
+                set(state => ({
+                    runningAgents: state.runningAgents.map(a => 
+                        a.id === id ? { ...a, content: (a.content || "") + payload.content } : a
+                    )
+                }));
+            }
+        } catch (e) {
+            // Fallback for raw text
+            set(state => ({
+                runningAgents: state.runningAgents.map(a => 
+                    a.id === id ? { ...a, content: (a.content || "") + event.payload } : a
+                )
+            }));
+        }
+    });
+
+    set(state => ({
+        activeListeners: { ...state.activeListeners, [id]: unlisten }
+    }));
+
     return id;
+  },
+
+  removeAgent: (id: string) => {
+      const { activeListeners } = get();
+      if (activeListeners[id]) {
+          activeListeners[id](); // Unsubscribe
+      }
+      set(state => {
+          const { [id]: _, ...remainingListeners } = state.activeListeners;
+          return {
+              runningAgents: state.runningAgents.filter(a => a.id !== id),
+              activeListeners: remainingListeners
+          };
+      });
   }
 }));
 
-// Global Event Listeners
+// Global Status Listeners
 listen('agent:status', (event: any) => {
     const { id, status, progress } = event.payload;
     useAgentStore.setState(state => ({
@@ -67,4 +112,6 @@ listen('agent:result', (event: any) => {
             a.id === id ? { ...a, status: 'completed', logs: [...a.logs, `RESULT: ${output}`] } : a
         )
     }));
+    
+    // Auto cleanup listener after some time or on manual close
 });

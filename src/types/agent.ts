@@ -7,6 +7,7 @@ export interface Agent {
   status: AgentStatus;
   progress: number; // 0.0 to 1.0
   logs: string[];
+  content?: string;
   currentStep?: string;
 }
 

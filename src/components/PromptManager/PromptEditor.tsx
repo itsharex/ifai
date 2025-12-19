@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePromptStore } from '../../stores/promptStore';
 import { useAgentStore } from '../../stores/agentStore';
-import { Play } from 'lucide-react';
+import { Play, X } from 'lucide-react';
 
 export const PromptEditor: React.FC = () => {
   const { selectedPrompt, updatePrompt, renderTemplate } = usePromptStore();
@@ -112,18 +112,46 @@ export const PromptEditor: React.FC = () => {
       <div className="flex-1 overflow-hidden relative">
           {/* Agent execution status overlay */}
           {runningAgents.length > 0 && (
-              <div className="absolute bottom-4 right-4 z-50 flex flex-col gap-2">
-                  {runningAgents.slice(0, 3).map(agent => (
-                      <div key={agent.id} className="bg-white dark:bg-gray-800 shadow-lg rounded-lg border border-gray-200 dark:border-gray-700 p-3 w-64">
-                          <div className="flex justify-between items-center mb-1">
-                              <span className="text-xs font-bold truncate">{agent.type}</span>
-                              <span className="text-[10px] text-gray-500 uppercase">{agent.status}</span>
+              <div className="absolute bottom-4 right-4 z-50 flex flex-col gap-2 max-h-[80vh] overflow-y-auto pr-2">
+                  {runningAgents.map(agent => (
+                      <div key={agent.id} className="bg-white dark:bg-gray-800 shadow-xl rounded-lg border border-gray-200 dark:border-gray-700 p-3 w-72 flex flex-col gap-2 group">
+                          <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold truncate max-w-[120px]">{agent.type}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold ${
+                                    agent.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                    agent.status === 'failed' ? 'bg-red-100 text-red-700' :
+                                    'bg-blue-100 text-blue-700'
+                                }`}>
+                                    {agent.status}
+                                </span>
+                              </div>
+                              <button 
+                                onClick={() => useAgentStore.getState().removeAgent(agent.id)}
+                                className="text-gray-400 hover:text-red-500 transition-colors"
+                                title="Close"
+                              >
+                                <X size={14} />
+                              </button>
                           </div>
+                          
+                          {/* Progress bar */}
                           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1">
-                              <div className="bg-blue-500 h-1 rounded-full" style={{ width: `${(agent.progress || 0) * 100}%` }} />
+                              <div className="bg-blue-500 h-1 rounded-full transition-all duration-300" style={{ width: `${(agent.progress || 0) * 100}%` }} />
                           </div>
-                          {agent.logs.length > 0 && (
-                              <div className="text-[10px] text-gray-400 mt-1 truncate">{agent.logs[agent.logs.length - 1]}</div>
+
+                          {/* AI Output Stream */}
+                          {agent.content && (
+                              <div className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-[10px] font-mono text-gray-600 dark:text-gray-400 max-h-24 overflow-y-auto break-words leading-relaxed">
+                                  {agent.content.length > 300 ? '...' + agent.content.slice(-300) : agent.content}
+                              </div>
+                          )}
+                          
+                          {/* Latest Log */}
+                          {agent.logs.length > 0 && !agent.content && (
+                              <div className="text-[10px] text-gray-400 truncate italic">
+                                  {agent.logs[agent.logs.length - 1]}
+                              </div>
                           )}
                       </div>
                   ))}
