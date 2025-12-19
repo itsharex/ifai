@@ -1,0 +1,11 @@
+# IfAI User Configuration
+[prompt_variables]
+# Add your custom variables here
+# COMPANY_NAME = "MyCompany"
+
+[agent_settings]
+max_concurrent_agents = 3
+enable_sound_effects = true
+
+[expert_mode]
+enabled = false

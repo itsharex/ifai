@@ -6,6 +6,8 @@ mod terminal;
 mod search;
 mod git;
 mod lsp;
+mod prompt_manager;
+mod commands;
 use terminal::TerminalManager;
 use lsp::LspManager;
 
@@ -138,7 +140,11 @@ pub fn run() {
             ifainew_core::rag::build_context,
             ifainew_core::agent::agent_write_file,
             ifainew_core::agent::agent_read_file,
-            ifainew_core::agent::agent_list_dir
+            ifainew_core::agent::agent_list_dir,
+            commands::prompt_commands::list_prompts,
+            commands::prompt_commands::get_prompt,
+            commands::prompt_commands::update_prompt,
+            commands::prompt_commands::render_prompt_template
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
