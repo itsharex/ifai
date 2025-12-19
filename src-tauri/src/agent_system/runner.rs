@@ -3,9 +3,9 @@ use crate::agent_system::base::{AgentStatus, AgentContext};
 use crate::agent_system::supervisor::Supervisor;
 use crate::agent_system::tools;
 use crate::prompt_manager;
-use ifainew_core::ai::{Message, Content, AIProtocol, ToolCall};
+use crate::ai_utils;
+use ifainew_core::ai::{Message, Content, ToolCall};
 use serde_json::{json, Value};
-use reqwest::Client;
 
 pub async fn run_agent_task(
     app: AppHandle,
@@ -78,8 +78,8 @@ pub async fn run_agent_task(
         let _ = app.emit("agent:status", json!({ "id": id, "status": "running", "progress": 0.15 + (loop_count as f32 * 0.05) }));
         let _ = app.emit("agent:log", json!({ "id": id, "message": "AI is thinking..." }));
 
-        // Call AI
-        match fetch_ai_completion(&context.provider_config, history.clone(), Some(tools.clone())).await {
+        // Call AI using shared utility
+        match ai_utils::fetch_ai_completion(&context.provider_config, history.clone(), Some(tools.clone())).await {
             Ok(ai_message) => {
                 // Check for text content
                 if let Content::Text(ref text) = ai_message.content {
@@ -142,67 +142,4 @@ pub async fn run_agent_task(
 fn system_content_with_tools(base: &str) -> String {
     format!("{}\n\nAlways use tools to explore the codebase or read files when needed. Do not guess.", base)
 }
-
-async fn fetch_ai_completion(
-    config: &ifainew_core::ai::AIProviderConfig,
-    messages: Vec<Message>,
-    tools: Option<Vec<Value>>,
-) -> Result<Message, String> {
-    let client = Client::new();
-    
-    if !matches!(config.protocol, AIProtocol::OpenAI) {
-        return Err("Agent System currently only supports OpenAI/DeepSeek protocols".to_string());
-    }
-
-    let mut request_body = json!({
-        "model": config.models[0],
-        "messages": messages,
-        "stream": false
-    });
-
-    if let Some(t) = tools {
-        request_body["tools"] = json!(t);
-    }
-
-    let response = client.post(&config.base_url)
-        .header("Authorization", format!("Bearer {}", config.api_key))
-        .json(&request_body)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let err_body = response.text().await.unwrap_or_default();
-        return Err(format!("AI API Error ({}): {}", status, err_body));
-    }
-
-    let res_json: Value = response.json().await.map_err(|e| e.to_string())?;
-    
-    let choice = &res_json["choices"][0]["message"];
-    let role = choice["role"].as_str().unwrap_or("assistant").to_string();
-    let content_text = choice["content"].as_str().unwrap_or("").to_string();
-    
-    let mut tool_calls: Option<Vec<ToolCall>> = None;
-    if let Some(tc_array) = choice["tool_calls"].as_array() {
-        let mut calls = Vec::new();
-        for tc_val in tc_array {
-            calls.push(ToolCall {
-                id: tc_val["id"].as_str().unwrap_or("").to_string(),
-                r#type: "function".to_string(),
-                function: ifainew_core::ai::FunctionCall {
-                    name: tc_val["function"]["name"].as_str().unwrap_or("").to_string(),
-                    arguments: tc_val["function"]["arguments"].as_str().unwrap_or("{}").to_string(),
-                }
-            });
-        }
-        tool_calls = Some(calls);
-    }
-
-    Ok(Message {
-        role,
-        content: Content::Text(content_text),
-        tool_calls,
-        tool_call_id: None,
-    })
-}
+// Removed private fetch_ai_completion from here
