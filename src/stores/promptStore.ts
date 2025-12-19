@@ -24,20 +24,17 @@ export const usePromptStore = create<PromptState>((set, get) => ({
   loadPrompts: async () => {
     set({ isLoading: true, error: null });
     const rootPath = useFileStore.getState().rootPath;
-    console.log('[PromptStore] loadPrompts called. rootPath:', rootPath);
     
     if (!rootPath) {
-        console.warn('[PromptStore] No rootPath available. Cannot load prompts.');
         set({ prompts: [], isLoading: false });
         return;
     }
 
     try {
       const prompts = await invoke<PromptTemplate[]>('list_prompts', { projectRoot: rootPath });
-      console.log('[PromptStore] list_prompts result:', prompts);
       set({ prompts, isLoading: false });
     } catch (err) {
-      console.error('[PromptStore] Failed to load prompts:', err);
+      console.error('Failed to load prompts:', err);
       set({ error: String(err), isLoading: false });
     }
   },
@@ -46,10 +43,12 @@ export const usePromptStore = create<PromptState>((set, get) => ({
     const rootPath = useFileStore.getState().rootPath;
     if (!rootPath) return;
 
+    // First try to find in current list (populated by list_prompts)
     const prompt = get().prompts.find(p => p.path === path);
     if (prompt) {
         set({ selectedPrompt: prompt });
     } else {
+        // Fallback for newly created files or if list is stale
         try {
             const fetched = await invoke<PromptTemplate>('get_prompt', { projectRoot: rootPath, path });
             set({ selectedPrompt: fetched });
@@ -65,20 +64,18 @@ export const usePromptStore = create<PromptState>((set, get) => ({
       if (!rootPath) return;
 
       try {
-          await invoke('update_prompt', { projectRoot: rootPath, path, content });
+          // Backend returns the final path (handles builtin -> override transition)
+          const finalPath = await invoke<string>('update_prompt', { projectRoot: rootPath, path, content });
           
-          // Refresh list to ensure metadata is updated
+          // Refresh the list to show the new file
           await get().loadPrompts();
           
-          // Update selected prompt content immediately for better UX
-          const selected = get().selectedPrompt;
-          if (selected && selected.path === path) {
-             const updated = await invoke<PromptTemplate>('get_prompt', { projectRoot: rootPath, path });
-             set({ selectedPrompt: updated });
-          }
+          // Important: Switch selection to the new path
+          await get().selectPrompt(finalPath);
+          
       } catch (err) {
           console.error('Failed to update prompt:', err);
-          set({ error: String(err) });
+          // Don't set state error here if we want to show a toast or alert instead
           throw err;
       }
   },

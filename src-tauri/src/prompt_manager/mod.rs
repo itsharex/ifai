@@ -23,8 +23,13 @@ pub fn get_main_system_prompt(project_root: &str) -> String {
     let variables = variables::collect_system_variables(project_root);
     
     let template = {
-        let local_path = std::path::Path::new(project_root).join(".ifai/prompts/system/main.md");
-        if local_path.exists() {
+        let local_root = std::path::Path::new(project_root).join(".ifai/prompts/system");
+        let override_path = local_root.join("main.override.md");
+        let local_path = local_root.join("main.md");
+
+        if override_path.exists() {
+            storage::load_prompt(&override_path).ok()
+        } else if local_path.exists() {
             storage::load_prompt(&local_path).ok()
         } else if let Some(content_file) = BuiltinPrompts::get("system/main.md") {
             let content = std::str::from_utf8(content_file.data.as_ref()).unwrap_or("");
@@ -67,7 +72,9 @@ pub fn get_agent_prompt(agent_type: &str, project_root: &str, task_description: 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptMetadata {
     pub name: String,
+    #[serde(default)]
     pub description: String,
+    #[serde(default = "default_version")]
     pub version: String,
     #[serde(default)]
     pub author: Option<String>,
@@ -76,6 +83,10 @@ pub struct PromptMetadata {
     pub variables: Vec<String>,
     #[serde(default)]
     pub tools: Vec<String>,
+}
+
+fn default_version() -> String {
+    "1.0.0".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

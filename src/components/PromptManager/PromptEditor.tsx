@@ -66,10 +66,17 @@ export const PromptEditor: React.FC = () => {
     return <div className="flex-1 flex items-center justify-center text-gray-400">Select a prompt to edit</div>;
   }
 
-  const isReadOnly = selectedPrompt.metadata.access_tier !== 'public';
+  const isBuiltin = selectedPrompt.path?.startsWith('builtin://');
+  const isReadOnly = selectedPrompt.metadata.access_tier !== 'public' && !isBuiltin;
 
   return (
     <div className="flex-1 flex flex-col h-full bg-white dark:bg-gray-800">
+      {isBuiltin && (
+          <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-1.5 text-[10px] text-blue-700 dark:text-blue-300 border-b border-blue-100 dark:border-blue-900/50 flex items-center gap-2">
+              <span className="bg-blue-500 text-white px-1 rounded-sm font-bold">INFO</span>
+              This is a built-in system prompt. Saving will create a project-specific override.
+          </div>
+      )}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
         <div className="flex space-x-4">
             <button 
@@ -103,7 +110,7 @@ export const PromptEditor: React.FC = () => {
                     onClick={handleSave}
                     className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
                 >
-                    Save
+                    {isBuiltin ? 'Create Override' : 'Save'}
                 </button>
             )}
         </div>

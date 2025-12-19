@@ -22,7 +22,7 @@ pub async fn list_prompts(project_root: String) -> Result<Vec<PromptTemplate>, S
                 match storage::load_prompt_from_str(content, None) {
                     Ok(mut template) => {
                         template.path = Some(format!("builtin://{}", file_path));
-                        // Mark as protected if it's in system dir
+                        // Mark as protected if it's in system/ or conversation/
                         if file_path.starts_with("system/") {
                             template.metadata.access_tier = crate::prompt_manager::AccessTier::Protected;
                         }
@@ -43,6 +43,11 @@ pub async fn list_prompts(project_root: String) -> Result<Vec<PromptTemplate>, S
                     Ok(mut template) => {
                         if let Ok(rel) = entry.path().strip_prefix(&root) {
                              template.path = Some(rel.to_string_lossy().to_string());
+                             
+                             // If it's an override file, mark it specially
+                             if rel.to_string_lossy().contains(".override.") {
+                                 template.metadata.name = format!("{} (Override)", template.metadata.name);
+                             }
                         }
                         prompts.push(template);
                     },
@@ -50,11 +55,9 @@ pub async fn list_prompts(project_root: String) -> Result<Vec<PromptTemplate>, S
                 }
             }
         }
-    } else {
-        println!("[PromptManager] No local prompts found at {:?}", root);
     }
 
-    println!("[PromptManager] Returning {} total prompts (Builtin + Local)", prompts.len());
+    println!("[PromptManager] Returning {} total prompts", prompts.len());
     Ok(prompts)
 }
 
@@ -76,20 +79,30 @@ pub async fn get_prompt(project_root: String, path: String) -> Result<PromptTemp
 }
 
 #[tauri::command]
-pub async fn update_prompt(project_root: String, path: String, content: String) -> Result<(), String> {
-    if path.starts_with("builtin://") {
-        return Err("Cannot directly modify builtin prompts. Use 'Override' instead (coming soon).".to_string());
-    }
+pub async fn update_prompt(project_root: String, path: String, content: String) -> Result<String, String> {
+    // 1. Security Check
+    storage::validate_prompt_content(&content)?;
+
+    // 2. Handle Overrides for Builtin Prompts
+    let final_rel_path = if path.starts_with("builtin://") {
+        let internal = &path[10..];
+        // e.system/main.md -> system/main.override.md
+        internal.replace(".md", ".override.md")
+    } else {
+        path
+    };
 
     let root = get_prompt_root(&project_root);
-    let full_path = root.join(&path);
+    let full_path = root.join(&final_rel_path);
     
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
     let _ = storage::parse_front_matter(&content).map_err(|e| e.to_string())?;
-    fs::write(full_path, content).map_err(|e| e.to_string())
+    fs::write(full_path, &content).map_err(|e| e.to_string())?;
+
+    Ok(final_rel_path)
 }
 
 #[tauri::command]
