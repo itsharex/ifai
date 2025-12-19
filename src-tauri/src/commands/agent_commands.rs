@@ -1,7 +1,8 @@
 use tauri::State;
-use crate::agent_system::{Supervisor, AgentStatus};
+use crate::agent_system::{Supervisor, AgentStatus, AgentContext, runner};
 use uuid::Uuid;
 use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Serialize)]
 pub struct AgentInfo {
@@ -12,19 +13,35 @@ pub struct AgentInfo {
 
 #[tauri::command]
 pub async fn launch_agent(
+    app: tauri::AppHandle,
     supervisor: State<'_, Supervisor>,
     agent_type: String,
-    _task: String,
-    _project_root: String,
+    task: String,
+    project_root: String,
 ) -> Result<String, String> {
     let id = Uuid::new_v4().to_string();
     
-    // Register the agent in the system
+    // 1. Register the agent
     supervisor.register_agent(id.clone(), agent_type.clone()).await;
     
-    println!("[AgentSystem] Agent created: {} ({})", id, agent_type);
+    // 2. Prepare Context
+    let context = AgentContext {
+        project_root,
+        task_description: task,
+        initial_prompt: String::new(),
+        variables: HashMap::new(),
+    };
+
+    // 3. Spawn Task
+    let supervisor_inner = supervisor.inner().clone();
+    let id_clone = id.clone();
+    let agent_type_clone = agent_type.clone();
     
-    // TODO: Spawn actual task runner
+    tokio::spawn(async move {
+        runner::run_agent_task(app, supervisor_inner, id_clone, agent_type_clone, context).await;
+    });
+    
+    println!("[AgentSystem] Agent launched: {} ({})", id, agent_type);
     
     Ok(id)
 }

@@ -13,6 +13,7 @@ pub struct AgentHandle {
     pub join_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
+#[derive(Clone)]
 pub struct Supervisor {
     pub agents: Arc<Mutex<HashMap<String, AgentHandle>>>,
 }
