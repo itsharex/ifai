@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { usePromptStore } from '../../stores/promptStore';
 import { useAgentStore } from '../../stores/agentStore';
-import { Play, X } from 'lucide-react';
+import { Play, X, Save, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 
 export const PromptEditor: React.FC = () => {
   const { selectedPrompt, updatePrompt, renderTemplate } = usePromptStore();
@@ -10,83 +11,117 @@ export const PromptEditor: React.FC = () => {
   const [preview, setPreview] = useState('');
   const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   
-  // Dummy variables for preview - in a real app these would be dynamic
+  // Dummy variables for preview
   const [testVariables, setTestVariables] = useState<Record<string, string>>({
       "USER_NAME": "Developer",
       "TARGET_LANGUAGE": "Rust",
-      "PROJECT_NAME": "ifainew",
-      "CWD": "/Users/mac/project/aieditor"
+      "PROJECT_NAME": "IfAI Project",
+      "CWD": "/home/project"
   });
 
   useEffect(() => {
     if (selectedPrompt) {
-      // In a real implementation we would split metadata and content
-      // For now we assume content is the whole file including frontmatter
-      setContent(selectedPrompt.content);
+      setContent(selectedPrompt.raw_text || selectedPrompt.content || "");
       
       // Update test variables based on metadata
-      const newVars = { ...testVariables };
-      selectedPrompt.metadata.variables.forEach(v => {
-          if (!newVars[v]) newVars[v] = "TEST_VALUE";
-      });
-      setTestVariables(newVars);
+      if (selectedPrompt.metadata?.variables) {
+          const newVars = { ...testVariables };
+          selectedPrompt.metadata.variables.forEach(v => {
+              if (!newVars[v]) newVars[v] = "TEST_VALUE";
+          });
+          setTestVariables(newVars);
+      }
     }
   }, [selectedPrompt]);
 
   const handleRender = async () => {
-      const result = await renderTemplate(content, testVariables);
-      setPreview(result);
+      try {
+        const result = await renderTemplate(content, testVariables);
+        setPreview(result);
+      } catch (e) {
+          setPreview(`Render failed: ${e}`);
+      }
   };
 
   useEffect(() => {
       if (activeTab === 'preview') {
           handleRender();
       }
-  }, [content, activeTab, testVariables]); // Re-render when content or vars change
+  }, [content, activeTab, testVariables]);
 
   const handleSave = async () => {
-    if (selectedPrompt?.path) {
+    if (!selectedPrompt?.path) return;
+    
+    const isBuiltin = selectedPrompt.path.startsWith('builtin://');
+    try {
       await updatePrompt(selectedPrompt.path, content);
-      alert('Saved!');
+      if (isBuiltin) {
+        toast.success('Project-specific override created', {
+          description: 'This prompt will now be used for the current project.'
+        });
+      } else {
+        toast.success('Prompt saved successfully');
+      }
+    } catch (e) {
+      toast.error('Failed to save prompt', {
+        description: String(e)
+      });
     }
   };
 
   const handleRun = async () => {
-      if (selectedPrompt) {
-          try {
-              // Use the prompt name as agent type for testing
-              await launchAgent(selectedPrompt.metadata.name, "Test task triggered from Prompt Manager");
-          } catch (e) {
-              alert(`Launch failed: ${e}`);
-          }
+      if (!selectedPrompt?.metadata) return;
+      try {
+          await launchAgent(selectedPrompt.metadata.name, "Test task triggered from Prompt Manager");
+          toast.info(`Agent '${selectedPrompt.metadata.name}' started`);
+      } catch (e) {
+          toast.error('Launch failed', {
+            description: String(e)
+          });
       }
   };
 
   if (!selectedPrompt) {
-    return <div className="flex-1 flex items-center justify-center text-gray-400">Select a prompt to edit</div>;
+    return (
+        <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50 dark:bg-gray-800/20">
+            <div className="text-4xl mb-4 opacity-10">Select a prompt</div>
+            <p className="text-sm">Click a prompt on the left to start editing</p>
+        </div>
+    );
   }
 
-  const isBuiltin = selectedPrompt.path?.startsWith('builtin://');
-  const isReadOnly = selectedPrompt.metadata.access_tier !== 'public' && !isBuiltin;
+  // Double check structure
+  if (!selectedPrompt.metadata) {
+      return (
+          <div className="flex-1 flex flex-col items-center justify-center text-red-500 bg-red-50 dark:bg-red-900/10 p-4">
+              <AlertTriangle size={32} className="mb-4" />
+              <p className="font-bold">Invalid Prompt Data</p>
+              <p className="text-xs mt-2 opacity-70">Metadata field is missing in the backend response.</p>
+          </div>
+      );
+  }
+
+  const isBuiltin = selectedPrompt.path?.startsWith('builtin://') || false;
+  const isReadOnly = (selectedPrompt.metadata.access_tier !== 'public' && !isBuiltin);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white dark:bg-gray-800">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-gray-800 shadow-inner">
       {isBuiltin && (
           <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-1.5 text-[10px] text-blue-700 dark:text-blue-300 border-b border-blue-100 dark:border-blue-900/50 flex items-center gap-2">
               <span className="bg-blue-500 text-white px-1 rounded-sm font-bold">INFO</span>
               This is a built-in system prompt. Saving will create a project-specific override.
           </div>
       )}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex space-x-4">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
+        <div className="flex space-x-1">
             <button 
-                className={`px-3 py-1 text-sm font-medium ${activeTab === 'edit' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-t-md transition-all ${activeTab === 'edit' ? 'bg-white dark:bg-gray-800 text-blue-600 border-x border-t border-gray-200 dark:border-gray-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 onClick={() => setActiveTab('edit')}
             >
                 Editor
             </button>
             <button 
-                className={`px-3 py-1 text-sm font-medium ${activeTab === 'preview' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
+                className={`px-4 py-1.5 text-xs font-semibold rounded-t-md transition-all ${activeTab === 'preview' ? 'bg-white dark:bg-gray-800 text-blue-600 border-x border-t border-gray-200 dark:border-gray-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 onClick={() => setActiveTab('preview')}
             >
                 Preview
@@ -94,69 +129,67 @@ export const PromptEditor: React.FC = () => {
         </div>
         <div className="flex items-center space-x-2">
             {isReadOnly && (
-                <span className="text-xs text-yellow-600 dark:text-yellow-400 mr-2">
-                    ⚠️ Read-only
+                <span className="text-[10px] text-yellow-600 dark:text-yellow-500 font-mono bg-yellow-50 dark:bg-yellow-900/20 px-2 py-1 rounded">
+                    READ-ONLY
                 </span>
             )}
             <button 
                 onClick={handleRun}
-                className="p-1.5 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                className="p-1.5 bg-green-600 text-white rounded hover:bg-green-700 transition-shadow shadow-sm active:shadow-none"
                 title="Launch Agent"
             >
-                <Play size={14} />
+                <Play size={14} fill="currentColor" />
             </button>
             {!isReadOnly && (
                 <button 
                     onClick={handleSave}
-                    className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                    className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded hover:bg-blue-700 transition-all flex items-center gap-1.5 shadow-sm active:shadow-none"
                 >
-                    {isBuiltin ? 'Create Override' : 'Save'}
+                    <Save size={14} />
+                    {isBuiltin ? '创建覆盖' : '保存'}
                 </button>
             )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden relative">
+      <div className="flex-1 overflow-hidden relative flex flex-col bg-gray-50 dark:bg-gray-900/40">
           {/* Agent execution status overlay */}
           {runningAgents.length > 0 && (
-              <div className="absolute bottom-4 right-4 z-50 flex flex-col gap-2 max-h-[80vh] overflow-y-auto pr-2">
+              <div className="absolute bottom-4 right-4 z-50 flex flex-col gap-3 max-h-[80vh] overflow-y-auto pr-2 pointer-events-none">
                   {runningAgents.map(agent => (
-                      <div key={agent.id} className="bg-white dark:bg-gray-800 shadow-xl rounded-lg border border-gray-200 dark:border-gray-700 p-3 w-72 flex flex-col gap-2 group">
+                      <div key={agent.id} className="bg-white dark:bg-gray-800 shadow-2xl rounded-xl border border-gray-200 dark:border-gray-700 p-4 w-80 flex flex-col gap-3 group pointer-events-auto animate-in slide-in-from-bottom-4">
                           <div className="flex justify-between items-center">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold truncate max-w-[120px]">{agent.type}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold ${
+                                <span className="text-xs font-black truncate max-w-[140px] uppercase">{agent.type}</span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                                     agent.status === 'completed' ? 'bg-green-100 text-green-700' :
                                     agent.status === 'failed' ? 'bg-red-100 text-red-700' :
-                                    'bg-blue-100 text-blue-700'
+                                    'bg-blue-100 text-blue-700 animate-pulse'
                                 }`}>
                                     {agent.status}
                                 </span>
                               </div>
                               <button 
                                 onClick={() => useAgentStore.getState().removeAgent(agent.id)}
-                                className="text-gray-400 hover:text-red-500 transition-colors"
-                                title="Close"
+                                className="text-gray-300 hover:text-red-500 transition-colors"
                               >
-                                <X size={14} />
+                                <X size={16} />
                               </button>
                           </div>
                           
-                          {/* Progress bar */}
-                          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1">
-                              <div className="bg-blue-500 h-1 rounded-full transition-all duration-300" style={{ width: `${(agent.progress || 0) * 100}%` }} />
+                          <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                              <div className="bg-blue-500 h-full transition-all duration-500 ease-out" style={{ width: `${(agent.progress || 0) * 100}%` }} />
                           </div>
 
-                          {/* AI Output Stream */}
                           {agent.content && (
-                              <div className="bg-gray-50 dark:bg-gray-900 rounded p-2 text-[10px] font-mono text-gray-600 dark:text-gray-400 max-h-24 overflow-y-auto break-words leading-relaxed">
-                                  {agent.content.length > 300 ? '...' + agent.content.slice(-300) : agent.content}
+                              <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 text-[10px] font-mono text-gray-600 dark:text-gray-400 max-h-32 overflow-y-auto border border-gray-100 dark:border-gray-800 leading-relaxed scrollbar-hide">
+                                  {agent.content.length > 500 ? '...' + agent.content.slice(-500) : agent.content}
                               </div>
                           )}
                           
-                          {/* Latest Log */}
                           {agent.logs.length > 0 && !agent.content && (
-                              <div className="text-[10px] text-gray-400 truncate italic">
+                              <div className="text-[10px] text-gray-400 truncate italic px-1 flex items-center gap-2">
+                                  <div className="w-1 h-1 bg-gray-400 rounded-full animate-ping" />
                                   {agent.logs[agent.logs.length - 1]}
                               </div>
                           )}
@@ -167,28 +200,34 @@ export const PromptEditor: React.FC = () => {
 
           {activeTab === 'edit' ? (
               <textarea
-                className="w-full h-full p-4 font-mono text-sm bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 resize-none outline-none"
+                className="flex-1 p-6 font-mono text-sm bg-white dark:bg-[#1e1e1e] text-gray-800 dark:text-gray-300 resize-none outline-none custom-scrollbar leading-relaxed"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 readOnly={isReadOnly}
+                spellCheck={false}
+                placeholder="---
+name: My Agent
+---
+
+Write your prompt here..."
               />
           ) : (
-              <div className="flex flex-col h-full">
-                  <div className="p-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex gap-2 overflow-x-auto">
-                      {/* Variable inputs for testing */}
+              <div className="flex flex-col h-full bg-white dark:bg-[#1e1e1e]">
+                  <div className="p-3 bg-gray-100/50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700 flex gap-4 overflow-x-auto custom-scrollbar items-center">
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-2">Variables</div>
                       {Object.entries(testVariables).map(([key, val]) => (
-                          <div key={key} className="flex flex-col min-w-[100px]">
-                              <label className="text-xs text-gray-500 truncate" title={key}>{key}</label>
+                          <div key={key} className="flex items-center gap-2 bg-white dark:bg-gray-900 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 shadow-sm min-w-[120px]">
+                              <label className="text-[10px] font-mono text-blue-500 whitespace-nowrap">{key}</label>
                               <input 
-                                className="px-2 py-1 text-xs border rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                className="bg-transparent border-none p-0 text-[10px] dark:text-white outline-none w-full"
                                 value={val}
                                 onChange={e => setTestVariables({...testVariables, [key]: e.target.value})}
                               />
                           </div>
                       ))}
                   </div>
-                  <pre className="flex-1 p-4 overflow-auto whitespace-pre-wrap font-mono text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200">
-                      {preview}
+                  <pre className="flex-1 p-8 overflow-auto whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-300 leading-relaxed selection:bg-blue-100 dark:selection:bg-blue-900/40">
+                      {preview || <span className="text-gray-400 italic">No preview available. Try typing something above.</span>}
                   </pre>
               </div>
           )}

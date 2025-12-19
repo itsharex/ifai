@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::fs;
 use crate::prompt_manager::{PromptMetadata, PromptTemplate, BuiltinPrompts};
@@ -13,16 +13,44 @@ fn get_prompt_root(project_root: &str) -> PathBuf {
 #[tauri::command]
 pub async fn list_prompts(project_root: String) -> Result<Vec<PromptTemplate>, String> {
     let mut prompts = Vec::new();
+    let mut overridden_paths = HashSet::new();
 
-    // 1. Load Builtin Prompts from Binary
+    // 1. Load Project Prompts from File System First
+    let root = get_prompt_root(&project_root);
+    if root.exists() {
+        for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+            if entry.path().is_file() && entry.path().extension().map_or(false, |ext| ext == "md") {
+                match storage::load_prompt(entry.path()) {
+                    Ok(mut template) => {
+                        if let Ok(rel) = entry.path().strip_prefix(&root) {
+                             let rel_path = rel.to_string_lossy().to_string();
+                             
+                             // Record that this path (or its original version) is handled locally
+                             // e.g., if we have system/main.override.md, we mark system/main.md as overridden
+                             let original_path = rel_path.replace(".override.md", ".md");
+                             overridden_paths.insert(original_path);
+                             
+                             template.path = Some(rel_path.clone());
+                             if rel_path.contains(".override.") {
+                                 template.metadata.name = format!("{} (Override)", template.metadata.name);
+                             }
+                             prompts.push(template);
+                        }
+                    },
+                    Err(e) => eprintln!("[PromptManager] Failed to load local prompt {:?}: {}", entry.path(), e),
+                }
+            }
+        }
+    }
+
+    // 2. Load Builtin Prompts, but SKIP those that have local overrides
     for file_path in BuiltinPrompts::iter() {
-        if file_path.ends_with(".md") {
+        if file_path.ends_with(".md") && !overridden_paths.contains(file_path.as_ref()) {
             if let Some(content_file) = BuiltinPrompts::get(&file_path) {
                 let content = std::str::from_utf8(content_file.data.as_ref()).unwrap_or("");
                 match storage::load_prompt_from_str(content, None) {
                     Ok(mut template) => {
                         template.path = Some(format!("builtin://{}", file_path));
-                        // Mark as protected if it's in system/ or conversation/
                         if file_path.starts_with("system/") {
                             template.metadata.access_tier = crate::prompt_manager::AccessTier::Protected;
                         }
@@ -34,30 +62,10 @@ pub async fn list_prompts(project_root: String) -> Result<Vec<PromptTemplate>, S
         }
     }
 
-    // 2. Load Project Prompts from File System
-    let root = get_prompt_root(&project_root);
-    if root.exists() {
-        for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
-            if entry.path().is_file() && entry.path().extension().map_or(false, |ext| ext == "md") {
-                match storage::load_prompt(entry.path()) {
-                    Ok(mut template) => {
-                        if let Ok(rel) = entry.path().strip_prefix(&root) {
-                             template.path = Some(rel.to_string_lossy().to_string());
-                             
-                             // If it's an override file, mark it specially
-                             if rel.to_string_lossy().contains(".override.") {
-                                 template.metadata.name = format!("{} (Override)", template.metadata.name);
-                             }
-                        }
-                        prompts.push(template);
-                    },
-                    Err(e) => eprintln!("[PromptManager] Failed to load local prompt {:?}: {}", entry.path(), e),
-                }
-            }
-        }
-    }
+    // Sort prompts by name for consistent UI
+    prompts.sort_by(|a, b| a.metadata.name.cmp(&b.metadata.name));
 
-    println!("[PromptManager] Returning {} total prompts", prompts.len());
+    println!("[PromptManager] Returning {} active prompts", prompts.len());
     Ok(prompts)
 }
 
@@ -80,13 +88,10 @@ pub async fn get_prompt(project_root: String, path: String) -> Result<PromptTemp
 
 #[tauri::command]
 pub async fn update_prompt(project_root: String, path: String, content: String) -> Result<String, String> {
-    // 1. Security Check
     storage::validate_prompt_content(&content)?;
 
-    // 2. Handle Overrides for Builtin Prompts
     let final_rel_path = if path.starts_with("builtin://") {
         let internal = &path[10..];
-        // e.system/main.md -> system/main.override.md
         internal.replace(".md", ".override.md")
     } else {
         path

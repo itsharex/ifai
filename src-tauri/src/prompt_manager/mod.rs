@@ -78,6 +78,7 @@ pub struct PromptMetadata {
     pub version: String,
     #[serde(default)]
     pub author: Option<String>,
+    #[serde(default = "default_access_tier")]
     pub access_tier: AccessTier,
     #[serde(default)]
     pub variables: Vec<String>,
@@ -89,9 +90,14 @@ fn default_version() -> String {
     "1.0.0".to_string()
 }
 
+fn default_access_tier() -> AccessTier {
+    AccessTier::Public
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptTemplate {
     pub metadata: PromptMetadata,
     pub content: String,
-    pub path: Option<String>, // File path if stored on disk
+    pub raw_text: String, // Added full text field
+    pub path: Option<String>,
 }

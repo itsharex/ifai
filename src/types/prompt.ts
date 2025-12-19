@@ -17,5 +17,6 @@ export interface PromptMetadata {
 export interface PromptTemplate {
   metadata: PromptMetadata;
   content: string;
+  raw_text: string;
   path?: string;
 }
