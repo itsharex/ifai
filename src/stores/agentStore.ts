@@ -46,21 +46,22 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
     // 2. Setup dynamic AI stream listener
     const eventId = `agent_${id}`;
-    const unlisten = await listen<string>(eventId, (event) => {
-        try {
-            const payload = JSON.parse(event.payload);
-            if (payload.type === 'content') {
-                set(state => ({
-                    runningAgents: state.runningAgents.map(a => 
-                        a.id === id ? { ...a, content: (a.content || "") + payload.content } : a
-                    )
-                }));
-            }
-        } catch (e) {
-            // Fallback for raw text
+    const unlisten = await listen<any>(eventId, (event) => {
+        const payload = event.payload;
+        
+        // Handle structured object payload (from our new runner.rs)
+        if (payload && typeof payload === 'object' && payload.type === 'content') {
             set(state => ({
                 runningAgents: state.runningAgents.map(a => 
-                    a.id === id ? { ...a, content: (a.content || "") + event.payload } : a
+                    a.id === id ? { ...a, content: (a.content || "") + (payload.content || "") } : a
+                )
+            }));
+        } 
+        // Handle raw string fallback
+        else if (typeof payload === 'string') {
+            set(state => ({
+                runningAgents: state.runningAgents.map(a => 
+                    a.id === id ? { ...a, content: (a.content || "") + payload } : a
                 )
             }));
         }
@@ -106,12 +107,13 @@ listen('agent:log', (event: any) => {
 });
 
 listen('agent:result', (event: any) => {
-    const { id, output } = event.payload;
+    const payload = event.payload;
+    const id = payload.id;
+    const output = payload.output;
+    
     useAgentStore.setState(state => ({
         runningAgents: state.runningAgents.map(a => 
             a.id === id ? { ...a, status: 'completed', logs: [...a.logs, `RESULT: ${output}`] } : a
         )
     }));
-    
-    // Auto cleanup listener after some time or on manual close
 });
