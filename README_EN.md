@@ -20,13 +20,37 @@
 
 **IfAI (若爱)** is a modern cross-platform code editor that perfectly integrates powerful AI assistance with traditional code editing. The name "若爱" (IfAI) means "if there is love, code will be warm" - we believe AI should be the most caring programming companion for developers.
 
-### Core Philosophy
+### 📈 Project Status
 
-- 🎯 **Focus on Developer Experience** - Smooth editing experience with zero latency
-- 🤖 **Intelligent Programming Assistance** - Deep AI integration that understands your code intent
-- 🚀 **Lightweight & Efficient** - Built with Rust + Tauri, fast startup, low memory footprint
-- 🌍 **Cross-Platform** - Consistent experience on Windows, macOS, and Linux
-- 🔒 **Local-First** - Controllable data privacy with local LLM support
+- **🎉 v0.2.0 Major Update** - Dec 20, 2025 (Interactivity Breakthrough)
+- **🎉 v0.1.2 Stable** - Dec 19, 2025
+- **🌊 Interaction** - Claude-style progressive streaming
+- **⚡ Startup Time** - < 1.5s (25% faster)
+- **💾 Memory Usage** - ~80MB (20% lower than v0.1.0)
+
+<img src="imgs/ifai.gif" alt="IfAI Demo" width="600" height="auto"/>
+
+---
+
+## ✨ v0.2.0 Interaction Revolution - Smooth like Claude Code
+
+### 🌊 Claude-style Streaming System
+- **Typewriter Effect** - AI tool operations (like file writing) are no longer instant jumps, but appear with a **typewriter-like** line-by-line generation, allowing you to observe code as it's born.
+- **Progressive Parsing** - The Rust backend now features **heuristic JSON parsing**, extracting arguments from incomplete AI responses for real-time UI updates.
+- **Streaming Cursor Feedback** - Added a dynamic **pulsing cursor** to tool previews, providing excellent real-time visual confirmation and psychological feedback.
+
+### 🛡️ Smart Agent Monitor
+- **Drag & Snap** - The monitor widget is no longer static. You can drag it anywhere, and it **intelligently snaps** to the nearest screen corner.
+- **Adaptive Layout** - The panel automatically adjusts its expansion direction based on its snap position (expands up when at bottom, down when at top).
+- **Personalized Editor Settings** - Sync your favorite **VS Code preferences**:
+  - Support for **Fira Code** with **Font Ligatures**.
+  - **Smooth Caret Animation** and **Smooth Scrolling** for a premium feel.
+  - **Bracket Pair Colorization** and customizable whitespace rendering.
+- **Full Internationalization** - Task status, real-time logs, and initialization prompts fully support EN/CN switching.
+
+### 📐 Intelligent Rendering Logic
+- **Summary at Bottom** - Re-engineered the rendering engine so tool boxes (like file writes) stay on top, while the final AI **Summary** naturally lands at the bottom of the message.
+- **Pure UI Upgrade** - Removed redundant titles from the chat panel header, using a minimalist logo to maximize space for code communication.
 
 ---
 
@@ -248,26 +272,15 @@ node tests/spec_agent_flow.cjs
 
 ## 🗺 Roadmap
 
-### v0.1.0 (Current) - MVP Foundation
+### v0.2.0 (Current) - Interaction Milestone
 
-- ✅ Monaco editor integration
-- ✅ File system management
-- ✅ Multi-tab editing
-- ✅ AI chat integration (core capability)
-- ✅ Basic Git integration
-- ✅ Integrated terminal
-- ✅ LSP support
+- ✅ **Claude-style Streaming** - Progressive JSON parsing and typewriter rendering
+- ✅ **Smart Agent Monitor** - Draggable, corner-snapping, and adaptive layout
+- ✅ **Personalized Settings** - Fira Code, ligatures, smooth caret, and VS Code-style options
+- ✅ **Rendering Optimization** - Ensures summary text always lands at the message bottom
+- ✅ **Minimalist UI** - Clean chat header and optimized visual space
 
-### v0.2.0 (Planned) - Enhanced Experience
-
-- 🔄 Plugin system
-- 🔄 Custom keyboard shortcuts
-- 🔄 Code snippet manager
-- 🔄 Markdown preview
-- 🔄 Multi-cursor editing
-- 🔄 File diff comparison
-
-### v0.3.0 (Future) - Intelligence Upgrade
+### v0.3.0 (Planned) - Intelligence Upgrade
 
 - 📋 AI code review
 - 📋 Smart test generation
