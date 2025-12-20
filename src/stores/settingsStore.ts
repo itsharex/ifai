@@ -17,12 +17,21 @@ export interface SettingsState {
   // Appearance
   theme: 'vs-dark' | 'light';
   fontSize: number;
+  fontFamily: string;
+  lineHeight: number;
+  fontLigatures: boolean;
   showMinimap: boolean;
   showLineNumbers: boolean;
   
   // Editor
   tabSize: number;
   wordWrap: 'on' | 'off';
+  cursorBlinking: 'blink' | 'smooth' | 'phase' | 'expand' | 'solid';
+  cursorSmoothCaretAnimation: 'on' | 'off';
+  smoothScrolling: boolean;
+  bracketPairColorization: boolean;
+  renderWhitespace: 'none' | 'boundary' | 'selection' | 'trailing' | 'all';
+  formatOnSave: boolean;
 
   // AI
   providers: AIProviderConfig[];
@@ -46,11 +55,20 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       theme: 'vs-dark',
-      fontSize: 14,
-      showMinimap: true,
+      fontSize: 16,
+      fontFamily: "'Fira Code', Consolas, 'Courier New', monospace",
+      lineHeight: 24,
+      fontLigatures: true,
+      showMinimap: false, // User had minimap chars disabled and common preference is off for small screens
       showLineNumbers: true,
       tabSize: 2,
       wordWrap: 'on',
+      cursorBlinking: 'expand',
+      cursorSmoothCaretAnimation: 'on',
+      smoothScrolling: true,
+      bracketPairColorization: true,
+      renderWhitespace: 'selection',
+      formatOnSave: true,
       
       providers: [
         {
@@ -137,14 +155,21 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         theme: state.theme,
         fontSize: state.fontSize,
+        fontFamily: state.fontFamily,
+        lineHeight: state.lineHeight,
+        fontLigatures: state.fontLigatures,
         showMinimap: state.showMinimap,
         showLineNumbers: state.showLineNumbers,
         tabSize: state.tabSize,
         wordWrap: state.wordWrap,
+        cursorBlinking: state.cursorBlinking,
+        cursorSmoothCaretAnimation: state.cursorSmoothCaretAnimation,
+        smoothScrolling: state.smoothScrolling,
+        bracketPairColorization: state.bracketPairColorization,
+        renderWhitespace: state.renderWhitespace,
+        formatOnSave: state.formatOnSave,
         providers: state.providers.map(p => ({
           ...p,
-          // Don't persist API keys in the partialized state if not desired, 
-          // or ensure they are handled securely. For now, persist.
         })),
         currentProviderId: state.currentProviderId,
         currentModel: state.currentModel,

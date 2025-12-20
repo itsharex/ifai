@@ -156,6 +156,7 @@ ${textBefore}[CURSOR]${textAfter}
   };
 
   const theme = useEditorStore(state => state.theme);
+  const settings = useSettingsStore();
 
   // Force update editor content when file changes (fix for tab switching issue)
   useEffect(() => {
@@ -186,14 +187,28 @@ ${textBefore}[CURSOR]${textAfter}
         onChange={handleChange}
         onMount={handleEditorDidMount}
         options={{
-          minimap: { enabled: true },
-          fontSize: 14,
+          minimap: { enabled: settings.showMinimap },
+          fontSize: settings.fontSize,
+          fontFamily: settings.fontFamily,
+          lineHeight: settings.lineHeight,
+          fontLigatures: settings.fontLigatures,
+          cursorBlinking: settings.cursorBlinking,
+          cursorSmoothCaretAnimation: settings.cursorSmoothCaretAnimation,
+          smoothScrolling: settings.smoothScrolling,
+          bracketPairColorization: { enabled: settings.bracketPairColorization },
+          renderWhitespace: settings.renderWhitespace,
+          lineNumbers: settings.showLineNumbers ? 'on' : 'off',
+          tabSize: settings.tabSize,
+          wordWrap: settings.wordWrap,
           scrollBeyondLastLine: false,
           automaticLayout: true,
           multiCursorModifier: 'ctrlCmd',
           multiCursorPaste: 'spread',
           selectionClipboard: true,
           columnSelection: true,
+          formatOnSave: settings.formatOnSave,
+          stickyScroll: { enabled: true },
+          unicodeHighlight: { nonBasicASCII: false }
         }}
       />
       <InlineEditWidget />

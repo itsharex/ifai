@@ -25,8 +25,8 @@ export const TerminalPanel = ({ onClose }: TerminalPanelProps) => {
     if (terminalRef.current) {
       const terminal = new Terminal({
         cursorBlink: true,
-        fontFamily: 'Fira Code, monospace',
-        fontSize: 14,
+        fontFamily: 'MesloLGS NF, Menlo, Monaco, "Courier New", monospace',
+        fontSize: 15,
         theme: {
           background: '#1e1e1e',
           foreground: '#cccccc',
