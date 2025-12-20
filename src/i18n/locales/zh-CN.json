@@ -149,6 +149,31 @@
     "review": { "label": "代码审查", "description": "审查代码质量、安全与最佳实践" },
     "test": { "label": "测试生成", "description": "自动生成单元测试与集成案例" },
     "doc": { "label": "文档生成", "description": "编写技术文档、README 与注释" },
-    "refactor": { "label": "重构建议", "description": "提供代码改进与架构重构方案" }
-  }
-}
+        "refactor": { "label": "重构建议", "description": "提供代码改进与架构重构方案" },
+            "help": { "label": "系统帮助", "description": "显示功能指南与快捷键说明" },
+            "index": { "label": "重建索引", "description": "手动强制为项目代码库建立 RAG 语义索引" }
+          },
+        
+      "help_message": {
+        "title": "🚀 欢迎使用 若爱 (IfAI) v0.2.0",
+        "intro": "我是您的 AI 编程伙伴，旨在通过深度集成的智能体（Agents）提升您的开发效率。",
+        "commands_title": "💡 智能指令",
+        "commands": [
+          "**@codebase** - 在提问中加入此指令可进行全局代码语义搜索",
+          "**/explore** - 深度探索代码库，分析架构与逻辑",
+          "**/review** - 审查当前文件的代码质量与安全建议",
+          "**/test** - 自动为代码生成单元测试用例",
+          "**/doc** - 编写技术文档、README 或详细代码注释"
+        ],
+        "shortcuts_title": "⌨️ 核心快捷键",
+        "shortcuts": [
+          "**Cmd/Ctrl + P** - 快速搜索并打开项目文件",
+          "**Cmd/Ctrl + K** - 在编辑器中唤起内联 AI 编辑",
+          "**Cmd/Ctrl + L** - 快速切换/显示聊天面板",
+          "**Cmd/Ctrl + Alt + P** - 开启/关闭性能监控面板",
+          "**↑ / ↓** - 在输入框中快速唤回历史提问"
+        ],
+        "footer": "您可以直接对我下达指令，或使用上述斜杠命令启动特定的智能体。祝您编程愉快！"
+      }
+    }
+    

@@ -149,6 +149,29 @@
     "review": { "label": "Review", "description": "Review code quality and security" },
     "test": { "label": "Test", "description": "Generate unit and integration tests" },
     "doc": { "label": "Document", "description": "Write documentation and READMEs" },
-    "refactor": { "label": "Refactor", "description": "Suggest code improvements" }
+    "refactor": { "label": "Refactor", "description": "Suggest code improvements" },
+    "help": { "label": "System Help", "description": "Show feature guide and shortcuts" },
+    "index": { "label": "Rebuild Index", "description": "Manually force a RAG semantic index rebuild" }
+  },
+  "help_message": {
+    "title": "🚀 Welcome to IfAI v0.2.0",
+    "intro": "I am your AI programming companion, designed to boost your productivity with deeply integrated Agents.",
+    "commands_title": "💡 Smart Commands",
+    "commands": [
+      "**@codebase** - Include this in your query for global semantic code search",
+      "**/explore** - Explore codebase, analyze architecture and logic",
+      "**/review** - Review code quality and security recommendations",
+      "**/test** - Automatically generate unit tests for your code",
+      "**/doc** - Write documentation, READMEs, or code comments"
+    ],
+    "shortcuts_title": "⌨️ Key Shortcuts",
+    "shortcuts": [
+      "**Cmd/Ctrl + P** - Quick search and open project files",
+      "**Cmd/Ctrl + K** - Trigger inline AI editing in editor",
+      "**Cmd/Ctrl + L** - Toggle/focus the chat panel",
+      "**Cmd/Ctrl + Alt + P** - Toggle performance monitor panel",
+      "**↑ / ↓** - Quickly recall previous command history"
+    ],
+    "footer": "You can chat with me normally or use the slash commands above to launch specific Agents. Happy coding!"
   }
 }

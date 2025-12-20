@@ -8,6 +8,7 @@ import { useFileStore } from '../../stores/fileStore';
 import { readFileContent } from '../../utils/fileSystem';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
 import { MessageItem } from './MessageItem';
 import { SlashCommandList, SlashCommandListHandle } from './SlashCommandList';
 import ifaiLogo from '../../../imgs/ifai.png'; // Import the IfAI logo
@@ -97,10 +98,110 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   const isProviderConfigured = currentProvider && currentProvider.apiKey && currentProvider.enabled;
 
   const handleSend = async () => {
-    if (!input.trim() || !isProviderConfigured) return;
-    const msg = input;
+    if (!input.trim()) return;
+    const msg = input.trim();
     
     addToHistory(msg);
+
+    // Special Command: /help
+    if (msg.toLowerCase() === '/help') {
+      const { addMessage } = useChatStore.getState() as any;
+      const helpId = crypto.randomUUID();
+      
+      const helpContent = `
+### ${t('help_message.title')}
+
+${t('help_message.intro')}
+
+#### ${t('help_message.commands_title')}
+${(t('help_message.commands', { returnObjects: true }) as string[]).map(c => `- ${c}`).join('\n')}
+- **@codebase** - 在提问中加入此指令可进行全局代码语义搜索
+- **/index** - 手动强制为项目代码库建立 RAG 语义索引
+
+#### ${t('help_message.shortcuts_title')}
+${(t('help_message.shortcuts', { returnObjects: true }) as string[]).map(s => `- ${s}`).join('\n')}
+
+---
+*${t('help_message.footer')}*
+      `;
+
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: msg
+      });
+
+      setTimeout(() => {
+        addMessage({
+          id: helpId,
+          role: 'assistant',
+          content: helpContent.trim()
+        });
+      }, 100);
+
+      setInput('');
+      setShowCommands(false);
+      resetHistoryIndex();
+      return;
+    }
+
+    // Special Command: /index
+    if (msg.toLowerCase() === '/index') {
+      const { addMessage } = useChatStore.getState() as any;
+      const rootPath = useFileStore.getState().rootPath;
+
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: msg
+      });
+
+      if (rootPath) {
+        try {
+          const { invoke: dynamicInvoke } = await import('@tauri-apps/api/core');
+          await dynamicInvoke('init_rag_index', { rootPath });
+          setTimeout(() => {
+            addMessage({
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: "✅ **正在重建项目索引**\n\n系统正在扫描文件并构建语义向量，这可能需要一点时间。您可以在状态栏查看实时进度。"
+            });
+          }, 100);
+        } catch (e) {
+          setTimeout(() => {
+            addMessage({
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: `❌ **索引初始化失败**\n\n错误详情: ${String(e)}`
+            });
+          }, 100);
+        }
+      } else {
+        setTimeout(() => {
+          addMessage({
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: "❌ **未打开项目文件夹**\n\n请先打开一个项目文件夹后再使用此命令。"
+          });
+        }, 100);
+      }
+
+      setInput('');
+      setShowCommands(false);
+      resetHistoryIndex();
+      return;
+    }
+
+    if (!isProviderConfigured) {
+      const { addMessage } = useChatStore.getState() as any;
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `❌ ${t('chat.errorNoKey')} (${currentProvider?.name || 'Unknown'})`
+      });
+      return;
+    }
+
     setInput('');
     setShowCommands(false);
     await sendMessage(msg, currentProviderId, currentModel);
@@ -222,7 +323,10 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
       )}
       <div className="flex items-center justify-between p-3 border-b border-gray-700 bg-[#252526]">
         <div className="flex items-center">
-          <img src={ifaiLogo} alt="IfAI Logo" className="w-4 h-4 mr-2 opacity-70" /> {/* Logo remains */}
+          <img src={ifaiLogo} alt="IfAI Logo" className="w-4 h-4 mr-2 opacity-70" />
+          <span className="text-[10px] font-bold text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700 tracking-tighter">
+            V0.2.0
+          </span>
         </div>
         
         <div className="flex items-center space-x-2">

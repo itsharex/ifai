@@ -45,13 +45,9 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             const agentTypeBase = command.slice(1);
             const agentName = agentTypeBase.charAt(0).toUpperCase() + agentTypeBase.slice(1) + " Agent";
             
-            // Manually add user message to UI since we are bypassing core's sendMessage
             const { addMessage } = coreUseChatStore.getState();
-            // Note: We need a unique ID. uuidv4 is imported in core but not exposed. 
-            // We can use crypto.randomUUID() in modern browsers.
             const userMsgId = crypto.randomUUID();
             
-            // Construct user message object manually since we can't use internal helpers
             addMessage({ 
                 id: userMsgId, 
                 role: 'user', 
@@ -60,26 +56,22 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             });
 
             try {
-                // IMPORTANT: Create assistant message FIRST, then pass its ID to launchAgent
                 const assistantMsgId = crypto.randomUUID();
                 addMessage({
                     id: assistantMsgId,
                     role: 'assistant',
-                    content: ``, // Start empty, will be filled by events
+                    content: ``,
                     // @ts-ignore - custom property
-                    agentId: undefined, // Will be set after agent launches
-                    // Indicate this is a live agent message
+                    agentId: undefined,
                     isAgentLive: true
                 });
 
-                // Launch agent with the message ID so events can update this message
                 const agentId = await useAgentStore.getState().launchAgent(
                     agentName,
                     args || "No specific task provided",
-                    assistantMsgId  // ✅ Pass message ID to establish the mapping!
+                    assistantMsgId
                 );
 
-                // Update the message with the actual agentId for reference
                 const messages = coreUseChatStore.getState().messages;
                 const msg = messages.find(m => m.id === assistantMsgId);
                 if (msg) {
@@ -94,11 +86,29 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     content: `❌ **Failed to launch agent**\n\nError: ${String(e)}`
                 });
             }
-            return; // Intercepted
+            return;
         }
     }
 
-    // Message sanitization now happens in Rust backend before API call
+    // Set up a one-time listener for references before sending
+    const { listen } = await import('@tauri-apps/api/event');
+    const unlisten = await listen<string[]>("codebase-references", (event) => {
+        // Find the last user message and attach references
+        const messages = coreUseChatStore.getState().messages;
+        const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+        if (lastUserMsg) {
+            coreUseChatStore.setState(state => ({
+                messages: state.messages.map(m => 
+                    m.id === lastUserMsg.id ? { ...m, references: event.payload } : m
+                )
+            }));
+        }
+        unlisten(); // Clean up after first receipt
+    });
+    
+    // Auto cleanup after 10 seconds if nothing received
+    setTimeout(() => unlisten(), 10000);
+
     return originalSendMessage(content, providerId, modelName);
 };
 
