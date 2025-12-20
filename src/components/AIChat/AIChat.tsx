@@ -128,10 +128,9 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
         />
       )}
       <div className="flex items-center justify-between p-3 border-b border-gray-700 bg-[#252526]">
-        <span className="font-bold text-gray-300 flex items-center">
-          <img src={ifaiLogo} alt="IfAI Logo" className="w-4 h-4 mr-2 opacity-70" /> {/* Replaced Bot icon with IfAI logo */}
-          {t('chat.title')}
-        </span>
+        <div className="flex items-center">
+          <img src={ifaiLogo} alt="IfAI Logo" className="w-4 h-4 mr-2 opacity-70" /> {/* Logo remains */}
+        </div>
         
         <div className="flex items-center space-x-2">
             <select
