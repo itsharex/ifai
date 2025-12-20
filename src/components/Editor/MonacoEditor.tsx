@@ -20,10 +20,15 @@ interface MonacoEditorProps {
 
 export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
   const { t } = useTranslation();
-  const { setEditorInstance, getEditorInstance, setInlineEdit } = useEditorStore();
-  const { openedFiles } = useFileStore();
-  const { panes, setChatOpen } = useLayoutStore();
-  const { sendMessage } = useChatStore();
+  const setEditorInstance = useEditorStore(state => state.setEditorInstance);
+  const getEditorInstance = useEditorStore(state => state.getEditorInstance);
+  const setInlineEdit = useEditorStore(state => state.setInlineEdit);
+  
+  const openedFiles = useFileStore(state => state.openedFiles);
+  const panes = useLayoutStore(state => state.panes);
+  const setChatOpen = useLayoutStore(state => state.setChatOpen);
+  
+  const sendMessage = useChatStore(state => state.sendMessage);
 
   // 获取与此pane关联的文件
   const pane = panes.find(p => p.id === paneId);
@@ -156,24 +161,28 @@ ${textBefore}[CURSOR]${textAfter}
   };
 
   const theme = useEditorStore(state => state.theme);
-  const settings = useSettingsStore();
+  const settings = useSettingsStore(); // Settings are stable enough, but could also be selected
+  const isChatStreaming = useChatStore(state => state.isLoading);
 
   // Optimized options based on performance settings and file size
   const getOptimizedOptions = useCallback(() => {
     const isLargeFile = (file?.content?.length || 0) > 1024 * 1024; // > 1MB as large for optimization
     const isVeryLargeFile = (file?.content?.length || 0) > 10 * 1024 * 1024; // > 10MB
+    
+    // During chat streaming, we can temporarily disable expensive features to keep the UI responsive
+    const isGenerating = isChatStreaming;
 
     const baseOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
-      minimap: { enabled: settings.showMinimap && !isVeryLargeFile },
+      minimap: { enabled: settings.showMinimap && !isVeryLargeFile && !isGenerating },
       fontSize: settings.fontSize,
       fontFamily: settings.fontFamily,
       lineHeight: settings.lineHeight,
       fontLigatures: settings.fontLigatures,
-      cursorBlinking: settings.cursorBlinking,
-      cursorSmoothCaretAnimation: settings.cursorSmoothCaretAnimation,
+      cursorBlinking: isGenerating ? 'solid' : settings.cursorBlinking,
+      cursorSmoothCaretAnimation: isGenerating ? 'off' : settings.cursorSmoothCaretAnimation,
       smoothScrolling: settings.smoothScrolling,
-      bracketPairColorization: { enabled: settings.bracketPairColorization && !isLargeFile },
-      renderWhitespace: settings.renderWhitespace,
+      bracketPairColorization: { enabled: settings.bracketPairColorization && !isLargeFile && !isGenerating },
+      renderWhitespace: isGenerating ? 'none' : settings.renderWhitespace,
       lineNumbers: settings.showLineNumbers ? 'on' : 'off',
       tabSize: settings.tabSize,
       wordWrap: isVeryLargeFile ? 'off' : settings.wordWrap,
@@ -183,10 +192,10 @@ ${textBefore}[CURSOR]${textAfter}
       multiCursorPaste: 'spread',
       selectionClipboard: true,
       columnSelection: true,
-      stickyScroll: { enabled: !isLargeFile },
+      stickyScroll: { enabled: !isLargeFile && !isGenerating },
       unicodeHighlight: { nonBasicASCII: false },
       // Performance specific
-      renderLineHighlight: isLargeFile ? 'none' : 'all',
+      renderLineHighlight: (isLargeFile || isGenerating) ? 'none' : 'all',
       scrollbar: {
         useShadows: false,
         verticalHasArrows: false,
@@ -197,15 +206,15 @@ ${textBefore}[CURSOR]${textAfter}
         horizontalScrollbarSize: 10,
       },
       fixedOverflowWidgets: true,
-      renderValidationDecorations: isVeryLargeFile ? 'off' : 'on',
+      renderValidationDecorations: (isVeryLargeFile || isGenerating) ? 'off' : 'on',
       hideCursorInOverviewRuler: true,
-      overviewRulerLanes: isLargeFile ? 0 : 2,
-      glyphMargin: !isVeryLargeFile,
-      folding: !isVeryLargeFile,
+      overviewRulerLanes: (isLargeFile || isGenerating) ? 0 : 2,
+      glyphMargin: !isVeryLargeFile && !isGenerating,
+      folding: !isVeryLargeFile && !isGenerating,
     };
 
     return baseOptions;
-  }, [settings, file?.content?.length]);
+  }, [settings, file?.content?.length, isChatStreaming]);
 
   // Force update editor content when file changes (fix for tab switching issue)
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Settings } from 'lucide-react';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSettingsStore, AIProviderConfig } from '../../stores/settingsStore';
@@ -18,10 +18,59 @@ interface AIChatProps {
 
 export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   const { t } = useTranslation();
-  const { messages, isLoading, sendMessage, approveToolCall, rejectToolCall } = useChatStore();
-  const { providers, currentProviderId, currentModel, setCurrentProviderAndModel } = useSettingsStore();
-  const { setSettingsOpen } = useLayoutStore();
-  const { openFile } = useFileStore();
+  
+  // Use specific selectors to avoid subscribing to the entire store
+  const rawMessages = useChatStore(state => state.messages);
+  const isLoading = useChatStore(state => state.isLoading);
+  const sendMessage = useChatStore(state => state.sendMessage);
+  const approveToolCall = useChatStore(state => state.approveToolCall);
+  const rejectToolCall = useChatStore(state => state.rejectToolCall);
+  
+  const providers = useSettingsStore(state => state.providers);
+  const currentProviderId = useSettingsStore(state => state.currentProviderId);
+  const currentModel = useSettingsStore(state => state.currentModel);
+  const setCurrentProviderAndModel = useSettingsStore(state => state.setCurrentProviderAndModel);
+  
+  // Throttled messages for smoother rendering
+  const [displayMessages, setDisplayMessages] = useState(rawMessages);
+  const lastUpdateTime = useRef(0);
+  const throttleTimeout = useRef<number | null>(null);
+
+  useEffect(() => {
+    const now = Date.now();
+    const isLastMessageStreaming = rawMessages.length > 0 && 
+                                   rawMessages[rawMessages.length - 1].role === 'assistant' && 
+                                   isLoading;
+
+    if (!isLastMessageStreaming) {
+      // If not streaming, update immediately
+      setDisplayMessages(rawMessages);
+      lastUpdateTime.current = now;
+      if (throttleTimeout.current) {
+        window.clearTimeout(throttleTimeout.current);
+        throttleTimeout.current = null;
+      }
+      return;
+    }
+
+    // If streaming, throttle updates (e.g., every 150ms)
+    const timeSinceLastUpdate = now - lastUpdateTime.current;
+    const throttleMs = 150;
+
+    if (timeSinceLastUpdate >= throttleMs) {
+      setDisplayMessages(rawMessages);
+      lastUpdateTime.current = now;
+    } else if (!throttleTimeout.current) {
+      throttleTimeout.current = window.setTimeout(() => {
+        setDisplayMessages(rawMessages);
+        lastUpdateTime.current = Date.now();
+        throttleTimeout.current = null;
+      }, throttleMs - timeSinceLastUpdate);
+    }
+  }, [rawMessages, isLoading]);
+
+  const setSettingsOpen = useLayoutStore(state => state.setSettingsOpen);
+  const openFile = useFileStore(state => state.openFile);
   const [input, setInput] = useState('');
   const [showCommands, setShowCommands] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -33,7 +82,7 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [displayMessages]);
 
   const currentProvider = providers.find(p => p.id === currentProviderId);
   const isProviderConfigured = currentProvider && currentProvider.apiKey && currentProvider.enabled;
@@ -60,11 +109,7 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // If command list is visible, let it handle arrows/enter
-    // Note: SlashCommandList uses window listener with capture, so it might handle it first.
-    // However, to be safe and prevent double handling:
     if (showCommands && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter')) {
-        // We let the SlashCommandList handle it via its own listener
         return;
     }
 
@@ -76,7 +121,7 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     }
   };
 
-  const handleOpenFile = async (path: string) => {
+  const handleOpenFile = useCallback(async (path: string) => {
     try {
         const content = await readFileContent(path);
         openFile({
@@ -90,7 +135,15 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     } catch (e) {
         console.error("Failed to open file:", e);
     }
-  };
+  }, [openFile]);
+
+  const handleApprove = useCallback((messageId: string, toolCallId: string) => {
+    approveToolCall(messageId, toolCallId);
+  }, [approveToolCall]);
+
+  const handleReject = useCallback((messageId: string, toolCallId: string) => {
+    rejectToolCall(messageId, toolCallId);
+  }, [rejectToolCall]);
 
   if (!isProviderConfigured) {
     return (
@@ -119,7 +172,7 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   return (
     <div 
         className="flex flex-col h-full bg-[#1e1e1e] border-l border-gray-700 flex-shrink-0 relative"
-        style={{ width: width ? `${width}px` : '384px' }}
+        style={{ width: width ? `${width}px` : '384px', contain: 'layout' }}
     >
       {onResizeStart && (
         <div 
@@ -163,14 +216,14 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
       </div>
       
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message, index) => (
+        {displayMessages.map((message, index) => (
           <MessageItem 
             key={message.id} 
             message={message} 
-            onApprove={approveToolCall} 
-            onReject={rejectToolCall}
+            onApprove={handleApprove} 
+            onReject={handleReject}
             onOpenFile={handleOpenFile}
-            isStreaming={isLoading && index === messages.length - 1 && message.role === 'assistant'}
+            isStreaming={isLoading && index === displayMessages.length - 1 && message.role === 'assistant'}
           />
         ))}
         <div ref={messagesEndRef} />

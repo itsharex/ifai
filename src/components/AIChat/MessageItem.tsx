@@ -60,6 +60,18 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     // Helper to render ContentPart
     const renderContentPart = (part: ContentPart, index: number) => {
         if (part.type === 'text' && part.text) {
+            // Optimization: If message is extremely long and streaming, 
+            // fallback to plain pre tag to avoid heavy Markdown parsing/diffing
+            const isTooLongToMarkdown = isStreaming && part.text.length > 3000;
+            
+            if (isTooLongToMarkdown) {
+                return (
+                    <pre key={index} className="whitespace-pre-wrap break-word text-[11px] font-mono text-gray-300 bg-[#1e1e1e] p-2 rounded border border-gray-700">
+                        {part.text}
+                    </pre>
+                );
+            }
+
             // Apply markdown rendering to text parts
             return (
                 <ReactMarkdown
@@ -74,7 +86,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
 
                             if (!isInline && isStreaming) {
                                 return (
-                                    <pre className="whitespace-pre-wrap break-word bg-[#1e1e1e] p-2 rounded my-2 text-xs font-mono text-gray-300 overflow-x-auto">
+                                    <pre className="whitespace-pre-wrap break-word bg-[#1e1e1e] p-2 rounded my-2 text-[11px] font-mono text-gray-300 overflow-x-auto border border-gray-700">
                                         {children}
                                     </pre>
                                 );

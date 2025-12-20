@@ -3,7 +3,8 @@ import { useFileStore } from '../../stores/fileStore';
 import { listen } from '@tauri-apps/api/event';
 
 export const Statusbar = () => {
-  const { activeFileId, openedFiles } = useFileStore();
+  const activeFileId = useFileStore(state => state.activeFileId);
+  const openedFiles = useFileStore(state => state.openedFiles);
   const activeFile = openedFiles.find(f => f.id === activeFileId);
   const [ragStatus, setRagStatus] = useState('');
 
