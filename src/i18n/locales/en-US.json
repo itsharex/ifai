@@ -95,7 +95,17 @@
     "agent": "Agent",
     "agentSettings": "Agent Settings",
     "agentAutoApprove": "Auto-approve Tool Calls",
-    "agentAutoApproveDesc": "Automatically execute agent tool calls without manual approval"
+    "agentAutoApproveDesc": "Automatically execute agent tool calls without manual approval",
+    "performance": "Performance",
+    "performanceMode": "Performance Mode",
+    "performanceModeAuto": "Auto",
+    "performanceModeHigh": "High Performance",
+    "performanceModeMedium": "Balanced",
+    "performanceModeLow": "Power Saver",
+    "targetFPS": "Target FPS",
+    "enableGPUAcceleration": "Enable GPU Acceleration",
+    "showPerformanceMonitor": "Show Performance Monitor",
+    "enableAutoDowngrade": "Auto Performance Downgrade"
   },
   "agent_monitor_title": "Agent Monitor",
   "agent_monitor_activeTasks": "{{count}} Active Tasks",

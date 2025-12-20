@@ -42,6 +42,13 @@ export interface SettingsState {
   // Agent
   agentAutoApprove: boolean;
 
+  // Performance
+  performanceMode: 'auto' | 'high' | 'medium' | 'low';
+  targetFPS: number;
+  enableGPUAcceleration: boolean;
+  showPerformanceMonitor: boolean;
+  enableAutoDowngrade: boolean;
+
   // Actions
   setTheme: (theme: 'vs-dark' | 'light') => void;
   updateSettings: (settings: Partial<SettingsState>) => void;
@@ -121,6 +128,12 @@ export const useSettingsStore = create<SettingsState>()(
       currentModel: 'deepseek-chat',
       enableAutocomplete: true,
       agentAutoApprove: false,
+      
+      performanceMode: 'auto',
+      targetFPS: 60,
+      enableGPUAcceleration: true,
+      showPerformanceMonitor: false,
+      enableAutoDowngrade: true,
 
       setTheme: (theme) => set({ theme }),
       updateSettings: (settings) => set((state) => ({ ...state, ...settings })),
@@ -175,6 +188,11 @@ export const useSettingsStore = create<SettingsState>()(
         currentModel: state.currentModel,
         enableAutocomplete: state.enableAutocomplete,
         agentAutoApprove: state.agentAutoApprove,
+        performanceMode: state.performanceMode,
+        targetFPS: state.targetFPS,
+        enableGPUAcceleration: state.enableGPUAcceleration,
+        showPerformanceMonitor: state.showPerformanceMonitor,
+        enableAutoDowngrade: state.enableAutoDowngrade,
       }),
     }
   )

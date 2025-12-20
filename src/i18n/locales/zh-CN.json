@@ -95,7 +95,17 @@
     "agent": "智能体",
     "agentSettings": "智能体设置",
     "agentAutoApprove": "自动批准工具调用",
-    "agentAutoApproveDesc": "自动执行智能体的工具调用，无需手动批准"
+    "agentAutoApproveDesc": "自动执行智能体的工具调用，无需手动批准",
+    "performance": "性能",
+    "performanceMode": "性能模式",
+    "performanceModeAuto": "自动",
+    "performanceModeHigh": "高性能",
+    "performanceModeMedium": "均衡",
+    "performanceModeLow": "省电/低性能",
+    "targetFPS": "目标帧率",
+    "enableGPUAcceleration": "启用 GPU 加速",
+    "showPerformanceMonitor": "显示性能监控器",
+    "enableAutoDowngrade": "自动性能降级"
   },
   "agent_monitor_title": "任务监控器",
   "agent_monitor_activeTasks": "{{count}} 个活动任务",

@@ -11,6 +11,7 @@ mod agent_system;
 mod conversation;
 mod ai_utils;
 mod commands;
+mod performance;
 use terminal::TerminalManager;
 use lsp::LspManager;
 use agent_system::Supervisor;
@@ -131,7 +132,10 @@ pub fn run() {
             commands::prompt_commands::render_prompt_template,
             commands::agent_commands::launch_agent,
             commands::agent_commands::list_running_agents,
-            commands::agent_commands::approve_agent_action
+            commands::agent_commands::approve_agent_action,
+            performance::detect_gpu_info,
+            performance::is_on_battery,
+            performance::get_display_refresh_rate
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

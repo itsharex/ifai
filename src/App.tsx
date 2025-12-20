@@ -10,6 +10,7 @@ import { TerminalPanel } from './components/Terminal/TerminalPanel';
 import { PromptManager } from './components/PromptManager/PromptManager';
 import { SettingsModal } from './components/Settings/SettingsModal';
 import { GlobalAgentMonitor } from './components/AIChat/GlobalAgentMonitor';
+import { PerformanceMonitor } from './components/PerformanceMonitor/PerformanceMonitor';
 import { useFileStore } from './stores/fileStore';
 import { useEditorStore } from './stores/editorStore';
 import { useLayoutStore } from './stores/layoutStore';
@@ -22,6 +23,7 @@ import { useShortcuts } from './hooks/useShortcuts';
 import { openFileFromPath } from './utils/fileActions';
 import { listen } from '@tauri-apps/api/event';
 import { useChatStore } from './stores/useChatStore';
+import { useSettingsStore } from './stores/settingsStore';
 
 function App() {
   const { t } = useTranslation();
@@ -137,6 +139,11 @@ function App() {
       e.preventDefault();
       toggleTerminal();
     },
+    'view.togglePerformanceMonitor': (e: KeyboardEvent) => {
+      e.preventDefault();
+      const { showPerformanceMonitor, updateSettings } = useSettingsStore.getState();
+      updateSettings({ showPerformanceMonitor: !showPerformanceMonitor });
+    },
     'layout.splitVertical': (e: KeyboardEvent) => {
       e.preventDefault();
       useLayoutStore.getState().splitPane('vertical');
@@ -215,6 +222,7 @@ function App() {
         <CommandPalette onSelect={handleSelectFileFromPalette} />
         <SettingsModal />
         <GlobalAgentMonitor />
+        <PerformanceMonitor />
         <Toaster position="bottom-right" theme="dark" />
       </Fragment>
     </div>

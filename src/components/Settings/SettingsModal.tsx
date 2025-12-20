@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Monitor, Type, Cpu, Settings, Keyboard } from 'lucide-react';
+import { X, Monitor, Type, Cpu, Settings, Keyboard, Zap } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 import { useTranslation } from 'react-i18next';
@@ -10,7 +10,7 @@ export const SettingsModal = () => {
   const { t } = useTranslation();
   const { isSettingsOpen, setSettingsOpen } = useLayoutStore();
   const settings = useSettingsStore();
-  const [activeTab, setActiveTab] = useState<'general' | 'editor' | 'ai' | 'keybindings'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'editor' | 'ai' | 'performance' | 'keybindings'>('general');
 
   if (!isSettingsOpen) return null;
 
@@ -18,6 +18,7 @@ export const SettingsModal = () => {
     { id: 'general', label: t('settings.general'), icon: Monitor },
     { id: 'editor', label: t('settings.editor'), icon: Type },
     { id: 'ai', label: t('settings.ai'), icon: Cpu },
+    { id: 'performance', label: t('settings.performance'), icon: Zap },
     { id: 'keybindings', label: t('shortcuts.keyboardShortcuts'), icon: Keyboard },
   ] as const;
 
@@ -197,6 +198,67 @@ export const SettingsModal = () => {
                       className="ml-4 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'performance' && (
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('settings.performanceMode')}</label>
+                  <select 
+                    value={settings.performanceMode}
+                    onChange={(e) => settings.updateSettings({ performanceMode: e.target.value as any })}
+                    className="w-full bg-[#3c3c3c] border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="auto">{t('settings.performanceModeAuto')}</option>
+                    <option value="high">{t('settings.performanceModeHigh')}</option>
+                    <option value="medium">{t('settings.performanceModeMedium')}</option>
+                    <option value="low">{t('settings.performanceModeLow')}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">{t('settings.targetFPS')}</label>
+                  <select 
+                    value={settings.targetFPS}
+                    onChange={(e) => settings.updateSettings({ targetFPS: parseInt(e.target.value) })}
+                    className="w-full bg-[#3c3c3c] border border-gray-600 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="60">60 FPS</option>
+                    <option value="120">120 FPS</option>
+                    <option value="144">144 FPS</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-300">{t('settings.enableGPUAcceleration')}</span>
+                  <input 
+                    type="checkbox"
+                    checked={settings.enableGPUAcceleration}
+                    onChange={(e) => settings.updateSettings({ enableGPUAcceleration: e.target.checked })}
+                    className="toggle"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-300">{t('settings.showPerformanceMonitor')}</span>
+                  <input 
+                    type="checkbox"
+                    checked={settings.showPerformanceMonitor}
+                    onChange={(e) => settings.updateSettings({ showPerformanceMonitor: e.target.checked })}
+                    className="toggle"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-300">{t('settings.enableAutoDowngrade')}</span>
+                  <input 
+                    type="checkbox"
+                    checked={settings.enableAutoDowngrade}
+                    onChange={(e) => settings.updateSettings({ enableAutoDowngrade: e.target.checked })}
+                    className="toggle"
+                  />
                 </div>
               </div>
             )}

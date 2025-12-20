@@ -158,6 +158,55 @@ ${textBefore}[CURSOR]${textAfter}
   const theme = useEditorStore(state => state.theme);
   const settings = useSettingsStore();
 
+  // Optimized options based on performance settings and file size
+  const getOptimizedOptions = useCallback(() => {
+    const isLargeFile = (file?.content?.length || 0) > 1024 * 1024; // > 1MB as large for optimization
+    const isVeryLargeFile = (file?.content?.length || 0) > 10 * 1024 * 1024; // > 10MB
+
+    const baseOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
+      minimap: { enabled: settings.showMinimap && !isVeryLargeFile },
+      fontSize: settings.fontSize,
+      fontFamily: settings.fontFamily,
+      lineHeight: settings.lineHeight,
+      fontLigatures: settings.fontLigatures,
+      cursorBlinking: settings.cursorBlinking,
+      cursorSmoothCaretAnimation: settings.cursorSmoothCaretAnimation,
+      smoothScrolling: settings.smoothScrolling,
+      bracketPairColorization: { enabled: settings.bracketPairColorization && !isLargeFile },
+      renderWhitespace: settings.renderWhitespace,
+      lineNumbers: settings.showLineNumbers ? 'on' : 'off',
+      tabSize: settings.tabSize,
+      wordWrap: isVeryLargeFile ? 'off' : settings.wordWrap,
+      scrollBeyondLastLine: false,
+      automaticLayout: true,
+      multiCursorModifier: 'ctrlCmd',
+      multiCursorPaste: 'spread',
+      selectionClipboard: true,
+      columnSelection: true,
+      stickyScroll: { enabled: !isLargeFile },
+      unicodeHighlight: { nonBasicASCII: false },
+      // Performance specific
+      renderLineHighlight: isLargeFile ? 'none' : 'all',
+      scrollbar: {
+        useShadows: false,
+        verticalHasArrows: false,
+        horizontalHasArrows: false,
+        vertical: 'auto',
+        horizontal: 'auto',
+        verticalScrollbarSize: 10,
+        horizontalScrollbarSize: 10,
+      },
+      fixedOverflowWidgets: true,
+      renderValidationDecorations: isVeryLargeFile ? 'off' : 'on',
+      hideCursorInOverviewRuler: true,
+      overviewRulerLanes: isLargeFile ? 0 : 2,
+      glyphMargin: !isVeryLargeFile,
+      folding: !isVeryLargeFile,
+    };
+
+    return baseOptions;
+  }, [settings, file?.content?.length]);
+
   // Force update editor content when file changes (fix for tab switching issue)
   useEffect(() => {
     const editor = getEditorInstance(paneId);
@@ -186,30 +235,7 @@ ${textBefore}[CURSOR]${textAfter}
         theme={theme}
         onChange={handleChange}
         onMount={handleEditorDidMount}
-        options={{
-          minimap: { enabled: settings.showMinimap },
-          fontSize: settings.fontSize,
-          fontFamily: settings.fontFamily,
-          lineHeight: settings.lineHeight,
-          fontLigatures: settings.fontLigatures,
-          cursorBlinking: settings.cursorBlinking,
-          cursorSmoothCaretAnimation: settings.cursorSmoothCaretAnimation,
-          smoothScrolling: settings.smoothScrolling,
-          bracketPairColorization: { enabled: settings.bracketPairColorization },
-          renderWhitespace: settings.renderWhitespace,
-          lineNumbers: settings.showLineNumbers ? 'on' : 'off',
-          tabSize: settings.tabSize,
-          wordWrap: settings.wordWrap,
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          multiCursorModifier: 'ctrlCmd',
-          multiCursorPaste: 'spread',
-          selectionClipboard: true,
-          columnSelection: true,
-          formatOnSave: settings.formatOnSave,
-          stickyScroll: { enabled: true },
-          unicodeHighlight: { nonBasicASCII: false }
-        }}
+        options={getOptimizedOptions()}
       />
       <InlineEditWidget />
     </div>

@@ -6,7 +6,7 @@ interface Command {
   id: string;
   label: string;
   description: string;
-  icon: React.ReactNode;
+  icon: React.ReactElement;
   color: string;
 }
 
@@ -100,7 +100,7 @@ export const SlashCommandList: React.FC<Props> = ({ filter, onSelect, onClose })
           >
             {/* Icon Box */}
             <div className={`flex items-center justify-center w-8 h-8 rounded-lg shadow-sm ${cmd.color} text-white`}>
-                {React.cloneElement(cmd.icon as React.ReactElement, { size: 16, strokeWidth: 2.5 })}
+                {React.cloneElement(cmd.icon, { size: 16, strokeWidth: 2.5 } as any)}
             </div>
             
             {/* Content */}
