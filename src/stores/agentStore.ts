@@ -10,25 +10,32 @@ interface AgentState {
   runningAgents: Agent[];
   activeListeners: Record<string, UnlistenFn>;
   agentToMessageMap: Record<string, string>;
+  pendingStatusUpdates: Record<string, { status: string, progress: number }>; // Buffer for early events
   launchAgent: (agentType: string, task: string, chatMsgId?: string) => Promise<string>;
   removeAgent: (id: string) => void;
-  initEventListeners: () => Promise<void>;
+  initEventListeners: () => Promise<() => void>;
   approveAction: (id: string, approved: boolean) => Promise<void>;
 }
 
 function unescapeToolArguments(args: any): any {
     if (args && typeof args.content === 'string') {
-        args.content = args.content.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+        args.content = args.content.replace(/\\n/g, '\n').replace(/\\\"/g, '"');
     }
     return args;
 }
+
+// Remove module-level lock to ensure fresh listeners on every mount (React Strict Mode compatible)
+// let initListenerPromise: Promise<() => void> | null = null; 
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   runningAgents: [],
   activeListeners: {},
   agentToMessageMap: {},
+  pendingStatusUpdates: {},
   
+  // ... (keep launchAgent and removeAgent as is) ...
   launchAgent: async (agentType: string, task: string, chatMsgId?: string) => {
+    // ... (same as before) ...
     const projectRoot = useFileStore.getState().rootPath;
     if (!projectRoot) throw new Error("No project root available");
 
@@ -47,24 +54,33 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         set(state => ({ agentToMessageMap: { ...state.agentToMessageMap, [id]: chatMsgId } }));
     }
 
+    // Check for buffered status updates (race condition fix)
+    const pendingUpdate = get().pendingStatusUpdates[id];
+    
     const newAgent: Agent = {
         id,
         name: `${agentType} Task`,
         type: agentType,
-        status: 'idle',
-        progress: 0,
+        status: pendingUpdate ? pendingUpdate.status : 'idle',
+        progress: pendingUpdate ? pendingUpdate.progress : 0,
         logs: [],
         content: ""
     };
 
-    set(state => ({ runningAgents: [newAgent, ...state.runningAgents] }));
+    set(state => {
+        // Clear consumed pending update
+        const { [id]: _, ...remainingUpdates } = state.pendingStatusUpdates;
+        return { 
+            runningAgents: [newAgent, ...state.runningAgents],
+            pendingStatusUpdates: remainingUpdates
+        };
+    });
 
     const eventId = `agent_${id}`;
     let thinkingBuffer = "";
     let lastFlush = 0;
     
-    // Tools assembly state (for streaming tool calls if any, though runner.rs now sends them whole)
-    const streamingTools: Record<number, any> = {};
+    // ... (rest of launchAgent logic) ...
 
     const unlisten = await listen<AgentEventPayload>(eventId, (event) => {
         const payload = event.payload;
@@ -78,9 +94,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         }
         console.log(`[AgentStore] Received event for agent ${id}, type: ${payload.type}`);
 
-        // --- CONTENT SPLITTING LOGIC (UX OPTIMIZATION) ---
-
-        // 1. Handle THINKING (Analysis/Reasoning) -> Only update Agent Card
         if (payload.type === 'thinking' || (payload as any).type === 'content') {
             const chunk = (payload.content || (payload as any).content) || "";
             thinkingBuffer += chunk;
@@ -93,25 +106,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                         a.id === id ? { ...a, content: (a.content || "") + currentBuffer } : a
                     )
                 }));
-                
-                // NO LONGER updating chat message content for thinking chunks!
-                // This prevents redundant information in the chat panel.
-                
                 thinkingBuffer = "";
                 lastFlush = now;
             }
         } 
-        // 2. Handle TOOL CALLS -> Update Chat UI (Interactive)
         else if (payload.type === 'tool_call') {
             const toolCall = payload.toolCall;
-            if (!toolCall) {
-                console.warn('[AgentStore] Received tool_call event without toolCall data');
-                return;
-            }
+            if (!toolCall) return;
 
-            console.log(`[AgentStore] Processing tool_call: ${toolCall.tool}`, toolCall);
-
-            // Injected into message toolCalls array to trigger ToolApproval UI in chat
             const liveToolCall = {
                 id: toolCall.id,
                 tool: toolCall.tool,
@@ -119,42 +121,28 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 status: 'pending' as const
             };
 
-            // ✅ Use map to create a new messages array for React reactivity
             const updatedMessages = chatState.messages.map(m => {
                 if (m.id === msgId) {
                     const existing = m.toolCalls || [];
-                    // Only add if not already present
-                    if (!existing.find(tc => tc.id === liveToolCall.id)) {
-                        console.log(`[AgentStore] Adding tool call to message ${msgId}`);
-                        return {
-                            ...m,
-                            toolCalls: [...existing, liveToolCall]
-                        };
-                    } else {
-                        console.log(`[AgentStore] Tool call ${liveToolCall.id} already exists in message`);
+                    const isDuplicate = existing.some(tc => 
+                        tc.id === liveToolCall.id || 
+                        (tc.tool === liveToolCall.tool && JSON.stringify(tc.args) === JSON.stringify(liveToolCall.args))
+                    );
+
+                    if (!isDuplicate) {
+                        return { ...m, toolCalls: [...existing, liveToolCall] };
                     }
                 }
                 return m;
             });
 
             coreUseChatStore.setState({ messages: updatedMessages });
-            console.log('[AgentStore] Updated chat messages with tool call');
-
-            // Debug: Log the updated message to verify toolCalls were added
-            const debugMsg = updatedMessages.find(m => m.id === msgId);
-            console.log('[AgentStore] DEBUG: Message after update:', debugMsg);
-            console.log('[AgentStore] DEBUG: Message toolCalls:', debugMsg?.toolCalls);
         }
-        // 3. Handle RESULT -> Show Final Summary in Chat
         else if (payload.type === 'result') {
-            console.log('[AgentStore] Received RESULT event for agent:', id);
             const result = payload.result || "";
-            console.log('[AgentStore] Final result:', result.substring(0, 100) + '...');
             chatState.updateMessageContent(msgId, result);
         }
-        // 4. Handle ERROR
         else if (payload.type === 'error') {
-            console.log('[AgentStore] Received ERROR event for agent:', id, payload.error);
             chatState.updateMessageContent(msgId, `❌ Agent Error: ${payload.error}`);
         }
     });
@@ -187,28 +175,55 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   initEventListeners: async () => {
-      console.log('[AgentStore] 🎯 Initializing global event listeners...');
+      console.log('[AgentStore] 🎯 Starting global event listeners initialization...');
+      
+      const unlisteners: UnlistenFn[] = [];
 
-      await listen('agent:status', (event: any) => {
+      const unlistenStatus = await listen('agent:status', (event: any) => {
         const { id, status, progress } = event.payload;
         console.log('[AgentStore] 📊 agent:status event:', { id, status, progress });
-        console.log('[AgentStore] Current runningAgents:', useAgentStore.getState().runningAgents.map(a => ({ id: a.id, status: a.status })));
-        useAgentStore.setState(state => ({
-            runningAgents: state.runningAgents.map(a => a.id === id ? { ...a, status, progress } : a)
-        }));
-        console.log('[AgentStore] After update:', useAgentStore.getState().runningAgents.find(a => a.id === id));
+        
+        useAgentStore.setState(state => {
+            const agent = state.runningAgents.find(a => a.id === id);
+            if (agent) {
+                if (agent.status === status && agent.progress === progress) return state;
+                return {
+                    runningAgents: state.runningAgents.map(a => a.id === id ? { ...a, status, progress } : a)
+                };
+            } else {
+                console.log(`[AgentStore] Buffering status for unknown agent ${id}: ${status}`);
+                return {
+                    pendingStatusUpdates: {
+                        ...state.pendingStatusUpdates,
+                        [id]: { status, progress }
+                    }
+                };
+            }
+        });
       });
+      unlisteners.push(unlistenStatus);
 
-      await listen('agent:log', (event: any) => {
+      const unlistenLog = await listen('agent:log', (event: any) => {
         const { id, message } = event.payload;
-        console.log('[AgentStore] agent:log event:', { id, message });
-        useAgentStore.setState(state => ({
-            runningAgents: state.runningAgents.map(a => a.id === id ? { ...a, logs: [...a.logs, message] } : a)
-        }));
-      });
+        useAgentStore.setState(state => {
+            const agent = state.runningAgents.find(a => a.id === id);
+            if (!agent) return state;
 
-      // Keeping this for redundancy, but new flow uses agent_${id} stream
-      await listen('agent:approval_required', (event: any) => {
+            const needsStatusFix = agent.status === 'idle';
+            if (!needsStatusFix && agent.logs[agent.logs.length - 1] === message) return state;
+
+            return {
+                runningAgents: state.runningAgents.map(a => a.id === id ? { 
+                    ...a, 
+                    logs: [...a.logs, message],
+                    status: needsStatusFix ? 'running' : a.status 
+                } : a)
+            };
+        });
+      });
+      unlisteners.push(unlistenLog);
+
+      const unlistenApproval = await listen('agent:approval_required', (event: any) => {
           const { id, tool, path, content } = event.payload;
           useAgentStore.setState(state => ({
               runningAgents: state.runningAgents.map(a => 
@@ -216,33 +231,32 @@ export const useAgentStore = create<AgentState>((set, get) => ({
               )
           }));
       });
+      unlisteners.push(unlistenApproval);
 
-      await listen('agent:result', (event: any) => {
+      const unlistenResult = await listen('agent:result', (event: any) => {
         console.log('[AgentStore] 🎉 agent:result event RECEIVED!', event);
         const { id, output } = event.payload;
-        console.log('[AgentStore] 📝 Result details:', { id, outputLength: output?.length || 0, preview: output?.substring(0, 100) });
-        console.log('[AgentStore] 📋 Current runningAgents before update:', useAgentStore.getState().runningAgents.map(a => ({ id: a.id, status: a.status, expiresAt: a.expiresAt })));
-
+        
         useAgentStore.setState(state => ({
             runningAgents: state.runningAgents.map(a =>
                 a.id === id ? { ...a, status: 'completed', progress: 1.0, expiresAt: Date.now() + 10000 } : a)
         }));
-
-        const updatedAgent = useAgentStore.getState().runningAgents.find(a => a.id === id);
-        console.log('[AgentStore] ✅ Agent after update:', updatedAgent);
-        console.log('[AgentStore] ⏰ Setting 10s auto-close timer for agent:', id);
 
         setTimeout(() => {
             const agent = useAgentStore.getState().runningAgents.find(a => a.id === id);
             if (agent) {
                 console.log('[AgentStore] 🗑️ Auto-closing agent:', id);
                 useAgentStore.getState().removeAgent(id);
-            } else {
-                console.log('[AgentStore] ⚠️ Agent already removed:', id);
             }
         }, 10000);
       });
+      unlisteners.push(unlistenResult);
 
       console.log('[AgentStore] ✅ All global event listeners initialized!');
+
+      return () => {
+          console.log('[AgentStore] 🛑 Cleaning up global event listeners...');
+          unlisteners.forEach(u => u());
+      };
   }
 }));

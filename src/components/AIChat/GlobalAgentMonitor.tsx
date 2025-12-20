@@ -12,6 +12,11 @@ export const GlobalAgentMonitor: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Debug: Track renders and agent status
+  useEffect(() => {
+      console.log('[GlobalAgentMonitor] Rendered with agents:', runningAgents.map(a => ({ id: a.id, status: a.status, progress: a.progress })));
+  }, [runningAgents]);
+
   if (runningAgents.length === 0) return null;
 
   return (

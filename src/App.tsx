@@ -51,8 +51,11 @@ function App() {
 
     // Initialize agent event listeners (async)
     console.log('[App] 🚀 Starting to initialize agent event listeners...');
-    useAgentStore.getState().initEventListeners().then(() => {
+    let cleanupFn: (() => void) | undefined;
+
+    useAgentStore.getState().initEventListeners().then((cleanup) => {
         console.log('[App] ✅ Agent event listeners initialization complete!');
+        cleanupFn = cleanup;
     }).catch((error) => {
         console.error('[App] ❌ Failed to initialize agent event listeners:', error);
     });
@@ -60,6 +63,13 @@ function App() {
     // NOTE: The duplicate agent:result listener in App.tsx is now REMOVED
     // because agentStore.ts already handles this event properly.
     // This eliminates duplicate message injection.
+    
+    return () => {
+        if (cleanupFn) {
+            console.log('[App] 🧹 Cleaning up agent event listeners...');
+            cleanupFn();
+        }
+    };
   }, []);
 
   useEffect(() => {
