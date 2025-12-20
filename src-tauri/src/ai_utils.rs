@@ -273,10 +273,10 @@ pub async fn agent_stream_chat(
                             eprintln!("[AgentStream] Got content chunk: {} chars", content.len());
                             accumulated_content.push_str(content);
 
-                            // Send to frontend in real-time
+                            // Send to frontend in real-time as 'thinking' type
                             let _ = app.emit(
                                 &format!("agent_{}", agent_id),
-                                json!({ "type": "content", "content": content })
+                                json!({ "type": "thinking", "content": content })
                             );
                         }
 

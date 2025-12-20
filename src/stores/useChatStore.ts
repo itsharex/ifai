@@ -59,18 +59,33 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             });
 
             try {
-                const agentId = await useAgentStore.getState().launchAgent(agentName, args || "No specific task provided");
-                
-                // System feedback - LINKED to agentId
+                // IMPORTANT: Create assistant message FIRST, then pass its ID to launchAgent
+                const assistantMsgId = crypto.randomUUID();
                 addMessage({
-                    id: crypto.randomUUID(),
+                    id: assistantMsgId,
                     role: 'assistant',
-                    content: ``, // Start empty, will be filled by stream
+                    content: ``, // Start empty, will be filled by events
                     // @ts-ignore - custom property
-                    agentId: agentId,
+                    agentId: undefined, // Will be set after agent launches
                     // Indicate this is a live agent message
-                    isAgentLive: true 
+                    isAgentLive: true
                 });
+
+                // Launch agent with the message ID so events can update this message
+                const agentId = await useAgentStore.getState().launchAgent(
+                    agentName,
+                    args || "No specific task provided",
+                    assistantMsgId  // ✅ Pass message ID to establish the mapping!
+                );
+
+                // Update the message with the actual agentId for reference
+                const messages = coreUseChatStore.getState().messages;
+                const msg = messages.find(m => m.id === assistantMsgId);
+                if (msg) {
+                    // @ts-ignore
+                    msg.agentId = agentId;
+                    coreUseChatStore.setState({ messages: [...messages] });
+                }
             } catch (e) {
                 addMessage({
                     id: crypto.randomUUID(),

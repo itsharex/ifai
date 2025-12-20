@@ -56,6 +56,10 @@ export const MonacoDiffView: React.FC<MonacoDiffViewProps> = ({
       editorRef.current = diffEditor;
 
       return () => {
+        // Critical fix: Detach models from editor BEFORE disposing them to prevent "TextModel got disposed" error
+        if (diffEditor) {
+            diffEditor.setModel(null);
+        }
         originalModel.dispose();
         modifiedModel.dispose();
         diffEditor.dispose();
