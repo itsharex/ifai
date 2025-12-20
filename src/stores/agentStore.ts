@@ -139,14 +139,22 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
             coreUseChatStore.setState({ messages: updatedMessages });
             console.log('[AgentStore] Updated chat messages with tool call');
+
+            // Debug: Log the updated message to verify toolCalls were added
+            const debugMsg = updatedMessages.find(m => m.id === msgId);
+            console.log('[AgentStore] DEBUG: Message after update:', debugMsg);
+            console.log('[AgentStore] DEBUG: Message toolCalls:', debugMsg?.toolCalls);
         }
         // 3. Handle RESULT -> Show Final Summary in Chat
         else if (payload.type === 'result') {
+            console.log('[AgentStore] Received RESULT event for agent:', id);
             const result = payload.result || "";
+            console.log('[AgentStore] Final result:', result.substring(0, 100) + '...');
             chatState.updateMessageContent(msgId, result);
         }
         // 4. Handle ERROR
         else if (payload.type === 'error') {
+            console.log('[AgentStore] Received ERROR event for agent:', id, payload.error);
             chatState.updateMessageContent(msgId, `❌ Agent Error: ${payload.error}`);
         }
     });
@@ -179,15 +187,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   initEventListeners: async () => {
+      console.log('[AgentStore] 🎯 Initializing global event listeners...');
+
       await listen('agent:status', (event: any) => {
         const { id, status, progress } = event.payload;
+        console.log('[AgentStore] 📊 agent:status event:', { id, status, progress });
+        console.log('[AgentStore] Current runningAgents:', useAgentStore.getState().runningAgents.map(a => ({ id: a.id, status: a.status })));
         useAgentStore.setState(state => ({
             runningAgents: state.runningAgents.map(a => a.id === id ? { ...a, status, progress } : a)
         }));
+        console.log('[AgentStore] After update:', useAgentStore.getState().runningAgents.find(a => a.id === id));
       });
 
       await listen('agent:log', (event: any) => {
         const { id, message } = event.payload;
+        console.log('[AgentStore] agent:log event:', { id, message });
         useAgentStore.setState(state => ({
             runningAgents: state.runningAgents.map(a => a.id === id ? { ...a, logs: [...a.logs, message] } : a)
         }));
@@ -204,12 +218,31 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       });
 
       await listen('agent:result', (event: any) => {
+        console.log('[AgentStore] 🎉 agent:result event RECEIVED!', event);
         const { id, output } = event.payload;
+        console.log('[AgentStore] 📝 Result details:', { id, outputLength: output?.length || 0, preview: output?.substring(0, 100) });
+        console.log('[AgentStore] 📋 Current runningAgents before update:', useAgentStore.getState().runningAgents.map(a => ({ id: a.id, status: a.status, expiresAt: a.expiresAt })));
+
         useAgentStore.setState(state => ({
-            runningAgents: state.runningAgents.map(a => 
+            runningAgents: state.runningAgents.map(a =>
                 a.id === id ? { ...a, status: 'completed', progress: 1.0, expiresAt: Date.now() + 10000 } : a)
         }));
-        setTimeout(() => { if (useAgentStore.getState().runningAgents.find(a => a.id === id)) { useAgentStore.getState().removeAgent(id); } }, 10000);
+
+        const updatedAgent = useAgentStore.getState().runningAgents.find(a => a.id === id);
+        console.log('[AgentStore] ✅ Agent after update:', updatedAgent);
+        console.log('[AgentStore] ⏰ Setting 10s auto-close timer for agent:', id);
+
+        setTimeout(() => {
+            const agent = useAgentStore.getState().runningAgents.find(a => a.id === id);
+            if (agent) {
+                console.log('[AgentStore] 🗑️ Auto-closing agent:', id);
+                useAgentStore.getState().removeAgent(id);
+            } else {
+                console.log('[AgentStore] ⚠️ Agent already removed:', id);
+            }
+        }, 10000);
       });
+
+      console.log('[AgentStore] ✅ All global event listeners initialized!');
   }
 }));

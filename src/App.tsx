@@ -48,30 +48,18 @@ function App() {
 
   useEffect(() => {
     useLayoutStore.getState().validateLayout();
-    useAgentStore.getState().initEventListeners();
 
-    // Global listener for agent results to sync with Chat UI
-    // This decouples agentStore from chatStore to avoid circular dependencies
-    const unlistenPromise = listen('agent:result', (event: any) => {
-        const { id, output } = event.payload;
-        // Wait a tick to ensure agentStore has updated the agent details
-        setTimeout(() => {
-            const agent = useAgentStore.getState().runningAgents.find(a => a.id === id);
-            const agentType = agent ? agent.type : "Agent";
-            
-            console.log('[App] Injecting agent result to chat for:', id);
-            
-            useChatStore.getState().addMessage({
-                id: crypto.randomUUID(),
-                role: 'assistant',
-                content: `✅ **${agentType}** task finished.\n\n**Result Summary:**\n${output}\n\n*Detailed logs are available in the task monitor.*`
-            });
-        }, 100);
+    // Initialize agent event listeners (async)
+    console.log('[App] 🚀 Starting to initialize agent event listeners...');
+    useAgentStore.getState().initEventListeners().then(() => {
+        console.log('[App] ✅ Agent event listeners initialization complete!');
+    }).catch((error) => {
+        console.error('[App] ❌ Failed to initialize agent event listeners:', error);
     });
 
-    return () => {
-        unlistenPromise.then(unlisten => unlisten());
-    };
+    // NOTE: The duplicate agent:result listener in App.tsx is now REMOVED
+    // because agentStore.ts already handles this event properly.
+    // This eliminates duplicate message injection.
   }, []);
 
   useEffect(() => {

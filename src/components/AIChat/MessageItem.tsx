@@ -21,6 +21,13 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     const { t } = useTranslation();
     const isUser = message.role === 'user';
 
+    // Debug: Log message toolCalls on every render
+    React.useEffect(() => {
+        if (message.toolCalls && message.toolCalls.length > 0) {
+            console.log('[MessageItem] Rendering message with toolCalls:', message.id, message.toolCalls);
+        }
+    }, [message.toolCalls, message.id]);
+
     // Count pending tool calls for batch actions
     const pendingCount = React.useMemo(() => {
         if (!message.toolCalls) return 0;
@@ -223,6 +230,4 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             </div>
         </div>
     );
-}, (prev, next) => {
-    return prev.message === next.message && prev.isStreaming === next.isStreaming;
 })
