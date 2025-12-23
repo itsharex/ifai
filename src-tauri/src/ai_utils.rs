@@ -1,4 +1,4 @@
-use ifainew_core::ai::{Message, Content, AIProtocol, ToolCall, AIProviderConfig, FunctionCall};
+use crate::core_traits::ai::{Message, Content, ToolCall, AIProviderConfig, FunctionCall};
 use serde_json::{json, Value};
 use reqwest::Client;
 use std::time::Duration;
@@ -145,7 +145,7 @@ pub async fn fetch_ai_completion(
             calls.push(ToolCall {
                 id: tc_val["id"].as_str().unwrap_or("").to_string(),
                 r#type: "function".to_string(),
-                function: ifainew_core::ai::FunctionCall {
+                function: FunctionCall {
                     name: tc_val["function"]["name"].as_str().unwrap_or("").to_string(),
                     arguments: tc_val["function"]["arguments"].as_str().unwrap_or("{}").to_string(),
                 }
@@ -159,6 +159,7 @@ pub async fn fetch_ai_completion(
         content: Content::Text(content_text),
         tool_calls,
         tool_call_id: None,
+        id: None,
     })
 }
 
@@ -396,5 +397,6 @@ pub async fn agent_stream_chat(
         content: Content::Text(accumulated_content),
         tool_calls,
         tool_call_id: None,
+        id: None,
     })
 }

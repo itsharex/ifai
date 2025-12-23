@@ -1,7 +1,7 @@
 pub mod token_counter;
 pub mod summarizer;
 
-use ifainew_core::ai::{Message, Content, AIProviderConfig};
+use crate::core_traits::ai::{Message, Content, AIProviderConfig};
 
 pub async fn should_summarize(messages: &[Message]) -> bool {
     let token_count = token_counter::count_messages_tokens(messages);
@@ -43,6 +43,7 @@ pub async fn auto_summarize(
         content: Content::Text(format!("## CONVERSATION SUMMARY\n\n{}\n\n=== End of Summary ===", summary)),
         tool_calls: None,
         tool_call_id: None,
+        id: None,
     });
 
     // Keep the last 10 messages for context

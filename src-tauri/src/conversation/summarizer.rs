@@ -1,6 +1,6 @@
 use crate::prompt_manager;
 use crate::ai_utils;
-use ifainew_core::ai::{Message, Content, AIProviderConfig};
+use crate::core_traits::ai::{Message, Content, AIProviderConfig};
 
 pub async fn generate_summary(
     project_root: &str,
@@ -25,6 +25,7 @@ pub async fn generate_summary(
         content: Content::Text(summary_instruction),
         tool_calls: None,
         tool_call_id: None,
+        id: None,
     });
 
     // 3. Call AI

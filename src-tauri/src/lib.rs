@@ -1,4 +1,5 @@
 use tauri::{Emitter, Manager};
+#[cfg(feature = "commercial")]
 use ifainew_core;
 
 mod file_walker;
@@ -12,23 +13,35 @@ mod conversation;
 mod ai_utils;
 mod commands;
 mod performance;
+mod core_traits;
+mod community;
+#[cfg(feature = "commercial")]
+mod commercial;
+
 use terminal::TerminalManager;
 use lsp::LspManager;
 use agent_system::Supervisor;
+use std::sync::Arc;
+use crate::core_traits::ai::{Message, Content, ContentPart};
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+pub struct AppState {
+    pub ai_service: Arc<dyn core_traits::ai::AIService>,
+    pub rag_service: Arc<dyn core_traits::rag::RagService>,
+    pub agent_service: Arc<dyn core_traits::agent::AgentService>,
+}
+
 #[tauri::command]
 fn greet(name: &str) -> String {
-    println!(">>> RUST GREET CALLED WITH: {}", name);
+    println!( ">>> RUST GREET CALLED WITH: {}", name);
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
 #[tauri::command]
 async fn ai_chat(
     app: tauri::AppHandle,
-    state: tauri::State<'_, ifainew_core::RagState>,
-    provider_config: ifainew_core::ai::AIProviderConfig,
-    mut messages: Vec<ifainew_core::ai::Message>,
+    state: tauri::State<'_, AppState>,
+    provider_config: core_traits::ai::AIProviderConfig,
+    mut messages: Vec<core_traits::ai::Message>,
     event_id: String,
     enable_tools: Option<bool>,
     project_root: Option<String>,
@@ -37,99 +50,77 @@ async fn ai_chat(
 
     if let Some(root) = project_root {
         let root_clone = root.clone();
-        let provider_clone = provider_config.clone();
         
         // 1. Detect @codebase query
         let mut codebase_query = None;
         if let Some(last_msg) = messages.iter().filter(|m| m.role == "user").last() {
-            // Extract text from either Content::Text or Content::Parts
-            let text_content = match &last_msg.content {
-                ifainew_core::ai::Content::Text(text) => Some(text.clone()),
-                ifainew_core::ai::Content::Parts(parts) => {
+             match &last_msg.content {
+                core_traits::ai::Content::Text(text) => {
+                     let lower_text = text.to_lowercase();
+                    if lower_text.contains("@codebase") {
+                        if let Ok(re) = regex::Regex::new("(?i)@codebase") {
+                            let temp = re.replace_all(text, "").to_string();
+                            let final_query = temp.trim().to_string();
+                            codebase_query = Some(if final_query.is_empty() { "overview of the project structure and main logic".to_string() } else { final_query });
+                        }
+                    }
+                }
+                core_traits::ai::Content::Parts(parts) => {
                     let combined_text = parts.iter()
                         .filter_map(|p| match p {
-                            ifainew_core::ai::ContentPart::Text { text, .. } => Some(text.clone()),
+                            core_traits::ai::ContentPart::Text { text, .. } => Some(text.clone()),
                             _ => None,
                         })
                         .collect::<Vec<_>>()
                         .join(" ");
-                    Some(combined_text)
-                }
-            };
-
-            if let Some(text) = text_content {
-                let lower_text = text.to_lowercase();
-                if lower_text.contains("@codebase") {
-                    if let Ok(re) = regex::Regex::new("(?i)@codebase") {
-                        let temp = re.replace_all(&text, "").to_string();
-                        let final_query = temp.trim().to_string();
-                        codebase_query = Some(if final_query.is_empty() { "overview of the project structure and main logic".to_string() } else { final_query });
+                    let lower_text = combined_text.to_lowercase();
+                    if lower_text.contains("@codebase") {
+                        if let Ok(re) = regex::Regex::new("(?i)@codebase") {
+                            let temp = re.replace_all(&combined_text, "").to_string();
+                            let final_query = temp.trim().to_string();
+                            codebase_query = Some(if final_query.is_empty() { "overview of the project structure and main logic".to_string() } else { final_query });
+                        }
                     }
                 }
-            }
+            };
         }
 
-        // 2. Parallel Tasks: RAG Context Building & Auto Summarization
+        // 2. RAG Context Building (Parallel)
         let app_handle = app.clone();
-        let rag_state = state.clone();
-        let root_for_rag = root.clone();
+        let rag_service = state.rag_service.clone();
         let event_id_for_rag = event_id.clone();
+        let root_for_rag = root.clone();
         
         // Clone messages for summarization to avoid move
         let mut messages_for_summarize = messages.clone();
-
+        
+        // Define futures for parallel execution
         let rag_task = async move {
             if let Some(query) = codebase_query {
-                println!("[AI Chat] Parallel RAG: Starting context build...");
-                
-                // Ensure RAG is initialized (Non-blocking check)
-                let is_initialized = {
-                    let guard = rag_state.index.lock().unwrap();
-                    guard.is_some()
-                };
-
-                if !is_initialized {
-                    println!("[AI Chat] Parallel RAG: Index NOT initialized. Starting background init...");
-                    let app_clone = app_handle.clone();
-                    let root_clone = root_for_rag.clone();
-                    let event_id_clone = event_id_for_rag.clone();
-
-                    // Notify frontend that indexing is starting
-                    let _ = app_handle.emit(&format!("{}_status", event_id_for_rag), "Indexing project codebase... (This may take a moment)");
-
-                    // Spawn init in background, DO NOT await here
-                    tokio::spawn(async move {
-                        // Re-acquire state from app handle to avoid lifetime issues in spawn
-                        let state_in_spawn = app_clone.state::<ifainew_core::RagState>();
-                        match ifainew_core::rag::init_rag_index(app_clone.clone(), state_in_spawn, root_clone).await {
-                            Ok(_) => {
-                                println!("[AI Chat] Background RAG init successful.");
-                                let _ = app_clone.emit(&format!("{}_status", event_id_clone), "Indexing complete. Future queries will have full context.");
-                            },
-                            Err(e) => eprintln!("[AI Chat] Background RAG init failed: {}", e),
-                        }
-                    });
-
-                    // Return None immediately so the chat can proceed without context
-                    return None;
-                }
-
-                match ifainew_core::rag::build_context(rag_state, query, root_for_rag).await {
+                 println!("[AI Chat] Parallel RAG: Starting context build...");
+                 
+                 // Note: initialization check is implicit in retrieve_context logic in Commercial impl
+                 // or skipped in Community impl.
+                 
+                 match rag_service.retrieve_context(&query, &root_for_rag).await {
                     Ok(rag_result) => {
                         let _ = app_handle.emit(&format!("{}_references", event_id_for_rag), &rag_result.references);
                         let _ = app_handle.emit("codebase-references", rag_result.references);
                         Some(rag_result.context)
                     },
                     Err(e) => {
-                        eprintln!("[AI Chat] Parallel RAG: Search failed: {}", e);
-                        None
+                         eprintln!("[AI Chat] RAG failed: {}", e);
+                         None
                     }
-                }
+                 }
             } else {
                 None
             }
         };
 
+        // For now, simple summarization without auto_summarize if it's too complex to port
+        // But we ported conversation/mod.rs so we can try.
+        let provider_clone = provider_config.clone();
         let summarize_task = async move {
             if let Err(e) = conversation::auto_summarize(&root_clone, &provider_clone, &mut messages_for_summarize).await {
                 eprintln!("[AI Chat] Parallel Summarize: Error: {}", e);
@@ -146,38 +137,54 @@ async fn ai_chat(
         // 3. Assemble Final System Prompt
         let mut final_system_prompt = prompt_manager::get_main_system_prompt(&root);
         if let Some(context) = rag_context {
-            if !context.is_empty() {
+             if !context.is_empty() {
                 let truncated_context = if context.len() > 12000 {
                     format!("{}... [Context Truncated]", &context[..12000])
                 } else {
                     context
                 };
-                println!("[AI Chat] Parallel RAG: Context injected ({} chars)", truncated_context.len());
-                final_system_prompt.push_str("\n\nProject Context (Use this to answer codebase questions):\n");
+                final_system_prompt.push_str("\n\nProject Context:\n");
                 final_system_prompt.push_str(&truncated_context);
-            }
+             }
         }
 
-        // 4. Update System Message (Deduplication)
         messages.retain(|m| m.role != "system");
-        messages.insert(0, ifainew_core::ai::Message {
+        messages.insert(0, core_traits::ai::Message {
             role: "system".to_string(),
-            content: ifainew_core::ai::Content::Text(final_system_prompt),
+            content: core_traits::ai::Content::Text(final_system_prompt),
             tool_calls: None,
             tool_call_id: None,
+            id: None
         });
     }
-        
+
     ai_utils::sanitize_messages(&mut messages);
-    ifainew_core::ai::stream_chat(app, provider_config, messages, event_id, enable_tools.unwrap_or(true)).await
+    
+    // Callback wrapper for Tauri events
+    let app_handle_for_stream = app.clone();
+    let event_id_clone = event_id.clone();
+    
+    state.ai_service.stream_chat(
+        &provider_config, 
+        messages, 
+        &event_id, 
+        Box::new(move |chunk| {
+             let _ = app_handle_for_stream.emit(&event_id_clone, chunk);
+        })
+    ).await
 }
 
 #[tauri::command]
 async fn ai_completion(
-    provider_config: ifainew_core::ai::AIProviderConfig,
-    messages: Vec<ifainew_core::ai::Message>,
+    state: tauri::State<'_, AppState>,
+    provider_config: core_traits::ai::AIProviderConfig,
+    messages: Vec<core_traits::ai::Message>,
 ) -> Result<String, String> {
-    ifainew_core::ai::complete_code(provider_config, messages).await
+    let response = state.ai_service.chat(&provider_config, messages).await?;
+    match response.content {
+        core_traits::ai::Content::Text(t) => Ok(t),
+        _ => Err("Received non-text content for completion".to_string()),
+    }
 }
 
 #[tauri::command]
@@ -194,25 +201,61 @@ async fn create_window(app: tauri::AppHandle, label: String, title: String, url:
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    
+    builder = builder.setup(|app| {
+        let app_handle = app.handle().clone();
+        
+        #[cfg(feature = "commercial")]
+        let (ai, rag, agent) = {
+             let ai = Arc::new(commercial::impls::CommercialAIService::new(app_handle.clone()));
+             let rag = Arc::new(commercial::impls::CommercialRagService::new(app_handle.clone()));
+             let agent = Arc::new(commercial::impls::CommercialAgentService::new());
+             (ai, rag, agent)
+        };
+        
+        #[cfg(not(feature = "commercial"))]
+        let (ai, rag, agent) = {
+             let ai = Arc::new(community::BasicAIService);
+             let rag = Arc::new(community::CommunityRagService);
+             let agent = Arc::new(community::CommunityAgentService);
+             (
+                 ai as Arc<dyn core_traits::ai::AIService>, 
+                 rag as Arc<dyn core_traits::rag::RagService>, 
+                 agent as Arc<dyn core_traits::agent::AgentService>
+             )
+        };
+        
+        app.manage(AppState {
+            ai_service: ai,
+            rag_service: rag,
+            agent_service: agent,
+        });
+        
+        #[cfg(feature = "commercial")]
+        app.manage(ifainew_core::RagState::new());
+        
+        Ok(())
+    });
+
+    builder
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(TerminalManager::new())
         .manage(LspManager::new())
         .manage(Supervisor::new())
-                .on_window_event(|window, event| {
-                    match event {
-                        tauri::WindowEvent::CloseRequested { .. } => {
-                            if window.label() == "main" {
-                                window.app_handle().exit(0);
-                            }
-                        }
-                        tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
-                            let _ = window.emit("tauri://file-drop", paths.clone());
-                        }
-                        _ => {}
+        .on_window_event(|window, event| {
+            match event {
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    if window.label() == "main" {
+                        window.app_handle().exit(0);
                     }
-                })
-        .manage(ifainew_core::RagState::new())
+                }
+                tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
+                    let _ = window.emit("tauri://file-drop", paths.clone());
+                }
+                _ => {}
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -231,13 +274,13 @@ pub fn run() {
             lsp::start_lsp,
             lsp::send_lsp_message,
             lsp::kill_lsp,
-            ifainew_core::rag::init_rag_index,
-            ifainew_core::rag::search_semantic,
-            ifainew_core::rag::search_hybrid,
-            ifainew_core::rag::build_context,
-            ifainew_core::agent::agent_write_file,
-            ifainew_core::agent::agent_read_file,
-            ifainew_core::agent::agent_list_dir,
+            commands::core_wrappers::init_rag_index,
+            commands::core_wrappers::search_semantic,
+            commands::core_wrappers::search_hybrid,
+            commands::core_wrappers::build_context,
+            commands::core_wrappers::agent_write_file,
+            commands::core_wrappers::agent_read_file,
+            commands::core_wrappers::agent_list_dir,
             commands::prompt_commands::list_prompts,
             commands::prompt_commands::get_prompt,
             commands::prompt_commands::update_prompt,

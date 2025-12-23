@@ -1,5 +1,5 @@
 use tiktoken_rs::cl100k_base;
-use ifainew_core::ai::{Message, Content};
+use crate::core_traits::ai::{Message, Content, ContentPart};
 
 pub fn count_messages_tokens(messages: &[Message]) -> usize {
     let bpe = match cl100k_base() {
@@ -15,9 +15,16 @@ pub fn count_messages_tokens(messages: &[Message]) -> usize {
         match &msg.content {
             Content::Text(text) => total_tokens += bpe.encode_with_special_tokens(text).len(),
             Content::Parts(parts) => {
-                for _part in parts {
-                    // Simple estimate for parts
-                    total_tokens += 2;
+                for part in parts {
+                    match part {
+                        ContentPart::Text { text } => {
+                             total_tokens += bpe.encode_with_special_tokens(text).len();
+                        }
+                        _ => {
+                            // Image or other part
+                            total_tokens += 2; 
+                        }
+                    }
                 }
             }
         }
