@@ -145,3 +145,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
         console.log("Mock core: rejectToolCall", messageId, toolCallId);
     }
 }));
+
+export const getToolLabel = (name: string) => {
+    switch (name) {
+        case 'agent_write_file': return 'Write File';
+        case 'agent_read_file': return 'Read File';
+        case 'agent_list_dir': return 'List Directory';
+        case 'search_semantic': return 'Search Code';
+        default: return name;
+    }
+};
+
+export const getToolColor = (name: string) => {
+    switch (name) {
+        case 'agent_write_file': return 'text-red-500';
+        case 'agent_read_file': return 'text-green-500';
+        case 'agent_list_dir': return 'text-yellow-500';
+        case 'search_semantic': return 'text-blue-500';
+        default: return 'text-gray-500';
+    }
+};
