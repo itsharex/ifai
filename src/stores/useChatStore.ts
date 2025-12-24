@@ -550,22 +550,20 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 const patchedApproveToolCall = async (messageId: string, toolCallId: string) => {
     console.log(`[useChatStore] patchedApproveToolCall called - messageId: ${messageId}, toolCallId: ${toolCallId}`);
 
-    // Check if this is an Agent tool call
-    const message = coreUseChatStore.getState().messages.find(m => m.id === messageId);
+    const state = coreUseChatStore.getState();
+    const message = state.messages.find(m => m.id === messageId);
     const toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
 
-    console.log(`[useChatStore] Found message: ${!!message}, Found toolCall: ${!!toolCall}`);
-    if (toolCall) {
-        const toolName = (toolCall as any).tool || (toolCall as any).function?.name;
-        console.log(`[useChatStore] ToolCall agentId: ${(toolCall as any).agentId}, tool: ${toolName}`);
+    if (!message || !toolCall) {
+        console.error("Message or ToolCall not found");
+        return;
     }
 
-    if (toolCall && (toolCall as any).agentId) {
-        // Agent tool call: use Agent approval flow
+    // 1. Handle Agent Tool Calls (delegated to AgentStore)
+    if ((toolCall as any).agentId) {
         const agentId = (toolCall as any).agentId;
-        console.log(`[useChatStore] Using Agent approval flow for agent ${agentId}, tool: ${toolCall.tool || (toolCall as any).function?.name}`);
+        console.log(`[useChatStore] Using Agent approval flow for agent ${agentId}`);
 
-        // Update tool call status to approved
         coreUseChatStore.setState(state => ({
             messages: state.messages.map(m =>
                 m.id === messageId ? {
@@ -577,16 +575,119 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string) => 
             )
         }));
 
-        console.log(`[useChatStore] Calling approveAction for agent ${agentId}`);
         await useAgentStore.getState().approveAction(agentId, true);
-        console.log(`[useChatStore] approveAction completed for agent ${agentId}`);
-    } else {
-        // Regular tool call: use original flow
-        console.log(`[useChatStore] Using original approval flow`);
-        await originalApproveToolCall(messageId, toolCallId);
+        useFileStore.getState().refreshFileTree();
+        return;
     }
 
-    // Refresh file tree after tool execution
+    // 2. Handle File System Tools (Manual Invocation to fix snake_case args)
+    const fsTools = ['agent_write_file', 'agent_read_file', 'agent_list_dir'];
+    const toolName = toolCall.tool || (toolCall as any).function?.name;
+
+    if (fsTools.includes(toolName)) {
+        console.log(`[useChatStore] Intercepting FS tool: ${toolName}`);
+        
+        // Update status to approved
+        coreUseChatStore.setState(state => ({
+            messages: state.messages.map(m =>
+                m.id === messageId ? {
+                    ...m,
+                    toolCalls: m.toolCalls?.map(tc =>
+                        tc.id === toolCallId ? { ...tc, status: 'approved' as const } : tc
+                    )
+                } : m
+            )
+        }));
+
+        try {
+            const rootPath = useFileStore.getState().rootPath;
+            if (!rootPath) throw new Error("No project root opened");
+
+            // Fix arguments: snake_case (LLM) -> camelCase (Tauri)
+            const args = toolCall.args;
+            const tauriArgs = {
+                rootPath,
+                relPath: args.rel_path || args.relPath,
+                content: args.content // agent_write_file only
+            };
+
+            console.log(`[useChatStore] Invoking ${toolName} with`, tauriArgs);
+            const result = await invoke(toolName, tauriArgs);
+            const stringResult = typeof result === 'string' ? result : JSON.stringify(result);
+
+            // Update status to completed
+            coreUseChatStore.setState(state => ({
+                messages: state.messages.map(m =>
+                    m.id === messageId ? {
+                        ...m,
+                        toolCalls: m.toolCalls?.map(tc =>
+                            tc.id === toolCallId ? { ...tc, status: 'completed' as const, result: stringResult } : tc
+                        )
+                    } : m
+                )
+            }));
+
+            // Add Tool Output Message
+            coreUseChatStore.getState().addMessage({
+                id: crypto.randomUUID(),
+                role: 'tool',
+                content: stringResult,
+                tool_call_id: toolCallId
+            });
+
+            // Continue Conversation
+            const settings = useSettingsStore.getState();
+            const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+            if (providerConfig) {
+                await patchedGenerateResponse(
+                    coreUseChatStore.getState().messages, 
+                    providerConfig, 
+                    { enableTools: true }
+                );
+            }
+
+        } catch (e) {
+            console.error(`[useChatStore] Tool execution failed:`, e);
+            
+            // Update status to failed
+            coreUseChatStore.setState(state => ({
+                messages: state.messages.map(m =>
+                    m.id === messageId ? {
+                        ...m,
+                        toolCalls: m.toolCalls?.map(tc =>
+                            tc.id === toolCallId ? { ...tc, status: 'failed' as const, result: String(e) } : tc
+                        )
+                    } : m
+                )
+            }));
+
+            // Add Error Output
+            coreUseChatStore.getState().addMessage({
+                id: crypto.randomUUID(),
+                role: 'tool',
+                content: `Error: ${String(e)}`,
+                tool_call_id: toolCallId
+            });
+             // Still continue to let AI know it failed? 
+             // Yes, usually better to let AI retry or apologize.
+             const settings = useSettingsStore.getState();
+             const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+             if (providerConfig) {
+                 await patchedGenerateResponse(
+                     coreUseChatStore.getState().messages, 
+                     providerConfig, 
+                     { enableTools: true }
+                 );
+             }
+        }
+        
+        useFileStore.getState().refreshFileTree();
+        return;
+    }
+
+    // 3. Fallback to Original Flow (for other tools)
+    console.log(`[useChatStore] Using original approval flow`);
+    await originalApproveToolCall(messageId, toolCallId);
     useFileStore.getState().refreshFileTree();
 };
 
