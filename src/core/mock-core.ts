@@ -14,14 +14,15 @@ export interface ContentPart {
 export interface ToolCall {
     id: string;
     type: 'function';
-    tool: string; // 项目中实际使用的字段
-    args: any;    // 项目中实际使用的字段
+    tool: string; 
+    args: any;    
     function: {
         name: string;
         arguments: string;
     };
     status?: 'pending' | 'approved' | 'rejected';
     isPartial?: boolean;
+    agentId?: string; // 添加 agentId 字段，解决 agentStore 类型不匹配
 }
 
 export interface Message {
@@ -32,6 +33,8 @@ export interface Message {
     tool_call_id?: string;
     references?: string[];
     multiModalContent?: ContentPart[];
+    agentId?: string;
+    isAgentLive?: boolean;
     [key: string]: any;
 }
 
@@ -44,7 +47,7 @@ export interface AIProviderConfig {
 
 export interface ChatState {
     messages: Message[];
-    isLoading: boolean; // 补全缺失字段
+    isLoading: boolean;
     inputHistory: string[];
     historyIndex: number;
     addMessage: (msg: Message) => void;
@@ -52,7 +55,17 @@ export interface ChatState {
     approveToolCall: (messageId: string, toolCallId: string) => Promise<void>;
     rejectToolCall: (messageId: string, toolCallId: string) => Promise<void>;
     updateMessage: (id: string, updates: Partial<Message>) => void;
-    updateMessageContent: (id: string, content: string) => void; // 补全缺失方法
+    updateMessageContent: (id: string, content: string) => void;
+    addToolCall: (messageId: string, toolCall: ToolCall) => void; // 补全缺失方法
+    updateToolCall: (messageId: string, toolCallId: string, updates: Partial<ToolCall>) => void; // 补全缺失方法
+}
+
+// Backend Message type for invoke calls
+export interface BackendMessage {
+    role: string;
+    content: any;
+    tool_calls?: any[];
+    tool_call_id?: string;
 }
 
 let getFileStore: any = () => ({ projectRoot: null });
@@ -77,6 +90,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     updateMessageContent: (id, content) => set(state => ({
         messages: state.messages.map(m => m.id === id ? { ...m, content } : m)
+    })),
+
+    addToolCall: (messageId, toolCall) => set(state => ({
+        messages: state.messages.map(m => 
+            m.id === messageId ? { ...m, toolCalls: [...(m.toolCalls || []), toolCall] } : m
+        )
+    })),
+
+    updateToolCall: (messageId, toolCallId, updates) => set(state => ({
+        messages: state.messages.map(m => 
+            m.id === messageId ? {
+                ...m,
+                toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { ...tc, ...updates } : tc)
+            } : m
+        )
     })),
 
     sendMessage: async (content, providerId, modelName) => {

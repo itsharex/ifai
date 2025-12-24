@@ -147,7 +147,8 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string) => 
 
     console.log(`[useChatStore] Found message: ${!!message}, Found toolCall: ${!!toolCall}`);
     if (toolCall) {
-        console.log(`[useChatStore] ToolCall agentId: ${(toolCall as any).agentId}, tool: ${toolCall.tool}`);
+        const toolName = (toolCall as any).tool || (toolCall as any).function?.name;
+        console.log(`[useChatStore] ToolCall agentId: ${(toolCall as any).agentId}, tool: ${toolName}`);
     }
 
     if (toolCall && (toolCall as any).agentId) {
