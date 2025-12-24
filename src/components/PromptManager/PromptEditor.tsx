@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { usePromptStore } from '../../stores/promptStore';
 import { useAgentStore } from '../../stores/agentStore';
-import { Play, X, Save, AlertTriangle } from 'lucide-react';
+import { Play, X, Save, AlertTriangle, Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import { checkFeature, IS_COMMERCIAL } from '../../config/edition';
 
 export const PromptEditor: React.FC = () => {
+  const canEdit = checkFeature('promptEditing');
   const { selectedPrompt, updatePrompt, renderTemplate } = usePromptStore();
   const { launchAgent, runningAgents } = useAgentStore();
   const [content, setContent] = useState('');
@@ -102,11 +104,25 @@ export const PromptEditor: React.FC = () => {
   }
 
   const isBuiltin = selectedPrompt.path?.startsWith('builtin://') || false;
-  const isReadOnly = (selectedPrompt.metadata.access_tier !== 'public' && !isBuiltin);
+  const isReadOnly = !canEdit || (selectedPrompt.metadata.access_tier !== 'public' && !isBuiltin);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-white dark:bg-gray-800 shadow-inner">
-      {isBuiltin && (
+      {!canEdit && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 px-4 py-2 text-xs text-amber-700 dark:text-amber-300 border-b border-amber-100 dark:border-amber-900/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                  <Lock size={12} />
+                  <span>提示词编辑功能仅在<b>商业版</b>中可用</span>
+              </div>
+              <button 
+                onClick={() => window.open('https://ifai.dev/pricing')}
+                className="bg-amber-600 hover:bg-amber-700 text-white px-2 py-0.5 rounded text-[10px] font-bold transition-colors"
+              >
+                了解更多
+              </button>
+          </div>
+      )}
+      {canEdit && isBuiltin && (
           <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-1.5 text-[10px] text-blue-700 dark:text-blue-300 border-b border-blue-100 dark:border-blue-900/50 flex items-center gap-2">
               <span className="bg-blue-500 text-white px-1 rounded-sm font-bold">INFO</span>
               This is a built-in system prompt. Saving will create a project-specific override.

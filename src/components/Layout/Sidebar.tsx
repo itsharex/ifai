@@ -8,6 +8,7 @@ import { SearchPanel } from '../Search/SearchPanel';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { useLayoutStore } from '../../stores/layoutStore';
+import { IS_COMMERCIAL } from '../../config/edition';
 
 export const Sidebar = () => {
   const { t } = useTranslation();
@@ -75,9 +76,16 @@ export const Sidebar = () => {
         <button 
           className={`p-2 mb-2 rounded ${isPromptManagerOpen ? 'text-blue-400 bg-blue-900/20' : 'text-gray-500 hover:text-gray-300'}`}
           onClick={() => togglePromptManager()}
-          title={t('sidebar.prompts')}
+          title={`${t('sidebar.prompts')}${!IS_COMMERCIAL ? ' (Community - Read Only)' : ''}`}
         >
-          <Cpu size={24} />
+          <div className="relative">
+            <Cpu size={24} />
+            {!IS_COMMERCIAL && (
+              <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-0.5 border border-[#1e1e1e]">
+                <Lock size={8} className="text-white" />
+              </div>
+            )}
+          </div>
         </button>
       </div>
 
