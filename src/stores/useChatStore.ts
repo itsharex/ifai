@@ -610,10 +610,18 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string) => 
 
             // Fix arguments: snake_case (LLM) -> camelCase (Tauri)
             const args = toolCall.args;
+            const relPath = args.rel_path || args.relPath;
+            let content = args.content || "";
+
+            // Content unescaping fix: if content is stringified with escaped newlines, restore them
+            if (typeof content === 'string' && content.includes('\\n')) {
+                content = content.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+            }
+
             const tauriArgs = {
                 rootPath,
-                relPath: args.rel_path || args.relPath,
-                content: args.content // agent_write_file only
+                relPath,
+                content
             };
 
             console.log(`[useChatStore] Invoking ${toolName} with`, tauriArgs);
@@ -632,11 +640,18 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string) => 
                 )
             }));
 
+            // Sync with editor if the file is open
+            const fileStore = useFileStore.getState();
+            const openedFile = fileStore.openedFiles.find(f => f.path.endsWith(relPath));
+            if (openedFile) {
+                await fileStore.reloadFileContent(openedFile.id);
+            }
+
             // Add Tool Output Message
             coreUseChatStore.getState().addMessage({
                 id: crypto.randomUUID(),
                 role: 'tool',
-                content: stringResult,
+                content: `Success: ${toolName} executed for ${relPath}`,
                 tool_call_id: toolCallId
             });
 
