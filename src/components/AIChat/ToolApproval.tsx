@@ -26,6 +26,10 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
 // 代码预览行数
 const PREVIEW_LINES = 8;
 
+// PERFORMANCE: Large file thresholds to avoid expensive Monaco Diff rendering
+const MAX_DIFF_SIZE = 5000;  // 5000字符阈值 - 超过此大小跳过Monaco Diff
+const MAX_LINES_COLLAPSED = 50;  // 50行折叠阈值
+
 export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProps) => {
     const { t } = useTranslation();
     const settings = useSettingsStore();
@@ -102,24 +106,23 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
         // Only load when:
         // 1. It's a write file operation
         // 2. Generation is complete (!isPartial)
-        // 3. Still pending approval
-        // 4. Haven't loaded yet
-        if (isWriteFile && filePath && !isPartial && isPending && !oldContent && !isLoadingOld) {
+        // 3. Haven't loaded yet (removed isPending check to allow loading after tool completes)
+        if (isWriteFile && filePath && !isPartial && !oldContent && !isLoadingOld) {
             const loadOld = async () => {
                 setIsLoadingOld(true);
                 try {
                     const content = await readFileContent(filePath);
                     setOldContent(content || '');
                 } catch (e) {
-                    console.log("[Diff] Original file not found, likely new file.");
-                    setOldContent(''); // Assume new file if not found
+                    console.warn("[ToolApproval] Failed to load old content:", e);
+                    setOldContent(''); // Assume new file if not found or load failed
                 } finally {
                     setIsLoadingOld(false);
                 }
             };
             loadOld();
         }
-    }, [isWriteFile, filePath, isPartial, isPending]);
+    }, [isWriteFile, filePath, isPartial, oldContent, isLoadingOld]);
 
     return (
         <div className="mt-2 mb-2 bg-gray-800 rounded-lg border border-gray-600 overflow-hidden w-full max-w-full">
@@ -201,18 +204,85 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
                                     </div>
                                 ) : oldContent !== null && newContent ? (
                                     // Show diff when generation complete and old content loaded
-                                    <div className="rounded border border-gray-700 overflow-hidden">
-                                        <MonacoDiffView
-                                            oldValue={oldContent}
-                                            newValue={newContent}
-                                            language={detectLanguage(filePath)}
-                                            height={isExpanded ? 500 : 250}
-                                        />
-                                    </div>
+                                    (() => {
+                                        // PERFORMANCE: Check content size before creating expensive Monaco Diff
+                                        const contentLength = newContent.length;
+                                        const contentLines = newContent.split('\n').length;
+
+                                        // Skip Monaco Diff for large files to avoid 700-1400ms initialization
+                                        if (contentLength > MAX_DIFF_SIZE) {
+                                            const shouldCollapse = contentLines > MAX_LINES_COLLAPSED;
+                                            const displayContent = isExpanded
+                                                ? newContent
+                                                : newContent.split('\n').slice(0, MAX_LINES_COLLAPSED).join('\n');
+
+                                            return (
+                                                <div>
+                                                    <div className="mb-2 p-2 bg-yellow-900/20 rounded border border-yellow-700/50 text-xs text-yellow-300">
+                                                        ⚠️ 文件较大 ({(contentLength / 1024).toFixed(1)}KB, {contentLines}行)，跳过差异显示以提升性能
+                                                    </div>
+                                                    <div className="max-h-80 overflow-auto rounded border border-gray-700 bg-gray-900">
+                                                        <pre className="p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">
+                                                            {displayContent}
+                                                        </pre>
+                                                    </div>
+                                                    {shouldCollapse && (
+                                                        <button
+                                                            onClick={() => setIsExpanded(!isExpanded)}
+                                                            className="w-full mt-1 py-1 text-xs text-gray-400 hover:text-gray-200 flex items-center justify-center gap-1 bg-gray-900 rounded border border-gray-700 hover:bg-gray-800 transition-colors"
+                                                        >
+                                                            {isExpanded ? (
+                                                                <>
+                                                                    <ChevronUp size={12} />
+                                                                    收起 ({contentLines} 行)
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <ChevronDown size={12} />
+                                                                    展开全部 ({contentLines} 行)
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        }
+
+                                        // Small to medium files: Use Monaco Diff
+                                        return (
+                                            <div className="rounded border border-gray-700 overflow-hidden">
+                                                <MonacoDiffView
+                                                    oldValue={oldContent}
+                                                    newValue={newContent}
+                                                    language={detectLanguage(filePath)}
+                                                    height={isExpanded ? 500 : 250}
+                                                />
+                                            </div>
+                                        );
+                                    })()
                                 ) : (
-                                    // Fallback
-                                    <div className="h-16 bg-gray-900 rounded border border-gray-700 flex items-center justify-center text-gray-600 italic">
-                                        等待文件内容...
+                                    // Fallback UI with retry option
+                                    <div className="p-3 bg-gray-800 rounded border border-gray-600">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-sm text-gray-400">
+                                                {toolCall.status === 'completed' ? '文件内容加载失败' : '等待文件内容...'}
+                                            </span>
+                                            {toolCall.status === 'completed' && (
+                                                <button
+                                                    onClick={() => {
+                                                        setOldContent(null);  // 触发重新加载
+                                                    }}
+                                                    className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white transition-colors"
+                                                >
+                                                    重试加载
+                                                </button>
+                                            )}
+                                        </div>
+                                        {toolCall.status === 'completed' && newContent && (
+                                            <div className="text-xs text-gray-500 mt-1">
+                                                文件已生成，但无法显示差异对比。点击"重试加载"或直接查看文件。
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

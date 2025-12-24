@@ -62,9 +62,9 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
       return;
     }
 
-    // If streaming, throttle updates to reduce jitter (120ms for smooth rendering)
+    // If streaming, throttle updates to reduce jitter (200ms for maximum performance)
     const timeSinceLastUpdate = now - lastUpdateTime.current;
-    const throttleMs = isLastMessageStreaming ? 120 : 150;  // Increased from 50ms to 120ms to reduce code block jitter
+    const throttleMs = isLastMessageStreaming ? 200 : 150;  // Increased to 200ms for maximum performance during code generation
 
     if (timeSinceLastUpdate >= throttleMs) {
       setDisplayMessages(rawMessages);
