@@ -374,7 +374,6 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
     console.log(">>> patchedGenerateResponse called");
     
     // 1. Prepare Config (Reuse logic or just use passed config if it's already correct)
-    // Assuming providerConfig passed here might be from core, let's ensure it has necessary fields
     const settings = useSettingsStore.getState();
     const fullProviderConfig = settings.providers.find((p: any) => p.id === providerConfig.id) || providerConfig;
     
@@ -384,7 +383,8 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
         id: fullProviderConfig.id,
         api_key: fullProviderConfig.apiKey || "",
         base_url: fullProviderConfig.baseUrl || "",
-        models: fullProviderConfig.models || [],
+        // Ensure we use the current model selected in settings
+        models: [settings.currentModel],
         protocol: fullProviderConfig.protocol || "openai"
     };
 
