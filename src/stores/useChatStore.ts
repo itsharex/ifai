@@ -169,22 +169,66 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     const unlistenStream = await listen<string>(assistantMsgId, (event) => {
         const { messages } = coreUseChatStore.getState();
         let textChunk = '';
+        let toolCallUpdate: any = null;
 
         try {
             // Parse JSON format: {"type":"content","content":"文本"}
             const payload = JSON.parse(event.payload);
+            
             if (payload.type === 'content' && payload.content) {
                 textChunk = payload.content;
+            } else if (payload.type === 'tool_call' && payload.toolCall) {
+                toolCallUpdate = payload.toolCall;
             }
         } catch (e) {
             // Fallback: treat as plain text
             textChunk = event.payload;
         }
 
-        if (textChunk) {
-            const updatedMessages = messages.map(m =>
-                m.id === assistantMsgId ? { ...m, content: (m.content || '') + textChunk } : m
-            );
+        if (textChunk || toolCallUpdate) {
+            const updatedMessages = messages.map(m => {
+                if (m.id === assistantMsgId) {
+                    const newMsg = { ...m };
+                    
+                    if (textChunk) {
+                        newMsg.content = (newMsg.content || '') + textChunk;
+                    }
+                    
+                    if (toolCallUpdate) {
+                        const toolName = toolCallUpdate.tool || toolCallUpdate.function?.name;
+                        const toolArgs = toolCallUpdate.args;
+                        const argsString = typeof toolArgs === 'string' ? toolArgs : JSON.stringify(toolArgs);
+
+                        const newToolCall = {
+                            id: toolCallUpdate.id,
+                            type: 'function' as const,
+                            tool: toolName,
+                            args: toolArgs,
+                            function: {
+                                name: toolName,
+                                arguments: argsString
+                            },
+                            status: 'pending' as const,
+                            isPartial: toolCallUpdate.isPartial
+                        };
+                        
+                        const existingCalls = newMsg.toolCalls || [];
+                        const existingIndex = existingCalls.findIndex(tc => tc.id === newToolCall.id);
+                        
+                        if (existingIndex !== -1) {
+                            const updatedCalls = [...existingCalls];
+                            updatedCalls[existingIndex] = { ...updatedCalls[existingIndex], ...newToolCall };
+                            newMsg.toolCalls = updatedCalls;
+                        } else {
+                            // @ts-ignore - Ignore strict type check for now if interface mismatch persists in core
+                            newMsg.toolCalls = [...existingCalls, newToolCall];
+                        }
+                    }
+                    
+                    return newMsg;
+                }
+                return m;
+            });
 
             coreUseChatStore.setState({ messages: updatedMessages });
         }
