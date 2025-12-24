@@ -84,8 +84,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         
         const providerConfig = {
             provider: providerId,
-            apiKey: providerData?.apiKey || "",
-            baseUrl: providerData?.baseUrl || "",
+            api_key: providerData?.apiKey || "",
+            base_url: providerData?.baseUrl || "",
             models: [modelName]
         };
 
@@ -113,8 +113,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             return {
                 role: m.role,
                 content: m.content, 
-                toolCalls: m.toolCalls,
-                toolCallId: m.tool_call_id
+                tool_calls: m.toolCalls,
+                tool_call_id: m.tool_call_id
             };
         });
         

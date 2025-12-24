@@ -23,14 +23,12 @@ pub mod ai {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
     pub struct FunctionCall {
         pub name: String,
         pub arguments: String,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
     pub struct ToolCall {
         pub id: String,
         pub r#type: String,
@@ -38,7 +36,6 @@ pub mod ai {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
     pub struct Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
@@ -51,7 +48,6 @@ pub mod ai {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
     pub struct AIProviderConfig {
         pub provider: String,
         pub api_key: String,
