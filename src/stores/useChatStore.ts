@@ -6,6 +6,7 @@ import { useFileStore } from './fileStore';
 import { useSettingsStore } from './settingsStore';
 import { useAgentStore } from './agentStore';
 import { invoke } from '@tauri-apps/api/core';
+import { recognizeIntent, shouldTriggerAgent, formatAgentName } from '../utils/intentRecognizer';
 
 // Register stores on first import
 // Pass getState functions so core library can access current state
@@ -29,6 +30,10 @@ const originalRejectToolCall = coreUseChatStore.getState().rejectToolCall;
 
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string) => {
     console.log(">>> patchedSendMessage called with:", content);
+
+    // Get settings at the beginning (needed for both intent recognition and provider config)
+    const settings = useSettingsStore.getState();
+
     // Slash Command Interception
     let textInput = "";
     if (typeof content === 'string') {
@@ -92,10 +97,78 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         }
     }
 
+    // --- Natural Language Intent Recognition ---
+    // Check if settings enable natural language agent triggering
+    const enableNaturalLanguageTrigger = settings.enableNaturalLanguageAgentTrigger !== false; // Default to true
+    const confidenceThreshold = settings.agentTriggerConfidenceThreshold || 0.7;
+
+    if (enableNaturalLanguageTrigger && textInput) {
+        const intentResult = recognizeIntent(textInput);
+
+        // Log intent recognition result for debugging
+        console.log('[NaturalLanguageTrigger] Intent recognized:', intentResult);
+
+        if (shouldTriggerAgent(intentResult, confidenceThreshold)) {
+            const agentType = intentResult.type;
+            const agentTypeBase = agentType.slice(1); // Remove '/' prefix
+            const agentName = agentTypeBase.charAt(0).toUpperCase() + agentTypeBase.slice(1) + " Agent";
+            const args = intentResult.args || textInput;
+
+            const { addMessage } = coreUseChatStore.getState();
+            const userMsgId = crypto.randomUUID();
+
+            addMessage({
+                id: userMsgId,
+                role: 'user',
+                content: textInput,
+                multiModalContent: typeof content === 'string' ? [{type: 'text', text: content}] : content
+            });
+
+            try {
+                const assistantMsgId = crypto.randomUUID();
+                addMessage({
+                    id: assistantMsgId,
+                    role: 'assistant',
+                    content: `_[自动识别意图: ${formatAgentName(agentType)}，置信度: ${(intentResult.confidence * 100).toFixed(0)}%]_\n\n`,
+                    // @ts-ignore - custom property
+                    agentId: undefined,
+                    isAgentLive: true
+                });
+
+                const agentId = await useAgentStore.getState().launchAgent(
+                    agentName,
+                    args,
+                    assistantMsgId
+                );
+
+                const messages = coreUseChatStore.getState().messages;
+                const msg = messages.find(m => m.id === assistantMsgId);
+                if (msg) {
+                    // @ts-ignore
+                    msg.agentId = agentId;
+                    coreUseChatStore.setState({ messages: [...messages] });
+                }
+
+                console.log('[NaturalLanguageTrigger] Agent launched successfully:', agentId);
+            } catch (e) {
+                addMessage({
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    content: `❌ **无法启动Agent**\n\n错误: ${String(e)}`
+                });
+                console.error('[NaturalLanguageTrigger] Failed to launch agent:', e);
+            }
+            return;
+        } else if (intentResult && intentResult.confidence > 0.5) {
+            // Medium confidence: Log for future improvement
+            console.log('[NaturalLanguageTrigger] Medium confidence intent detected but not triggered:', intentResult);
+        }
+    }
+
     // --- Direct Backend Invocation Logic ---
-    
+
     // 1. Prepare Provider Config
-    const settings = useSettingsStore.getState();
+    // Note: settings already retrieved above for intent recognition
     const providerData = settings.providers.find((p: any) => p.id === providerId);
     
     const providerConfig = {
@@ -192,7 +265,17 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     const newMsg = { ...m };
                     
                     if (textChunk) {
+                        // Debug logging for code formatting issue
+                        console.log('[Stream] Chunk preview:', textChunk.substring(0, 100));
+                        console.log('[Stream] Has literal \\n:', textChunk.includes('\\n'));
+                        console.log('[Stream] Has actual newline (\\n):', textChunk.includes('\n'));
+
                         newMsg.content = (newMsg.content || '') + textChunk;
+
+                        // Log total content length periodically
+                        if (newMsg.content.length % 500 < 50) {
+                            console.log('[Stream] Total content length:', newMsg.content.length);
+                        }
                     }
                     
                     if (toolCallUpdate) {
@@ -457,7 +540,18 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
             const updatedMessages = messages.map(m => {
                 if (m.id === assistantMsgId) {
                     const newMsg = { ...m };
-                    if (textChunk) newMsg.content = (newMsg.content || '') + textChunk;
+                    if (textChunk) {
+                        // Debug logging for code formatting issue
+                        console.log('[Generate] Chunk preview:', textChunk.substring(0, 100));
+                        console.log('[Generate] Has literal \\n:', textChunk.includes('\\n'));
+                        console.log('[Generate] Has actual newline (\\n):', textChunk.includes('\n'));
+
+                        newMsg.content = (newMsg.content || '') + textChunk;
+
+                        if (newMsg.content.length % 500 < 50) {
+                            console.log('[Generate] Total content length:', newMsg.content.length);
+                        }
+                    }
                     if (toolCallUpdate) {
                         const toolName = toolCallUpdate.function?.name || toolCallUpdate.tool;
                         const newArgsChunk = toolCallUpdate.function?.arguments || '';
@@ -651,9 +745,24 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string) => 
             const relPath = args.rel_path || args.relPath;
             let content = args.content || "";
 
+            // Debug: log content before unescaping
+            console.log('[FS Tool] Content preview (first 200 chars):', content.substring(0, 200));
+            console.log('[FS Tool] Has literal \\n:', content.includes('\\n'));
+            console.log('[FS Tool] Has literal \\r\\n:', content.includes('\\r\\n'));
+            console.log('[FS Tool] Has actual newline:', content.includes('\n'));
+
             // Content unescaping fix: if content is stringified with escaped newlines, restore them
-            if (typeof content === 'string' && content.includes('\\n')) {
-                content = content.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+            // Handle multiple escape formats
+            if (typeof content === 'string' && (content.includes('\\n') || content.includes('\\r') || content.includes('\\t'))) {
+                console.log('[FS Tool] Unescaping content...');
+                content = content
+                    .replace(/\\r\\n/g, '\n')   // Windows-style CRLF
+                    .replace(/\\n/g, '\n')       // Unix-style LF
+                    .replace(/\\r/g, '\r')       // CR
+                    .replace(/\\t/g, '\t')       // Tab
+                    .replace(/\\"/g, '"')        // Escaped quotes
+                    .replace(/\\\\/g, '\\');     // Escaped backslashes (must be last)
+                console.log('[FS Tool] Unescaped content preview:', content.substring(0, 200));
             }
 
             const tauriArgs = {

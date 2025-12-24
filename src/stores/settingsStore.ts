@@ -41,6 +41,13 @@ export interface SettingsState {
 
   // Agent
   agentAutoApprove: boolean;
+  enableNaturalLanguageAgentTrigger: boolean;
+  agentTriggerConfidenceThreshold: number;
+
+  // RAG
+  enableAutoRAG: boolean;
+  enableSmartRAG: boolean;
+  ragMode: 'auto' | 'manual' | 'always';
 
   // Performance
   performanceMode: 'auto' | 'high' | 'medium' | 'low';
@@ -103,7 +110,7 @@ export const useSettingsStore = create<SettingsState>()(
           baseUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
           apiKey: '',
           models: ['glm-4.7', 'glm-4-plus', 'glm-4-air', 'glm-4-flash', 'glm-4', 'glm-4v', 'glm-3-turbo'],
-          enabled: false,
+          enabled: true,
         },
         {
           id: 'kimi',
@@ -119,7 +126,14 @@ export const useSettingsStore = create<SettingsState>()(
       currentModel: 'glm-4.7',
       enableAutocomplete: true,
       agentAutoApprove: false,
-      
+      enableNaturalLanguageAgentTrigger: true,
+      agentTriggerConfidenceThreshold: 0.6,  // 降低阈值以提高触发敏感度
+
+      // RAG settings
+      enableAutoRAG: true,
+      enableSmartRAG: true,
+      ragMode: 'auto',
+
       performanceMode: 'auto',
       targetFPS: 60,
       enableGPUAcceleration: true,
@@ -179,6 +193,11 @@ export const useSettingsStore = create<SettingsState>()(
         currentModel: state.currentModel,
         enableAutocomplete: state.enableAutocomplete,
         agentAutoApprove: state.agentAutoApprove,
+        enableNaturalLanguageAgentTrigger: state.enableNaturalLanguageAgentTrigger,
+        agentTriggerConfidenceThreshold: state.agentTriggerConfidenceThreshold,
+        enableAutoRAG: state.enableAutoRAG,
+        enableSmartRAG: state.enableSmartRAG,
+        ragMode: state.ragMode,
         performanceMode: state.performanceMode,
         targetFPS: state.targetFPS,
         enableGPUAcceleration: state.enableGPUAcceleration,

@@ -12,7 +12,7 @@ interface FileState {
   gitStatuses: Map<string, GitStatus>;
   
   setFileTree: (tree: FileNode) => void;
-  setRootPath: (path: string | null) => void;
+  setRootPath: (path: string | null) => Promise<void>;
   openFile: (file: OpenedFile) => string;
   closeFile: (id: string) => void;
   setActiveFile: (id: string) => void;
@@ -50,7 +50,29 @@ export const useFileStore = create<FileState>()(
         return { fileTree: treeWithStatus, rootPath: tree ? tree.path : null };
       }),
       
-      setRootPath: (path) => set({ rootPath: path }),
+      setRootPath: async (path) => {
+        set({ rootPath: path });
+
+        // Auto-initialize RAG index when project is opened
+        if (path) {
+          // Import settingsStore dynamically to avoid circular dependency
+          const { useSettingsStore } = await import('./settingsStore');
+          const settings = useSettingsStore.getState();
+
+          if (settings.enableAutoRAG !== false) {
+            // Delay 1 second to avoid blocking UI
+            setTimeout(async () => {
+              try {
+                const { invoke } = await import('@tauri-apps/api/core');
+                await invoke('init_rag_index', { rootPath: path });
+                console.log('[RAG] Auto-initialized for project:', path);
+              } catch (e) {
+                console.warn('[RAG] Auto-initialization failed (manual /index may be needed):', e);
+              }
+            }, 1000);
+          }
+        }
+      },
 
       openFile: (file) => {
         let fileIdToActivate = file.id;

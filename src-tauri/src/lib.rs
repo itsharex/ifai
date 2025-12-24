@@ -36,6 +36,23 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+/// Smart RAG detection: Check if user query is code-related
+fn should_use_rag(text: &str) -> bool {
+    let code_keywords = [
+        // Chinese keywords
+        "代码", "文件", "函数", "类", "接口", "模块", "实现", "逻辑",
+        "如何工作", "在哪", "在哪里", "bug", "错误", "项目", "这个项目",
+        "怎么", "如何", "为什么", "哪里",
+        // English keywords
+        "code", "file", "function", "class", "interface", "module",
+        "implementation", "logic", "how does", "where is", "locate",
+        "bug", "error", "project", "this project",
+        "what", "how", "why", "where",
+    ];
+
+    code_keywords.iter().any(|kw| text.contains(kw))
+}
+
 #[tauri::command]
 async fn ai_chat(
     app: tauri::AppHandle,
@@ -54,19 +71,26 @@ async fn ai_chat(
 
     if let Some(root) = project_root {
         let root_clone = root.clone();
-        
-        // 1. Detect @codebase query
+
+        // 1. Detect @codebase query or smart RAG trigger
         let mut codebase_query = None;
         if let Some(last_msg) = messages.iter().filter(|m| m.role == "user").last() {
              match &last_msg.content {
                 core_traits::ai::Content::Text(text) => {
                      let lower_text = text.to_lowercase();
+                    // Priority 1: Explicit @codebase trigger
                     if lower_text.contains("@codebase") {
                         if let Ok(re) = regex::Regex::new("(?i)@codebase") {
                             let temp = re.replace_all(text, "").to_string();
                             let final_query = temp.trim().to_string();
                             codebase_query = Some(if final_query.is_empty() { "overview of the project structure and main logic".to_string() } else { final_query });
                         }
+                    }
+                    // Priority 2: Smart RAG detection (if enabled in settings)
+                    // Note: For now we enable by default, can be controlled via provider_config in future
+                    else if should_use_rag(&lower_text) {
+                        println!("[AI Chat] Smart RAG triggered for query: {}", text);
+                        codebase_query = Some(text.to_string());
                     }
                 }
                 core_traits::ai::Content::Parts(parts) => {
@@ -78,12 +102,18 @@ async fn ai_chat(
                         .collect::<Vec<_>>()
                         .join(" ");
                     let lower_text = combined_text.to_lowercase();
+                    // Priority 1: Explicit @codebase trigger
                     if lower_text.contains("@codebase") {
                         if let Ok(re) = regex::Regex::new("(?i)@codebase") {
                             let temp = re.replace_all(&combined_text, "").to_string();
                             let final_query = temp.trim().to_string();
                             codebase_query = Some(if final_query.is_empty() { "overview of the project structure and main logic".to_string() } else { final_query });
                         }
+                    }
+                    // Priority 2: Smart RAG detection
+                    else if should_use_rag(&lower_text) {
+                        println!("[AI Chat] Smart RAG triggered for query: {}", combined_text);
+                        codebase_query = Some(combined_text);
                     }
                 }
             };
@@ -101,19 +131,28 @@ async fn ai_chat(
         // Define futures for parallel execution
         let rag_task = async move {
             if let Some(query) = codebase_query {
-                 println!("[AI Chat] Parallel RAG: Starting context build...");
-                 
+                 println!("[AI Chat] Parallel RAG: Starting context build for query: {}", query);
+
                  // Note: initialization check is implicit in retrieve_context logic in Commercial impl
                  // or skipped in Community impl.
-                 
-                 match rag_service.retrieve_context(&query, &root_for_rag).await {
-                    Ok(rag_result) => {
+
+                 // Add timeout to prevent blocking indefinitely
+                 let retrieve_future = rag_service.retrieve_context(&query, &root_for_rag);
+                 let timeout_duration = std::time::Duration::from_secs(30);
+
+                 match tokio::time::timeout(timeout_duration, retrieve_future).await {
+                    Ok(Ok(rag_result)) => {
+                        println!("[AI Chat] RAG context built successfully with {} references", rag_result.references.len());
                         let _ = app_handle.emit(&format!("{}_references", event_id_for_rag), &rag_result.references);
                         let _ = app_handle.emit("codebase-references", rag_result.references);
                         Some(rag_result.context)
                     },
-                    Err(e) => {
+                    Ok(Err(e)) => {
                          eprintln!("[AI Chat] RAG failed: {}", e);
+                         None
+                    },
+                    Err(_) => {
+                         eprintln!("[AI Chat] RAG timeout after 30s - index may not be initialized. Try running /index command first.");
                          None
                     }
                  }

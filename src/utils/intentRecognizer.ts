@@ -1,0 +1,137 @@
+export type IntentType = '/explore' | '/review' | '/test' | '/doc' | '/refactor';
+
+interface IntentResult {
+    type: IntentType;
+    confidence: number;
+    args: string;
+}
+
+interface IntentPattern {
+    type: IntentType;
+    keywords: string[];
+    regex: RegExp;
+}
+
+const PATTERNS: IntentPattern[] = [
+    {
+        type: '/explore',
+        keywords: ['生成', '创建', '写个', '脚本', '文件', 'create', 'generate', 'write'],
+        regex: /(?:帮我|给我)?(?:生成|创建|写(?:个|一份)?)(?:文件|脚本|代码)?(?:\s+)?([\w\.\-\/]+)?/i
+    },
+    {
+        type: '/review',
+        keywords: ['审查', '检查', '看下', 'review', 'check'],
+        regex: /(?:帮我|给我)?(?:审查|检查|review|看(?:一)?下)(?:代码|这段代码)?/i
+    },
+    {
+        type: '/test',
+        keywords: ['测试', '单元测试', 'test', 'unittest'],
+        regex: /(?:帮我|给我)?(?:生成|创建|写(?:个|一份)?)(?:测试|单元测试|test|unittest)/i
+    },
+    {
+        type: '/doc',
+        keywords: ['文档', '注释', '说明', 'doc', 'comment'],
+        regex: /(?:帮我|给我)?(?:生成|创建|写(?:个|一份)?|添加)(?:文档|注释|说明|doc|comment)/i
+    },
+    {
+        type: '/refactor',
+        keywords: ['重构', '优化', '改进', 'refactor', 'optimize'],
+        regex: /(?:帮我|给我)?(?:重构|优化|改进|refactor|optimize)(?:代码|这段代码)?/i
+    }
+];
+
+export function recognizeIntent(input: string): IntentResult | null {
+    const text = input.trim();
+    if (!text) return null;
+
+    let bestMatch: IntentResult | null = null;
+    let maxScore = 0;
+
+    for (const pattern of PATTERNS) {
+        let score = 0;
+        let hasKeywordMatch = false;
+        let hasRegexMatch = false;
+
+        // 1. Keyword match (优化权重)
+        const keywordMatches = pattern.keywords.filter(k => text.includes(k)).length;
+        if (keywordMatches > 0) {
+            hasKeywordMatch = true;
+            // 匹配1个关键词: 0.3分
+            // 匹配2个关键词: 0.5分
+            // 匹配3+个关键词: 0.7分
+            if (keywordMatches >= 3) {
+                score += 0.7;
+            } else if (keywordMatches >= 2) {
+                score += 0.5;
+            } else {
+                score += 0.3;
+            }
+        }
+
+        // 2. Regex match
+        const match = text.match(pattern.regex);
+        if (match) {
+            hasRegexMatch = true;
+            score += 0.4;
+
+            // 3. 组合加成：同时匹配关键词和正则表达式
+            if (hasKeywordMatch) {
+                score += 0.2;
+            }
+
+            // Extract args if possible (e.g., filename from explore)
+            const args = match[1] || text;
+
+            if (score > maxScore) {
+                maxScore = score;
+                bestMatch = {
+                    type: pattern.type,
+                    confidence: Math.min(score, 1.0), // 限制最大值为1.0
+                    args: args.trim()
+                };
+            }
+        } else if (hasKeywordMatch && keywordMatches >= 2) {
+            // 即使没有regex匹配，但有2+个关键词也可能是有效意图
+            if (score > maxScore) {
+                maxScore = score;
+                bestMatch = {
+                    type: pattern.type,
+                    confidence: Math.min(score, 1.0),
+                    args: text
+                };
+            }
+        }
+    }
+
+    // Only return if confidence is high enough (caller will also check threshold)
+    return bestMatch;
+}
+
+/**
+ * 检查是否应该触发Agent
+ * @param result 意图识别结果
+ * @param threshold 置信度阈值(默认0.7)
+ * @returns 是否应该触发
+ */
+export function shouldTriggerAgent(
+    result: IntentResult | null,
+    threshold: number = 0.7
+): boolean {
+    return result !== null && result.confidence >= threshold;
+}
+
+/**
+ * 格式化Agent名称为显示名称
+ * @param agentType Agent类型(如 '/explore')
+ * @returns 显示名称(如 'Explore')
+ */
+export function formatAgentName(agentType: IntentType): string {
+    const nameMap: Record<IntentType, string> = {
+        '/explore': 'Explore',
+        '/review': 'Review',
+        '/test': 'Test',
+        '/doc': 'Doc',
+        '/refactor': 'Refactor',
+    };
+    return nameMap[agentType] || agentType;
+}
