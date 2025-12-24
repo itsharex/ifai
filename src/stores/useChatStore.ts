@@ -153,7 +153,7 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string) => 
     if (toolCall && (toolCall as any).agentId) {
         // Agent tool call: use Agent approval flow
         const agentId = (toolCall as any).agentId;
-        console.log(`[useChatStore] Using Agent approval flow for agent ${agentId}`);
+        console.log(`[useChatStore] Using Agent approval flow for agent ${agentId}, tool: ${toolCall.tool || (toolCall as any).function?.name}`);
 
         // Update tool call status to approved
         coreUseChatStore.setState(state => ({

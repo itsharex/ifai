@@ -14,21 +14,14 @@ export interface ContentPart {
 export interface ToolCall {
     id: string;
     type: 'function';
+    tool: string; // 项目中实际使用的字段
+    args: any;    // 项目中实际使用的字段
     function: {
         name: string;
         arguments: string;
     };
     status?: 'pending' | 'approved' | 'rejected';
     isPartial?: boolean;
-}
-
-// Backend Message type might be simpler
-export interface BackendMessage {
-    id?: string;
-    role: string;
-    content: string | ContentPart[];
-    tool_calls?: any[];
-    tool_call_id?: string;
 }
 
 export interface Message {
@@ -38,18 +31,20 @@ export interface Message {
     toolCalls?: ToolCall[];
     tool_call_id?: string;
     references?: string[];
+    multiModalContent?: ContentPart[];
     [key: string]: any;
 }
 
 export interface AIProviderConfig {
-    provider: string;
-    api_key: string;
-    base_url: string;
+    id: string;
+    apiKey: string;
+    baseUrl: string;
     models: string[];
 }
 
 export interface ChatState {
     messages: Message[];
+    isLoading: boolean; // 补全缺失字段
     inputHistory: string[];
     historyIndex: number;
     addMessage: (msg: Message) => void;
@@ -57,10 +52,11 @@ export interface ChatState {
     approveToolCall: (messageId: string, toolCallId: string) => Promise<void>;
     rejectToolCall: (messageId: string, toolCallId: string) => Promise<void>;
     updateMessage: (id: string, updates: Partial<Message>) => void;
+    updateMessageContent: (id: string, content: string) => void; // 补全缺失方法
 }
 
 let getFileStore: any = () => ({ projectRoot: null });
-let getSettingsStore: any = () => ({ providers: {} });
+let getSettingsStore: any = () => ({ providers: [] });
 
 export const registerStores = (fs: any, ss: any) => {
     getFileStore = fs;
@@ -69,6 +65,7 @@ export const registerStores = (fs: any, ss: any) => {
 
 export const useChatStore = create<ChatState>((set, get) => ({
     messages: [],
+    isLoading: false,
     inputHistory: [],
     historyIndex: -1,
 
@@ -78,68 +75,62 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: state.messages.map(m => m.id === id ? { ...m, ...updates } : m)
     })),
 
+    updateMessageContent: (id, content) => set(state => ({
+        messages: state.messages.map(m => m.id === id ? { ...m, content } : m)
+    })),
+
     sendMessage: async (content, providerId, modelName) => {
         const settings = getSettingsStore();
         const providerData = settings.providers.find((p: any) => p.id === providerId);
         
         const providerConfig = {
-            provider: providerId,
-            api_key: providerData?.apiKey || "",
-            base_url: providerData?.baseUrl || "",
+            id: providerId,
+            apiKey: providerData?.apiKey || "",
+            baseUrl: providerData?.baseUrl || "",
             models: [modelName]
         };
 
-        const { messages, addMessage } = get();
+        set({ isLoading: true });
         
         // Add user message
-        const userMsgId = crypto.randomUUID();
         const userMsg: Message = {
-            id: userMsgId,
+            id: crypto.randomUUID(),
             role: 'user',
             content: content
         };
-        addMessage(userMsg);
+        get().addMessage(userMsg);
         
         // Add placeholder assistant message
         const assistantMsgId = crypto.randomUUID();
-        addMessage({
+        get().addMessage({
             id: assistantMsgId,
             role: 'assistant',
             content: ''
         });
 
-        const msgHistory = get().messages.map(m => {
-            // Convert to backend format if necessary
-            return {
-                role: m.role,
-                content: m.content, 
-                tool_calls: m.toolCalls,
-                tool_call_id: m.tool_call_id
-            };
-        });
-        
-        // Remove the last empty assistant message from history sent to backend?
-        // Usually yes, backend generates it.
-        msgHistory.pop();
-
-        const eventId = assistantMsgId; // Use assistant msg id as event id for streaming
+        const msgHistory = get().messages.slice(0, -1).map(m => ({
+            role: m.role,
+            content: m.content, 
+            tool_calls: m.toolCalls,
+            tool_call_id: m.tool_call_id
+        }));
 
         try {
             await invoke('ai_chat', {
                 providerConfig,
                 messages: msgHistory,
-                eventId,
+                eventId: assistantMsgId,
                 projectRoot: getFileStore().projectRoot
             });
         } catch (e) {
-            console.error("AI Chat Error:", e);
             get().updateMessage(assistantMsgId, { content: `Error: ${e}` });
+        } finally {
+            set({ isLoading: false });
         }
     },
 
     approveToolCall: async (messageId, toolCallId) => {
         console.log("Mock core: approveToolCall", messageId, toolCallId);
-        // In real implementation, this would trigger tool execution and next turn
     },
 
     rejectToolCall: async (messageId, toolCallId) => {
@@ -147,30 +138,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 }));
 
-export const getToolLabel = (name: string) => {
-    switch (name) {
-        case 'agent_write_file': return 'Write File';
-        case 'agent_read_file': return 'Read File';
-        case 'agent_list_dir': return 'List Directory';
-        case 'search_semantic': return 'Search Code';
-        default: return name;
-    }
-};
+export const getToolLabel = (name: string) => name;
+export const getToolColor = (name: string) => 'text-blue-500';
 
-export const getToolColor = (name: string) => {
-    switch (name) {
-        case 'agent_write_file': return 'text-red-500';
-        case 'agent_read_file': return 'text-green-500';
-        case 'agent_list_dir': return 'text-yellow-500';
-        case 'search_semantic': return 'text-blue-500';
-        default: return 'text-gray-500';
-    }
-};
+export interface MessageSegment {
+    type: 'text' | 'tool';
+    content?: string;
+    toolCall?: ToolCall;
+}
 
-export const parseToolCalls = (content: any) => {
-    if (typeof content !== 'string') {
-        return { segments: [] };
-    }
+export const parseToolCalls = (content: any): { segments: MessageSegment[] } => {
+    if (typeof content !== 'string') return { segments: [] };
     return {
         segments: [{ type: 'text', content }]
     };
