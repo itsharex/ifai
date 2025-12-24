@@ -196,64 +196,69 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     }
                     
                     if (toolCallUpdate) {
-                        // Extract tool name and arguments from the correct path
                         const toolName = toolCallUpdate.function?.name || toolCallUpdate.tool;
-                        const argsString = toolCallUpdate.function?.arguments || '';
-
-                        // Parse arguments if it's a JSON string
-                        let toolArgs: any;
-                        try {
-                            toolArgs = argsString ? JSON.parse(argsString) : {};
-                        } catch (e) {
-                            // If parsing fails, it might be partial JSON during streaming
-                            toolArgs = argsString;
-                        }
+                        const newArgsChunk = toolCallUpdate.function?.arguments || '';
 
                         const existingCalls = newMsg.toolCalls || [];
                         const existingIndex = existingCalls.findIndex(tc => tc.id === toolCallUpdate.id);
 
                         if (existingIndex !== -1) {
-                            // Update existing tool call (accumulate arguments during streaming)
                             const existingCall = existingCalls[existingIndex];
                             const updatedCalls = [...existingCalls];
 
-                            // Merge arguments (for streaming, concatenate the arguments string)
-                            const prevArgsString = (existingCall as any).function?.arguments || '';
-                            const newArgsString = prevArgsString + (toolCallUpdate.function?.arguments || '');
-
-                            // Try to parse merged arguments
-                            let mergedArgs: any;
+                            // Typewriter effect: concatenate arguments string
+                            const updatedArgsString = ((existingCall as any).function?.arguments || '') + newArgsChunk;
+                            
+                            // Try to parse partial JSON to get updated 'content' or other fields for UI
+                            let parsedArgs: any;
                             try {
-                                mergedArgs = newArgsString ? JSON.parse(newArgsString) : {};
+                                parsedArgs = JSON.parse(updatedArgsString);
                             } catch (e) {
-                                mergedArgs = newArgsString; // Keep as string if still partial
+                                // If partial, we can try to extract content via regex for immediate display
+                                // or just use the string. But standard ToolApproval expects an object.
+                                // We'll try a relaxed parse or keep the last successful object + new string.
+                                parsedArgs = { ...existingCall.args }; // Fallback to last known args
+                                
+                                // Simple extraction for content field to show typing
+                                const contentMatch = updatedArgsString.match(/"content"\s*:\s*"((?:[^"\\\\]|\\\\.)*)"?/);
+                                if (contentMatch) {
+                                    parsedArgs.content = contentMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+                                }
+                                const relPathMatch = updatedArgsString.match(/"rel_path"\s*:\s*"([^"]*)"?/);
+                                if (relPathMatch) {
+                                    parsedArgs.rel_path = relPathMatch[1];
+                                }
                             }
 
                             updatedCalls[existingIndex] = {
                                 ...existingCall,
                                 id: toolCallUpdate.id || existingCall.id,
-                                type: (toolCallUpdate.type as any) || existingCall.type,
                                 tool: toolName || existingCall.tool,
-                                args: mergedArgs,
+                                args: parsedArgs,
                                 function: {
                                     name: toolName || (existingCall as any).function?.name,
-                                    arguments: newArgsString
+                                    arguments: updatedArgsString
                                 },
-                                status: 'pending' as const,
-                                // Keep as partial during streaming updates
                                 isPartial: true
                             };
                             newMsg.toolCalls = updatedCalls;
                         } else {
                             // New tool call
+                            let initialArgs: any;
+                            try {
+                                initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {};
+                            } catch (e) {
+                                initialArgs = {};
+                            }
+
                             const newToolCall = {
                                 id: toolCallUpdate.id || crypto.randomUUID(),
                                 type: 'function' as const,
                                 tool: toolName || 'unknown',
-                                args: toolArgs,
+                                args: initialArgs,
                                 function: {
                                     name: toolName || 'unknown',
-                                    arguments: argsString
+                                    arguments: newArgsChunk
                                 },
                                 status: 'pending' as const,
                                 isPartial: true
