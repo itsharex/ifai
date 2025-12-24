@@ -355,6 +355,198 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     }
 };
 
+const patchedGenerateResponse = async (history: any[], providerConfig: any, options?: { enableTools?: boolean }) => {
+    console.log(">>> patchedGenerateResponse called");
+    
+    // 1. Prepare Config (Reuse logic or just use passed config if it's already correct)
+    // Assuming providerConfig passed here might be from core, let's ensure it has necessary fields
+    const settings = useSettingsStore.getState();
+    const fullProviderConfig = settings.providers.find((p: any) => p.id === providerConfig.id) || providerConfig;
+    
+    const backendConfig = {
+        ...fullProviderConfig,
+        provider: fullProviderConfig.id,
+        id: fullProviderConfig.id,
+        api_key: fullProviderConfig.apiKey || "",
+        base_url: fullProviderConfig.baseUrl || "",
+        models: fullProviderConfig.models || [],
+        protocol: fullProviderConfig.protocol || "openai"
+    };
+
+    coreUseChatStore.setState({ isLoading: true });
+
+    // 2. Add Assistant Placeholder
+    const assistantMsgId = crypto.randomUUID();
+    const assistantMsgPlaceholder = {
+        id: assistantMsgId,
+        role: 'assistant' as const,
+        content: ''
+    };
+    // @ts-ignore
+    coreUseChatStore.getState().addMessage(assistantMsgPlaceholder);
+
+    // 3. Prepare History from Store (Source of Truth)
+    // We ignore the `history` arg because we want the latest state including tool outputs we just added
+    const messages = coreUseChatStore.getState().messages;
+    
+    // Slice off the placeholder we just added
+    const msgHistory = messages.slice(0, -1).map(m => ({
+        role: m.role,
+        content: m.content,
+        tool_calls: m.toolCalls ? m.toolCalls.map(tc => {
+            let argsString: string;
+            if ((tc as any).function?.arguments) {
+                argsString = (tc as any).function.arguments;
+            } else if (tc.args) {
+                argsString = typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {});
+            } else {
+                argsString = '{}';
+            }
+            return {
+                id: tc.id,
+                type: 'function',
+                function: {
+                    name: tc.tool || (tc as any).function?.name,
+                    arguments: argsString
+                }
+            };
+        }) : undefined,
+        tool_call_id: m.tool_call_id
+    }));
+
+    // 4. Setup Listeners (Duplicate logic from patchedSendMessage - refactoring would be better but keeping it self-contained for patch)
+    const { listen } = await import('@tauri-apps/api/event');
+    
+    const unlistenStatus = await listen<string>(`${assistantMsgId}_status`, (event) => {
+        const { messages } = coreUseChatStore.getState();
+        const lastAssistantMsg = messages.find(m => m.id === assistantMsgId);
+        if (lastAssistantMsg && !lastAssistantMsg.content) {
+            const updatedMessages = messages.map(m => 
+                m.id === assistantMsgId ? { ...m, content: `_(${event.payload})_ \n\n` } : m
+            );
+            coreUseChatStore.setState({ messages: updatedMessages });
+        }
+    });
+
+    const unlistenStream = await listen<string>(assistantMsgId, (event) => {
+        const { messages } = coreUseChatStore.getState();
+        let textChunk = '';
+        let toolCallUpdate: any = null;
+        try {
+            const payload = JSON.parse(event.payload);
+            if (payload.type === 'content' && payload.content) textChunk = payload.content;
+            else if (payload.type === 'tool_call' && payload.tool_call) toolCallUpdate = payload.tool_call;
+        } catch (e) { textChunk = event.payload; }
+
+        if (textChunk || toolCallUpdate) {
+            const updatedMessages = messages.map(m => {
+                if (m.id === assistantMsgId) {
+                    const newMsg = { ...m };
+                    if (textChunk) newMsg.content = (newMsg.content || '') + textChunk;
+                    if (toolCallUpdate) {
+                        const toolName = toolCallUpdate.function?.name || toolCallUpdate.tool;
+                        const argsString = toolCallUpdate.function?.arguments || '';
+                        let toolArgs: any;
+                        try { toolArgs = argsString ? JSON.parse(argsString) : {}; } catch (e) { toolArgs = argsString; }
+
+                        const existingCalls = newMsg.toolCalls || [];
+                        const existingIndex = existingCalls.findIndex(tc => tc.id === toolCallUpdate.id);
+
+                        if (existingIndex !== -1) {
+                            const existingCall = existingCalls[existingIndex];
+                            const prevArgsString = (existingCall as any).function?.arguments || '';
+                            const newArgsString = prevArgsString + (toolCallUpdate.function?.arguments || '');
+                             let mergedArgs: any;
+                            try { mergedArgs = newArgsString ? JSON.parse(newArgsString) : {}; } catch (e) { mergedArgs = newArgsString; }
+
+                            const updatedCalls = [...existingCalls];
+                            updatedCalls[existingIndex] = {
+                                ...existingCall,
+                                id: toolCallUpdate.id || existingCall.id,
+                                args: mergedArgs,
+                                function: { name: toolName || (existingCall as any).function?.name, arguments: newArgsString },
+                                isPartial: true
+                            };
+                            newMsg.toolCalls = updatedCalls;
+                        } else {
+                            // New tool call
+                             const newToolCall = {
+                                id: toolCallUpdate.id || crypto.randomUUID(),
+                                type: 'function' as const,
+                                tool: toolName || 'unknown',
+                                args: toolArgs,
+                                function: { name: toolName || 'unknown', arguments: argsString },
+                                status: 'pending' as const,
+                                isPartial: true
+                            };
+                            // @ts-ignore
+                            newMsg.toolCalls = [...existingCalls, newToolCall];
+                        }
+                    }
+                    return newMsg;
+                }
+                return m;
+            });
+            coreUseChatStore.setState({ messages: updatedMessages });
+        }
+    });
+
+    const unlistenRefs = await listen<string[]>("codebase-references", (event) => { /* No user msg to attach to here, maybe just ignore or attach to last msg? */ });
+    
+    const unlistenCompacted = await listen<any[]>(`${assistantMsgId}_compacted`, (event) => {
+        const compactedMessages = event.payload.map(m => ({
+            id: crypto.randomUUID(),
+            role: m.role,
+            content: m.content,
+            toolCalls: m.tool_calls,
+            tool_call_id: m.tool_call_id
+        }));
+        coreUseChatStore.setState({ messages: [...compactedMessages, assistantMsgPlaceholder] });
+    });
+
+    const unlistenFinish = await listen<string>(`${assistantMsgId}_finish`, (event) => {
+        const { messages } = coreUseChatStore.getState();
+        const updatedMessages = messages.map(m => {
+            if (m.id === assistantMsgId && m.toolCalls) {
+                return { ...m, toolCalls: m.toolCalls.map(tc => ({ ...tc, isPartial: false })) };
+            }
+            return m;
+        });
+        coreUseChatStore.setState({ messages: updatedMessages });
+    });
+
+    const unlistenError = await listen<string>(`${assistantMsgId}_error`, (event) => {
+        const { messages } = coreUseChatStore.getState();
+        coreUseChatStore.setState({
+            messages: messages.map(m => m.id === assistantMsgId ? { ...m, content: `❌ Error: ${event.payload}` } : m)
+        });
+    });
+
+    // 5. Invoke Backend
+    try {
+        await invoke('ai_chat', {
+            providerConfig: backendConfig,
+            messages: msgHistory,
+            eventId: assistantMsgId,
+            projectRoot: useFileStore.getState().rootPath,
+            enableTools: true
+        });
+    } catch (e) {
+        const { messages } = coreUseChatStore.getState();
+        coreUseChatStore.setState({
+            messages: messages.map(m => m.id === assistantMsgId ? { ...m, content: `Error: ${e}` } : m)
+        });
+    } finally {
+        coreUseChatStore.setState({ isLoading: false });
+        unlistenStatus();
+        unlistenStream();
+        unlistenRefs();
+        unlistenCompacted();
+        unlistenFinish();
+        unlistenError();
+    }
+};
+
 const patchedApproveToolCall = async (messageId: string, toolCallId: string) => {
     console.log(`[useChatStore] patchedApproveToolCall called - messageId: ${messageId}, toolCallId: ${toolCallId}`);
 
@@ -456,6 +648,7 @@ const rejectAllToolCalls = async (messageId: string) => {
 // Apply patches to the store
 coreUseChatStore.setState({
     sendMessage: patchedSendMessage,
+    generateResponse: patchedGenerateResponse,
     approveToolCall: patchedApproveToolCall,
     rejectToolCall: patchedRejectToolCall,
     // @ts-ignore - adding new methods to store
