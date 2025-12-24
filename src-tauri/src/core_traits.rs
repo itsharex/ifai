@@ -22,28 +22,34 @@ pub mod ai {
         Parts(Vec<ContentPart>),
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     pub struct FunctionCall {
+        #[serde(default)]
         pub name: String,
+        #[serde(default)]
         pub arguments: String,
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     pub struct ToolCall {
+        #[serde(default)]
         pub id: String,
+        #[serde(default, rename = "type")]
         pub r#type: String,
+        #[serde(default)]
         pub function: FunctionCall,
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize, Default)]
     pub struct Message {
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
         pub id: Option<String>,
+        #[serde(default)]
         pub role: String,
         pub content: Content,
-        #[serde(skip_serializing_if = "Option::is_none", alias = "toolCalls")]
+        #[serde(default, alias = "toolCalls", alias = "tool_calls")]
         pub tool_calls: Option<Vec<ToolCall>>,
-        #[serde(skip_serializing_if = "Option::is_none", alias = "toolCallId")]
+        #[serde(default, alias = "toolCallId", alias = "tool_call_id")]
         pub tool_call_id: Option<String>,
     }
 
