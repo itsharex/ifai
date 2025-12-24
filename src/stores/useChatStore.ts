@@ -135,13 +135,13 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     const messages = coreUseChatStore.getState().messages;
     const msgHistory = messages.slice(0, -1).map(m => ({
         role: m.role,
-        content: m.content, 
+        content: m.content,
         tool_calls: m.toolCalls ? m.toolCalls.map(tc => ({
             id: tc.id,
             type: 'function',
             function: {
                 name: tc.tool || (tc as any).function?.name,
-                arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args)
+                arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {})
             }
         })) : undefined,
         tool_call_id: m.tool_call_id
@@ -174,11 +174,12 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         try {
             // Parse JSON format: {"type":"content","content":"文本"}
             const payload = JSON.parse(event.payload);
-            
+
             if (payload.type === 'content' && payload.content) {
                 textChunk = payload.content;
-            } else if (payload.type === 'tool_call' && payload.toolCall) {
-                toolCallUpdate = payload.toolCall;
+            } else if (payload.type === 'tool_call' && payload.tool_call) {
+                // Note: Rust backend sends snake_case "tool_call", not camelCase "toolCall"
+                toolCallUpdate = payload.tool_call;
             }
         } catch (e) {
             // Fallback: treat as plain text
@@ -195,32 +196,69 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     }
                     
                     if (toolCallUpdate) {
-                        const toolName = toolCallUpdate.tool || toolCallUpdate.function?.name;
-                        const toolArgs = toolCallUpdate.args;
-                        const argsString = typeof toolArgs === 'string' ? toolArgs : JSON.stringify(toolArgs);
+                        // Extract tool name and arguments from the correct path
+                        const toolName = toolCallUpdate.function?.name || toolCallUpdate.tool;
+                        const argsString = toolCallUpdate.function?.arguments || '';
 
-                        const newToolCall = {
-                            id: toolCallUpdate.id,
-                            type: 'function' as const,
-                            tool: toolName,
-                            args: toolArgs,
-                            function: {
-                                name: toolName,
-                                arguments: argsString
-                            },
-                            status: 'pending' as const,
-                            isPartial: toolCallUpdate.isPartial
-                        };
-                        
+                        // Parse arguments if it's a JSON string
+                        let toolArgs: any;
+                        try {
+                            toolArgs = argsString ? JSON.parse(argsString) : {};
+                        } catch (e) {
+                            // If parsing fails, it might be partial JSON during streaming
+                            toolArgs = argsString;
+                        }
+
                         const existingCalls = newMsg.toolCalls || [];
-                        const existingIndex = existingCalls.findIndex(tc => tc.id === newToolCall.id);
-                        
+                        const existingIndex = existingCalls.findIndex(tc => tc.id === toolCallUpdate.id);
+
                         if (existingIndex !== -1) {
+                            // Update existing tool call (accumulate arguments during streaming)
+                            const existingCall = existingCalls[existingIndex];
                             const updatedCalls = [...existingCalls];
-                            updatedCalls[existingIndex] = { ...updatedCalls[existingIndex], ...newToolCall };
+
+                            // Merge arguments (for streaming, concatenate the arguments string)
+                            const prevArgsString = (existingCall as any).function?.arguments || '';
+                            const newArgsString = prevArgsString + (toolCallUpdate.function?.arguments || '');
+
+                            // Try to parse merged arguments
+                            let mergedArgs: any;
+                            try {
+                                mergedArgs = newArgsString ? JSON.parse(newArgsString) : {};
+                            } catch (e) {
+                                mergedArgs = newArgsString; // Keep as string if still partial
+                            }
+
+                            updatedCalls[existingIndex] = {
+                                ...existingCall,
+                                id: toolCallUpdate.id || existingCall.id,
+                                type: (toolCallUpdate.type as any) || existingCall.type,
+                                tool: toolName || existingCall.tool,
+                                args: mergedArgs,
+                                function: {
+                                    name: toolName || (existingCall as any).function?.name,
+                                    arguments: newArgsString
+                                },
+                                status: 'pending' as const,
+                                // Keep as partial during streaming updates
+                                isPartial: true
+                            };
                             newMsg.toolCalls = updatedCalls;
                         } else {
-                            // @ts-ignore - Ignore strict type check for now if interface mismatch persists in core
+                            // New tool call
+                            const newToolCall = {
+                                id: toolCallUpdate.id || crypto.randomUUID(),
+                                type: 'function' as const,
+                                tool: toolName || 'unknown',
+                                args: toolArgs,
+                                function: {
+                                    name: toolName || 'unknown',
+                                    arguments: argsString
+                                },
+                                status: 'pending' as const,
+                                isPartial: true
+                            };
+                            // @ts-ignore
                             newMsg.toolCalls = [...existingCalls, newToolCall];
                         }
                     }
@@ -253,9 +291,43 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             toolCalls: m.tool_calls, // Note: snake_case from Rust
             tool_call_id: m.tool_call_id
         }));
-        
+
         // Replace history but keep the currently streaming assistant message
         coreUseChatStore.setState({ messages: [...compactedMessages, assistantMsgPlaceholder] });
+    });
+
+    // Finish Listener - Finalize tool calls when streaming completes
+    const unlistenFinish = await listen<string>(`${assistantMsgId}_finish`, (event) => {
+        console.log("[Chat] Stream finished", event.payload);
+
+        // Finalize all partial tool calls
+        const { messages } = coreUseChatStore.getState();
+        const updatedMessages = messages.map(m => {
+            if (m.id === assistantMsgId && m.toolCalls) {
+                return {
+                    ...m,
+                    toolCalls: m.toolCalls.map(tc => ({
+                        ...tc,
+                        isPartial: false  // Mark as complete
+                    }))
+                };
+            }
+            return m;
+        });
+
+        coreUseChatStore.setState({ messages: updatedMessages });
+    });
+
+    // Error Listener - Handle stream errors
+    const unlistenError = await listen<string>(`${assistantMsgId}_error`, (event) => {
+        console.error("[Chat] Stream error", event.payload);
+
+        const { messages } = coreUseChatStore.getState();
+        coreUseChatStore.setState({
+            messages: messages.map(m =>
+                m.id === assistantMsgId ? { ...m, content: `❌ Error: ${event.payload}` } : m
+            )
+        });
     });
 
     // 6. Invoke Backend
@@ -278,6 +350,8 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         unlistenStream();
         unlistenRefs();
         unlistenCompacted();
+        unlistenFinish();
+        unlistenError();
     }
 };
 
