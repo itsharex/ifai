@@ -286,6 +286,37 @@ ${(t('help_message.shortcuts', { returnObjects: true }) as string[]).map(s => `-
     rejectToolCall(messageId, toolCallId);
   }, [rejectToolCall]);
 
+  // Auto-approve tool calls when enabled
+  const agentAutoApprove = useSettingsStore(state => state.agentAutoApprove);
+
+  useEffect(() => {
+    if (!agentAutoApprove) return;
+
+    // Find all pending tool calls that are ready for approval (not partial)
+    const pendingToolCalls: Array<{messageId: string; toolCallId: string}> = [];
+
+    for (const message of rawMessages) {
+      if (message.toolCalls) {
+        for (const toolCall of message.toolCalls) {
+          if (toolCall.status === 'pending' && !toolCall.isPartial) {
+            pendingToolCalls.push({
+              messageId: message.id,
+              toolCallId: toolCall.id
+            });
+          }
+        }
+      }
+    }
+
+    // Auto-approve all pending tool calls
+    if (pendingToolCalls.length > 0) {
+      console.log('[AIChat] Auto-approving tool calls:', pendingToolCalls);
+      pendingToolCalls.forEach(({ messageId, toolCallId }) => {
+        approveToolCall(messageId, toolCallId);
+      });
+    }
+  }, [rawMessages, agentAutoApprove, approveToolCall]);
+
   if (!isProviderConfigured) {
     return (
       <div 
