@@ -233,12 +233,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         // --- Final Result ---
         else if (payload.type === 'result') {
             const result = payload.result || "";
+            console.log(`[AgentStore] Result received for agent ${id}, msgId: ${msgId || 'NONE'}`);
             if (msgId) {
-                const { messages } = coreUseChatStore.getState();
+                const { messages, isLoading } = coreUseChatStore.getState();
+                console.log(`[AgentStore] Before setState: isLoading=${isLoading}`);
                 coreUseChatStore.setState({
                     messages: messages.map(m => m.id === msgId ? { ...m, content: result } : m),
                     isLoading: false  // ✅ FIX: Clear loading state so highlighting appears after stream completes
                 });
+                console.log(`[AgentStore] After setState: isLoading=${coreUseChatStore.getState().isLoading}`);
             }
             set(state => ({
                 runningAgents: state.runningAgents.map(a =>

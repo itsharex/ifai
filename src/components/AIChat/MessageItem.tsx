@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { User, FileCode, CheckCheck, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -17,14 +17,74 @@ interface MessageItemProps {
     isStreaming?: boolean;
 }
 
+// Custom comparison function for React.memo
+// Re-render when isStreaming changes or message content changes
+const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps) => {
+    // Always re-render if isStreaming changes
+    if (prevProps.isStreaming !== nextProps.isStreaming) {
+        return false;
+    }
+    // Re-render if message content changes
+    if (prevProps.message.content !== nextProps.message.content) {
+        return false;
+    }
+    // Re-render if toolCalls change
+    if (prevProps.message.toolCalls !== nextProps.message.toolCalls) {
+        return false;
+    }
+    // Otherwise skip re-render
+    return true;
+};
+
 export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFile, isStreaming }: MessageItemProps) => {
     const { t } = useTranslation();
     const isUser = message.role === 'user';
 
     // PERFORMANCE: State for managing code block folding (for >50 line blocks)
     const [expandedBlocks, setExpandedBlocks] = useState<Set<number>>(new Set());
+    // Force re-render counter for isStreaming changes
+    const [, forceUpdate] = useState(0);
 
-    const toggleBlock = (index: number) => {
+    // Store latest isStreaming in ref for renderContentPart to access
+    const isStreamingRef = useRef(isStreaming);
+    isStreamingRef.current = isStreaming;
+
+    // Track content length to detect active streaming (more reliable than isStreaming prop)
+    const lastContentLengthRef = useRef(message.content.length);
+    const isActivelyStreamingRef = useRef(false);
+
+    // Update streaming status based on content growth
+    React.useEffect(() => {
+        const currentLength = message.content.length;
+        const lengthChanged = currentLength !== lastContentLengthRef.current;
+
+        if (lengthChanged) {
+            // Content is growing - actively streaming
+            isActivelyStreamingRef.current = true;
+            lastContentLengthRef.current = currentLength;
+
+            // Clear previous timeout
+            if ((window as any)._streamingTimeout) {
+                clearTimeout((window as any)._streamingTimeout);
+            }
+
+            // Set timeout to mark streaming as complete after 150ms of no changes
+            // Force re-render when streaming completes to apply highlighting
+            (window as any)._streamingTimeout = setTimeout(() => {
+                isActivelyStreamingRef.current = false;
+                forceUpdate(n => n + 1);  // Force re-render to apply highlighting
+            }, 150);
+        }
+
+        // Cleanup timeout on unmount
+        return () => {
+            if ((window as any)._streamingTimeout) {
+                clearTimeout((window as any)._streamingTimeout);
+            }
+        };
+    }, [message.content]);
+
+    const toggleBlock = useCallback((index: number) => {
         setExpandedBlocks(prev => {
             const newSet = new Set(prev);
             if (newSet.has(index)) {
@@ -34,7 +94,11 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             }
             return newSet;
         });
-    };
+    }, []);
+
+    // Create a stable reference to expandedBlocks for useCallback
+    const expandedBlocksRef = useRef(expandedBlocks);
+    expandedBlocksRef.current = expandedBlocks;
 
     // Debug: Log message toolCalls on every render (development only)
     React.useEffect(() => {
@@ -42,6 +106,15 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             console.log('[MessageItem] Rendering message with toolCalls:', message.id, message.toolCalls.length);
         }
     }, [message.toolCalls, message.id]);
+
+    // Debug: Log when isStreaming changes
+    React.useEffect(() => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log('[MessageItem] isStreaming changed:', { messageId: message.id, isStreaming });
+        }
+        // Force re-render when isStreaming changes to ensure fresh check
+        forceUpdate(n => n + 1);
+    }, [isStreaming, message.id]);
 
     // Count pending tool calls for batch actions
     const pendingCount = React.useMemo(() => {
@@ -82,18 +155,27 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
 
     let toolCallIndex = 0;
 
-    // Helper to render ContentPart
-    const renderContentPart = (part: ContentPart, index: number) => {
+    // Helper to render ContentPart - using useCallback to ensure fresh isStreaming value
+    const renderContentPart = useCallback((part: ContentPart, index: number) => {
         if (part.type === 'text' && part.text) {
             // PERFORMANCE OPTIMIZATION: During streaming, skip ALL Markdown parsing
             // to maximize performance and eliminate stuttering. Apply formatting only after completion.
-            // Debug: Log streaming state to diagnose highlighting issues
+            const currentIsStreaming = isStreamingRef.current;
+            const isActivelyStreaming = isActivelyStreamingRef.current;
+            const shouldSkipHighlighting = currentIsStreaming === true || isActivelyStreaming;
+
             if (process.env.NODE_ENV === 'development' && part.text.length > 100) {
-                console.log('[MessageItem] renderContentPart:', { index, isStreaming, textLength: part.text.length });
+                console.log('[MessageItem] renderContentPart:', {
+                    index,
+                    isStreaming: currentIsStreaming,
+                    isActivelyStreaming,
+                    shouldSkipHighlighting,
+                    textLength: part.text.length
+                });
             }
 
             // Only skip highlighting during active streaming
-            if (isStreaming === true) {
+            if (shouldSkipHighlighting) {
                 return (
                     <pre key={index} className="whitespace-pre-wrap break-word text-[13px] font-mono text-gray-300 bg-[#1e1e1e] p-3 rounded border border-gray-700 my-2">
                         {part.text}
@@ -109,7 +191,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
 
             if (shouldCollapseBlock) {
                 // For large content (>50 lines), use folding to reduce parsing cost
-                const isExpanded = expandedBlocks.has(index);
+                const isExpanded = expandedBlocksRef.current.has(index);
                 const displayText = isExpanded
                     ? part.text
                     : lines.slice(0, MAX_LINES_BEFORE_COLLAPSE).join('\n') + '\n... (展开查看全部)';
@@ -226,7 +308,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             );
         }
         return null;
-    };
+    }, [toggleBlock]);  // Only depend on toggleBlock, read isStreaming from ref
 
 
     return (
@@ -394,4 +476,4 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             </div>
         </div>
     );
-})
+}, arePropsEqual)

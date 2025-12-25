@@ -233,13 +233,13 @@ pub async fn agent_stream_chat(
 
     // 2. Build request with proper timeout and keep-alive configuration
     let client = Client::builder()
-        .timeout(Duration::from_secs(300))  // 5 minute total timeout for large code generation
-        .connect_timeout(Duration::from_secs(30))  // 30 second connection timeout
-        .pool_idle_timeout(Duration::from_secs(90))  // Keep connections alive for 90s in pool
+        .timeout(Duration::from_secs(600))  // 10 minute total timeout (was 300s)
+        .connect_timeout(Duration::from_secs(60))  // 60 second connection timeout (was 30s)
+        .pool_idle_timeout(Duration::from_secs(120))  // Keep connections alive for 120s in pool (was 90s)
         .pool_max_idle_per_host(10)  // Maintain up to 10 idle connections per host
-        .tcp_keepalive(Duration::from_secs(15))  // TCP layer keepalive every 15s (was 60s)
-        .http2_keep_alive_interval(Duration::from_secs(10))  // HTTP/2 keepalive every 10s (was 30s)
-        .http2_keep_alive_timeout(Duration::from_secs(5))   // HTTP/2 must respond within 5s (was 10s)
+        .tcp_keepalive(Duration::from_secs(30))  // TCP layer keepalive every 30s (was 15s)
+        .http2_keep_alive_interval(Duration::from_secs(20))  // HTTP/2 keepalive every 20s (was 10s)
+        .http2_keep_alive_timeout(Duration::from_secs(30))   // HTTP/2 must respond within 30s (was 5s)
         .http2_keep_alive_while_idle(true)
         .build()
         .map_err(|e| {

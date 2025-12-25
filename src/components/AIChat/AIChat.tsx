@@ -45,6 +45,11 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   const lastUpdateTime = useRef(0);
   const throttleTimeout = useRef<number | null>(null);
 
+  // Scroll throttling to prevent "flickering" during streaming
+  const lastScrollTime = useRef(0);
+  const rafScrollId = useRef<number>(0);
+  const SCROLL_THROTTLE_MS = 200;  // Scroll throttle: 200ms
+
   useEffect(() => {
     const now = Date.now();
     const isLastMessageStreaming = rawMessages.length > 0 && 
@@ -90,11 +95,41 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     messagesEndRef.current?.scrollIntoView({ behavior: instant ? 'instant' : 'smooth' });
   };
 
-  // Auto-scroll to bottom when messages update, use instant scroll during streaming
+  // Auto-scroll to bottom when messages update, with throttling during streaming
   useEffect(() => {
     const isStreaming = isLoading && displayMessages.length > 0 &&
                         displayMessages[displayMessages.length - 1].role === 'assistant';
-    scrollToBottom(isStreaming);
+
+    if (isStreaming) {
+      // Streaming state: throttle + RAF sync
+      const now = Date.now();
+      const timeSinceLastScroll = now - lastScrollTime.current;
+
+      if (timeSinceLastScroll >= SCROLL_THROTTLE_MS) {
+        // Cancel any pending RAF scroll
+        if (rafScrollId.current) {
+          cancelAnimationFrame(rafScrollId.current);
+        }
+        // Schedule new scroll in next animation frame
+        rafScrollId.current = requestAnimationFrame(() => {
+          scrollToBottom(true);
+          lastScrollTime.current = Date.now();
+        });
+      }
+    } else {
+      // Non-streaming state: immediate scroll
+      if (rafScrollId.current) {
+        cancelAnimationFrame(rafScrollId.current);
+      }
+      scrollToBottom(false);
+    }
+
+    // Cleanup: cancel pending RAF on unmount or dependency change
+    return () => {
+      if (rafScrollId.current) {
+        cancelAnimationFrame(rafScrollId.current);
+      }
+    };
   }, [displayMessages, isLoading]);
 
   const currentProvider = providers.find(p => p.id === currentProviderId);
