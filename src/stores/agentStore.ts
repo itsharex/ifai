@@ -238,8 +238,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 const { messages, isLoading } = coreUseChatStore.getState();
                 console.log(`[AgentStore] Before setState: isLoading=${isLoading}`);
                 coreUseChatStore.setState({
-                    messages: messages.map(m => m.id === msgId ? { ...m, content: result } : m),
-                    isLoading: false  // ✅ FIX: Clear loading state so highlighting appears after stream completes
+                    messages: messages.map(m => m.id === msgId ? {
+                        ...m,
+                        content: result,
+                        agentId: undefined,      // ✅ Clear agent ID so isAgentStreaming becomes false
+                        isAgentLive: false       // ✅ Clear live marker so highlighting appears
+                    } : m),
+                    isLoading: false
                 });
                 console.log(`[AgentStore] After setState: isLoading=${coreUseChatStore.getState().isLoading}`);
             }
@@ -254,8 +259,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             if (msgId) {
                 const { messages } = coreUseChatStore.getState();
                 coreUseChatStore.setState({
-                    messages: messages.map(m => m.id === msgId ? { ...m, content: `❌ Agent Error: ${payload.error}` } : m),
-                    isLoading: false  // ✅ FIX: Clear loading state on error too
+                    messages: messages.map(m => m.id === msgId ? {
+                        ...m,
+                        content: `❌ Agent Error: ${payload.error}`,
+                        agentId: undefined,      // ✅ Clear agent ID
+                        isAgentLive: false       // ✅ Clear live marker
+                    } : m),
+                    isLoading: false
                 });
             }
             set(state => ({
