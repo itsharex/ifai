@@ -15,6 +15,8 @@ export interface ContentSegment {
   timestamp: number;
   content?: string;
   toolCallId?: string;  // Reference to toolCall by ID
+  startPos?: number;    // Character position in full content (for precise tool interleaving)
+  endPos?: number;      // End position in full content
 }
 
 // Register stores on first import
@@ -295,15 +297,19 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                             console.log('[Stream] Total content length:', newMsg.content.length);
                         }
 
-                        // Track text segment in order
+                        // Track text segment in order with character position
                         // @ts-ignore
                         const order = newMsg.contentSegments.length;
+                        // Calculate start position (before appending textChunk)
+                        const startPos = (newMsg.content || '').length - textChunk.length;
                         // @ts-ignore
                         newMsg.contentSegments.push({
                             type: 'text' as const,
                             order,
                             timestamp: Date.now(),
-                            content: textChunk
+                            content: textChunk,
+                            startPos,  // Track character position for precise tool interleaving
+                            endPos: newMsg.content.length
                         });
                     }
                     

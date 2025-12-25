@@ -84,6 +84,26 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         };
     }, [message.content]);
 
+    // Sync local streaming state with global isLoading state
+    // This ensures that when the backend clears isLoading, we immediately switch to formatted rendering
+    React.useEffect(() => {
+        const { isLoading: globalIsLoading } = useChatStore.getState();
+
+        if (!globalIsLoading && isActivelyStreamingRef.current) {
+            console.log('[MessageItem] Global isLoading cleared, resetting streaming state for message:', message.id);
+            isActivelyStreamingRef.current = false;
+
+            // Clear any pending timeout
+            if ((window as any)._streamingTimeout) {
+                clearTimeout((window as any)._streamingTimeout);
+                (window as any)._streamingTimeout = undefined;
+            }
+
+            // Force re-render to apply highlighting
+            forceUpdate(n => n + 1);
+        }
+    }, [message.id]); // Check when message ID changes (new message) or periodically
+
     const toggleBlock = useCallback((index: number) => {
         setExpandedBlocks(prev => {
             const newSet = new Set(prev);
@@ -156,33 +176,10 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     let toolCallIndex = 0;
 
     // Helper to render ContentPart - using useCallback to ensure fresh isStreaming value
+    // NOTE: Streaming detection is now handled at the CALL SITE, not inside this function
+    // This function ALWAYS applies formatting (Markdown + syntax highlighting) when called
     const renderContentPart = useCallback((part: ContentPart, index: number) => {
         if (part.type === 'text' && part.text) {
-            // PERFORMANCE OPTIMIZATION: During streaming, skip ALL Markdown parsing
-            // to maximize performance and eliminate stuttering. Apply formatting only after completion.
-            const currentIsStreaming = isStreamingRef.current;
-            const isActivelyStreaming = isActivelyStreamingRef.current;
-            const shouldSkipHighlighting = currentIsStreaming === true || isActivelyStreaming;
-
-            if (process.env.NODE_ENV === 'development' && part.text.length > 100) {
-                console.log('[MessageItem] renderContentPart:', {
-                    index,
-                    isStreaming: currentIsStreaming,
-                    isActivelyStreaming,
-                    shouldSkipHighlighting,
-                    textLength: part.text.length
-                });
-            }
-
-            // Only skip highlighting during active streaming
-            if (shouldSkipHighlighting) {
-                return (
-                    <pre key={index} className="whitespace-pre-wrap break-word text-[13px] font-mono text-gray-300 bg-[#1e1e1e] p-3 rounded border border-gray-700 my-2">
-                        {part.text}
-                    </pre>
-                );
-            }
-
             // PERFORMANCE: After streaming completes, check for code folding
             // to reduce Markdown parsing overhead by ~95% for large content
             const lines = part.text.split('\n');
@@ -382,32 +379,125 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                         ) : (
                             /* Check if contentSegments exists for stream-order rendering */
                             sortedSegments ? (
-                                /* New Logic: Render in stream reception order */
-                                <>
-                                    {/* Render segments in reception order (pre-sorted for performance) */}
-                                    {sortedSegments.map((segment: ContentSegment, index: number) => {
+                                /* New Logic: Render based on streaming state */
+                                (() => {
+                                    // Check if actively streaming to prevent incremental highlighting
+                                    const currentIsStreaming = isStreamingRef.current || isActivelyStreamingRef.current;
+
+                                    if (currentIsStreaming) {
+                                        /* === STREAMING MODE: Render ALL segments (text + tools) in order as plain text === */
+                                        return (
+                                            <>
+                                                {sortedSegments.map((segment: ContentSegment, index: number) => {
+                                                    if (segment.type === 'text') {
+                                                        const content = segment.content;
+                                                        if (!content) return null;
+                                                        if (content.startsWith('Indexing...')) {
+                                                            return <p key={`text-${index}`} className="text-sm whitespace-pre-wrap text-gray-400">{content}</p>;
+                                                        }
+                                                        // Plain text rendering, no Markdown parsing (prevents flickering)
+                                                        return (
+                                                            <pre key={`streaming-text-${index}`} className="whitespace-pre-wrap break-word text-[13px] font-mono text-gray-300 bg-[#1e1e1e] p-3 rounded border border-gray-700 my-2">
+                                                                {content}
+                                                            </pre>
+                                                        );
+                                                    } else if (segment.type === 'tool' && segment.toolCallId) {
+                                                        const toolCall = message.toolCalls?.find(tc => tc.id === segment.toolCallId);
+                                                        if (!toolCall) return null;
+                                                        return (
+                                                            <ToolApproval
+                                                                key={`streaming-tool-${segment.toolCallId}`}
+                                                                toolCall={toolCall}
+                                                                onApprove={() => onApprove(message.id, toolCall.id)}
+                                                                onReject={() => onReject(message.id, toolCall.id)}
+                                                            />
+                                                        );
+                                                    }
+                                                    return null;
+                                                })}
+                                            </>
+                                        );
+                                    } else {
+                                        /* === NON-STREAMING MODE: Use full content with Markdown/highlighting === */
+
+                                        // First, check if there are any tools in sortedSegments
+                                        const hasToolsInSegments = sortedSegments.some(s => s.type === 'tool');
+
+                                        if (!hasToolsInSegments) {
+                                            // Simple case: No tools, render full content directly with index 0
+                                            // This ensures code block indices start from 0, matching toggleBlock expectations
+                                            return renderContentPart({ type: 'text', text: message.content as string }, 0);
+                                        }
+
+                                        // Complex case: Has tools, use precise interleaving
+                                        // Build tool position map: order -> { toolCallId, charPos }
+                                        const toolPositions = new Map<number, { toolCallId: string, charPos: number }>();
+
+                                        let charOffset = 0;
+                                        sortedSegments.forEach((segment: ContentSegment) => {
                                             if (segment.type === 'text') {
-                                                const content = segment.content;
-                                                if (!content) return null;
-                                                if (content.startsWith('Indexing...')) {
-                                                    return <p key={`text-${index}`} className="text-sm whitespace-pre-wrap text-gray-400">{content}</p>;
-                                                }
-                                                return renderContentPart({ type: 'text', text: content }, index);
+                                                charOffset += segment.content?.length || 0;
                                             } else if (segment.type === 'tool' && segment.toolCallId) {
-                                                const toolCall = message.toolCalls?.find(tc => tc.id === segment.toolCallId);
-                                                if (!toolCall) return null;
-                                                return (
-                                                    <ToolApproval
-                                                        key={`tool-${segment.toolCallId}`}
-                                                        toolCall={toolCall}
-                                                        onApprove={() => onApprove(message.id, toolCall.id)}
-                                                        onReject={() => onReject(message.id, toolCall.id)}
-                                                    />
-                                                );
+                                                toolPositions.set(segment.order, {
+                                                    toolCallId: segment.toolCallId,
+                                                    charPos: charOffset
+                                                });
                                             }
-                                            return null;
-                                        })}
-                                </>
+                                        });
+
+                                        const fullContent = message.content as string;  // Assert as string for this context
+                                        const parts: Array<{type: 'text', content: string} | {type: 'tool', toolCallId: string}> = [];
+                                        let lastPos = 0;
+
+                                        // Sort tools by character position
+                                        const sortedTools = Array.from(toolPositions.values()).sort((a, b) => a.charPos - b.charPos);
+
+                                        sortedTools.forEach(({ toolCallId, charPos }) => {
+                                            // Add text before this tool
+                                            if (charPos > lastPos) {
+                                                parts.push({
+                                                    type: 'text',
+                                                    content: fullContent.substring(lastPos, charPos)
+                                                });
+                                            }
+                                            // Add tool
+                                            parts.push({ type: 'tool', toolCallId });
+                                            lastPos = charPos;
+                                        });
+
+                                        // Add remaining text
+                                        if (lastPos < fullContent.length) {
+                                            parts.push({
+                                                type: 'text',
+                                                content: fullContent.substring(lastPos)
+                                            });
+                                        }
+
+                                        // Render all parts
+                                        // Note: When tools are interleaved, each text part gets its own index
+                                        // Code block indices will be offset, but this is acceptable for the interleaved case
+                                        return (
+                                            <>
+                                                {parts.map((part, index) => {
+                                                    if (part.type === 'text') {
+                                                        return renderContentPart({ type: 'text', text: part.content }, index);
+                                                    } else {
+                                                        const toolCall = message.toolCalls?.find(tc => tc.id === part.toolCallId);
+                                                        if (!toolCall) return null;
+                                                        return (
+                                                            <ToolApproval
+                                                                key={`tool-${part.toolCallId}`}
+                                                                toolCall={toolCall}
+                                                                onApprove={() => onApprove(message.id, toolCall.id)}
+                                                                onReject={() => onReject(message.id, toolCall.id)}
+                                                            />
+                                                        );
+                                                    }
+                                                })}
+                                            </>
+                                        );
+                                    }
+                                })()
                             ) : (
                                 /* Fallback to String Content + Segments (Text and Tools interleaved) */
                                 (() => {
