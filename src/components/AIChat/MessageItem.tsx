@@ -182,6 +182,46 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
 
     let toolCallIndex = 0;
 
+    // Helper to render Markdown WITHOUT syntax highlighting (for streaming mode)
+    // This provides markdown formatting (bold, lists, etc.) without the performance cost
+    const renderMarkdownWithoutHighlight = useCallback((text: string, key: any) => {
+        return (
+            <ReactMarkdown
+                key={key}
+                children={text}
+                components={{
+                    p: ({node, ...props}) => <div {...props} className="mb-2 last:mb-0 text-gray-300" />,
+                    code({ node, className, children, ...rest }) {
+                        const { inline } = rest as any;
+                        if (!inline) {
+                            // Code block: use plain pre without syntax highlighting
+                            return (
+                                <pre className="whitespace-pre-wrap break-word text-[13px] font-mono text-gray-300 bg-[#1e1e1e] p-3 rounded border border-gray-700 my-2 overflow-x-auto">
+                                    {String(children)}
+                                </pre>
+                            );
+                        }
+                        // Inline code
+                        return (
+                            <code {...rest} className="px-1 py-0.5 bg-gray-800 text-gray-300 rounded text-sm font-mono">
+                                {children}
+                            </code>
+                        );
+                    },
+                    strong: ({node, ...props}) => <strong {...props} className="font-bold text-white" />,
+                    em: ({node, ...props}) => <em {...props} className="italic text-gray-200" />,
+                    ul: ({node, ...props}) => <ul {...props} className="list-disc list-inside mb-2 text-gray-300" />,
+                    ol: ({node, ...props}) => <ol {...props} className="list-decimal list-inside mb-2 text-gray-300" />,
+                    li: ({node, ...props}) => <li {...props} className="ml-4" />,
+                    h1: ({node, ...props}) => <h1 {...props} className="text-xl font-bold mb-2 text-white" />,
+                    h2: ({node, ...props}) => <h2 {...props} className="text-lg font-bold mb-2 text-white" />,
+                    h3: ({node, ...props}) => <h3 {...props} className="text-md font-bold mb-2 text-white" />,
+                    a: ({node, ...props}) => <a {...props} className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer" />,
+                }}
+            />
+        );
+    }, []);
+
     // Helper to render ContentPart - using useCallback to ensure fresh isStreaming value
     // NOTE: Streaming detection is now handled at the CALL SITE, not inside this function
     // This function ALWAYS applies formatting (Markdown + syntax highlighting) when called
@@ -404,12 +444,8 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                                         if (content.startsWith('Indexing...')) {
                                                             return <p key={`text-${index}`} className="text-sm whitespace-pre-wrap text-gray-400">{content}</p>;
                                                         }
-                                                        // Plain text rendering, no Markdown parsing (prevents flickering)
-                                                        return (
-                                                            <pre key={`streaming-text-${index}`} className="whitespace-pre-wrap break-word text-[13px] font-mono text-gray-300 bg-[#1e1e1e] p-3 rounded border border-gray-700 my-2">
-                                                                {content}
-                                                            </pre>
-                                                        );
+                                                        // Render with Markdown formatting but WITHOUT syntax highlighting (for performance)
+                                                        return renderMarkdownWithoutHighlight(content, `streaming-text-${index}`);
                                                     } else if (segment.type === 'tool' && segment.toolCallId) {
                                                         const toolCall = message.toolCalls?.find(tc => tc.id === segment.toolCallId);
                                                         if (!toolCall) return null;
@@ -552,13 +588,9 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                                     if (content.startsWith('Indexing...')) {
                                                         return <p key={index} className="text-sm whitespace-pre-wrap text-gray-400">{content}</p>;
                                                     }
-                                                    // NEW: Check if agent is streaming - use plain text to avoid performance issues
+                                                    // NEW: Check if agent is streaming - use markdown without highlighting
                                                     if (isAgentStreaming) {
-                                                        return (
-                                                            <pre key={index} className="whitespace-pre-wrap break-word text-[13px] font-mono text-gray-300 bg-[#1e1e1e] p-3 rounded border border-gray-700 my-2">
-                                                                {content}
-                                                            </pre>
-                                                        );
+                                                        return renderMarkdownWithoutHighlight(content, index);
                                                     }
                                                     return renderContentPart({ type: 'text', text: content }, index);
                                                 }
