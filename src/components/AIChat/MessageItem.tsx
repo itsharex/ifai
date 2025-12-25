@@ -87,7 +87,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         if (part.type === 'text' && part.text) {
             // PERFORMANCE OPTIMIZATION: During streaming, skip ALL Markdown parsing
             // to maximize performance and eliminate stuttering. Apply formatting only after completion.
-            if (isStreaming) {
+            if (isStreaming === true) {
                 return (
                     <pre key={index} className="whitespace-pre-wrap break-word text-[13px] font-mono text-gray-300 bg-[#1e1e1e] p-3 rounded border border-gray-700 my-2">
                         {part.text}
@@ -109,7 +109,16 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                     : lines.slice(0, MAX_LINES_BEFORE_COLLAPSE).join('\n') + '\n... (展开查看全部)';
 
                 return (
-                    <div key={index}>
+                    <div key={index} className="relative">
+                        {isExpanded && (
+                            <button
+                                onClick={() => toggleBlock(index)}
+                                className="absolute top-2 right-2 z-10 px-2 py-1 text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 bg-gray-900/90 backdrop-blur rounded border border-gray-700 hover:bg-gray-800 transition-colors shadow-lg"
+                            >
+                                <ChevronUp size={12} />
+                                收起
+                            </button>
+                        )}
                         <ReactMarkdown
                             children={displayText}
                             components={{
@@ -148,22 +157,15 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 },
                             }}
                         />
-                        <button
-                            onClick={() => toggleBlock(index)}
-                            className="w-full mt-1 py-1 text-xs text-blue-400 hover:text-blue-300 flex items-center justify-center gap-1 bg-gray-900 rounded border border-gray-700 hover:bg-gray-800 transition-colors"
-                        >
-                            {isExpanded ? (
-                                <>
-                                    <ChevronUp size={12} />
-                                    收起 ({lines.length} 行)
-                                </>
-                            ) : (
-                                <>
-                                    <ChevronDown size={12} />
-                                    展开全部 ({lines.length} 行)
-                                </>
-                            )}
-                        </button>
+                        {!isExpanded && (
+                            <button
+                                onClick={() => toggleBlock(index)}
+                                className="w-full mt-1 py-1 text-xs text-blue-400 hover:text-blue-300 flex items-center justify-center gap-1 bg-gray-900 rounded border border-gray-700 hover:bg-gray-800 transition-colors"
+                            >
+                                <ChevronDown size={12} />
+                                展开全部 ({lines.length} 行)
+                            </button>
+                        )}
                     </div>
                 );
             }
@@ -179,14 +181,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                             const match = /language-(\w+)/.exec(className || '');
                             const { ref, ...propsToPass } = rest;
                             const isInline = (rest as any).inline;
-
-                            if (!isInline && isStreaming) {
-                                return (
-                                    <pre className="whitespace-pre-wrap break-word bg-[#1e1e1e] p-2 rounded my-2 text-[11px] font-mono text-gray-300 overflow-x-auto border border-gray-700">
-                                        {children}
-                                    </pre>
-                                );
-                            }
 
                             if (!isInline) {
                                 return (

@@ -109,7 +109,7 @@ export const useSettingsStore = create<SettingsState>()(
           protocol: 'openai',
           baseUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
           apiKey: '',
-          models: ['glm-4.7', 'glm-4-plus', 'glm-4-air', 'glm-4-flash', 'glm-4', 'glm-4v', 'glm-3-turbo'],
+          models: ['glm-4.6', 'glm-4.7', 'glm-4-plus', 'glm-4-air', 'glm-4-flash', 'glm-4', 'glm-4v', 'glm-3-turbo'],
           enabled: true,
         },
         {
@@ -123,7 +123,7 @@ export const useSettingsStore = create<SettingsState>()(
         },
       ],
       currentProviderId: 'zhipu',
-      currentModel: 'glm-4.7',
+      currentModel: 'glm-4.6',
       enableAutocomplete: true,
       agentAutoApprove: false,
       enableNaturalLanguageAgentTrigger: true,
@@ -208,7 +208,7 @@ export const useSettingsStore = create<SettingsState>()(
   )
 );
 
-// Force update zhipu provider to be enabled with glm-4.7 as default
+// Force update zhipu provider to be enabled with glm-4.6 as default
 // This runs after persist rehydration to ensure the config is correct
 setTimeout(() => {
   const state = useSettingsStore.getState();
@@ -216,18 +216,18 @@ setTimeout(() => {
   // Check if zhipu provider needs to be updated
   const zhipuProvider = state.providers.find(p => p.id === 'zhipu');
 
-  if (zhipuProvider && (!zhipuProvider.enabled || state.currentProviderId !== 'zhipu' || state.currentModel !== 'glm-4.7')) {
+  if (zhipuProvider && (!zhipuProvider.enabled || state.currentProviderId !== 'zhipu' || state.currentModel !== 'glm-4.6')) {
     console.log('[SettingsStore] Migrating zhipu provider config...');
 
     // Update provider to be enabled
     useSettingsStore.setState(state => ({
       providers: state.providers.map(p =>
         p.id === 'zhipu'
-          ? { ...p, enabled: true, models: ['glm-4.7', 'glm-4-plus', 'glm-4-air', 'glm-4-flash', 'glm-4', 'glm-4v', 'glm-3-turbo'] }
+          ? { ...p, enabled: true, models: ['glm-4.6', 'glm-4.7', 'glm-4-plus', 'glm-4-air', 'glm-4-flash', 'glm-4', 'glm-4v', 'glm-3-turbo'] }
           : p
       ),
       currentProviderId: 'zhipu',
-      currentModel: 'glm-4.7'
+      currentModel: 'glm-4.6'
     }));
   }
 }, 0);

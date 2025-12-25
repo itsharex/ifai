@@ -62,9 +62,9 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
       return;
     }
 
-    // If streaming, throttle updates to reduce jitter (200ms for maximum performance)
+    // If streaming, throttle updates to reduce jitter (100ms for smoother experience)
     const timeSinceLastUpdate = now - lastUpdateTime.current;
-    const throttleMs = isLastMessageStreaming ? 200 : 150;  // Increased to 200ms for maximum performance during code generation
+    const throttleMs = isLastMessageStreaming ? 100 : 150;  // 100ms during streaming for smoother updates
 
     if (timeSinceLastUpdate >= throttleMs) {
       setDisplayMessages(rawMessages);
@@ -401,7 +401,7 @@ ${(t('help_message.shortcuts', { returnObjects: true }) as string[]).map(s => `-
             onApprove={handleApprove}
             onReject={handleReject}
             onOpenFile={handleOpenFile}
-            isStreaming={isLoading && message.role === 'assistant' && message.isAgentLive !== true}
+            isStreaming={isLoading && message.role === 'assistant'}
           />
         ))}
         <div ref={messagesEndRef} />

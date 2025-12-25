@@ -1,7 +1,7 @@
 use crate::core_traits::ai::{Message, Content, ToolCall, AIProviderConfig, FunctionCall};
 use serde_json::{json, Value};
 use reqwest::Client;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
 use futures::stream::StreamExt;
@@ -231,11 +231,21 @@ pub async fn agent_stream_chat(
     let mut clean_messages = messages.clone();
     sanitize_messages(&mut clean_messages);
 
-    // 2. Build request
+    // 2. Build request with proper timeout and keep-alive configuration
     let client = Client::builder()
-        .timeout(Duration::from_secs(180))
+        .timeout(Duration::from_secs(300))  // 5 minute total timeout for large code generation
+        .connect_timeout(Duration::from_secs(30))  // 30 second connection timeout
+        .pool_idle_timeout(Duration::from_secs(90))  // Keep connections alive for 90s in pool
+        .pool_max_idle_per_host(10)  // Maintain up to 10 idle connections per host
+        .tcp_keepalive(Duration::from_secs(15))  // TCP layer keepalive every 15s (was 60s)
+        .http2_keep_alive_interval(Duration::from_secs(10))  // HTTP/2 keepalive every 10s (was 30s)
+        .http2_keep_alive_timeout(Duration::from_secs(5))   // HTTP/2 must respond within 5s (was 10s)
+        .http2_keep_alive_while_idle(true)
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            eprintln!("[AgentStream] Failed to create HTTP client: {}", e);
+            e.to_string()
+        })?;
 
     let mut request_body = json!({
         "model": config.models[0],
@@ -273,17 +283,34 @@ pub async fn agent_stream_chat(
     let mut accumulated_tool_calls: HashMap<i32, StreamingToolCall> = HashMap::new();
     let mut event_count = 0;
 
+    // Stream statistics tracking
+    let start_time = Instant::now();
+    let mut last_event_time = Instant::now();
+
     eprintln!("[AgentStream] Starting stream iteration...");
 
     while let Some(event) = stream.next().await {
         event_count += 1;
-        eprintln!("[AgentStream] Event #{}", event_count);
+        let now = Instant::now();
+        let time_since_last = now.duration_since(last_event_time).as_secs_f64();
+        last_event_time = now;
+
         match event {
             Ok(event) => {
+                // Log stream statistics every 50 events
+                if event_count % 50 == 0 {
+                    let elapsed = start_time.elapsed().as_secs_f64();
+                    eprintln!("[AgentStream] Event #{} | Stats: {:.1}s elapsed, {:.3}s since last",
+                        event_count, elapsed, time_since_last);
+                } else {
+                    eprintln!("[AgentStream] Event #{}", event_count);
+                }
                 eprintln!("[AgentStream] Received event, data length: {}", event.data.len());
 
                 if event.data == "[DONE]" {
-                    eprintln!("[AgentStream] Received [DONE] signal");
+                    let total_time = start_time.elapsed().as_secs_f64();
+                    eprintln!("[AgentStream] Stream completed: {} events in {:.1}s",
+                        event_count, total_time);
                     break;
                 }
 
@@ -377,7 +404,8 @@ pub async fn agent_stream_chat(
                         }
                     }
                 } else {
-                    eprintln!("[AgentStream] Failed to parse JSON. First 200 chars: {}",
+                    eprintln!("[AgentStream] Failed to parse JSON at event #{}. First 200 chars: {}",
+                        event_count,
                         if event.data.len() > 200 {
                             format!("{}...", &event.data[..200])
                         } else {
@@ -387,14 +415,55 @@ pub async fn agent_stream_chat(
                 }
             }
             Err(e) => {
-                eprintln!("[AgentStream] Stream error: {}", e);
+                let elapsed = start_time.elapsed().as_secs_f64();
+                let error_source = std::error::Error::source(&e)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                let error_details = format!(
+                    "[AgentStream] Stream error at event {}: {:.1}s elapsed, {:.3}s since last, error: {}, source: {}",
+                    event_count, elapsed, time_since_last, e, error_source
+                );
+
+                eprintln!("{}", error_details);
+
+                // Check if this is a recoverable error (encoding/decoding/connection issues)
+                let error_str = e.to_string().to_lowercase();
+                // Detect recoverable errors: encoding errors, connection timeouts, stream interruptions
+                if error_str.contains("decoding") ||
+                   error_str.contains("utf8") ||
+                   error_str.contains("charset") ||
+                   error_str.contains("response body") ||  // Catch connection timeout read errors
+                   error_str.contains("unexpected eof") ||  // Connection closed unexpectedly
+                   error_str.contains("connection") {      // Generic connection issues
+                    // Log warning and attempt to continue
+                    eprintln!("[AgentStream] Recoverable error at event #{}: {}. Attempting to continue...",
+                        event_count, e);
+                    let _ = app.emit(
+                        &format!("agent_{}", agent_id),
+                        json!({
+                            "type": "warning",
+                            "message": format!("Stream interrupted at event #{}, attempting recovery...", event_count)
+                        })
+                    );
+                    continue;
+                }
+
+                // For non-recoverable errors, emit error and return
+                let _ = app.emit(
+                    &format!("agent_{}", agent_id),
+                    json!({
+                        "type": "error",
+                        "error": error_details
+                    })
+                );
                 return Err(format!("Stream error: {}", e));
             }
         }
     }
 
-    eprintln!("[AgentStream] Stream completed. Content length: {}, Tools: {}",
-        accumulated_content.len(), accumulated_tool_calls.len());
+    let total_time = start_time.elapsed().as_secs_f64();
+    eprintln!("[AgentStream] Stream completed. Events: {}, Time: {:.1}s, Content: {} chars, Tools: {}",
+        event_count, total_time, accumulated_content.len(), accumulated_tool_calls.len());
 
     // 5. Build final Message
     let tool_calls = if accumulated_tool_calls.is_empty() {
