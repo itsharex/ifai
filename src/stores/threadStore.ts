@@ -6,11 +6,13 @@
  * - Thread metadata (title, timestamps, tags, pinned status)
  * - Active thread tracking
  * - Thread search and filtering
+ * - Persistence with IndexedDB
  */
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Message } from 'ifainew-core';
+import { autoSaveThread } from './persistence/threadPersistence';
 
 // ============================================================================
 // Types
@@ -226,6 +228,10 @@ export const useThreadStore = create<ThreadStore>()(
         }));
 
         console.log(`[ThreadStore] Created thread: ${threadId}`);
+
+        // Trigger auto-save
+        autoSaveThread(threadId);
+
         return threadId;
       },
 
@@ -298,6 +304,9 @@ export const useThreadStore = create<ThreadStore>()(
         }));
 
         console.log(`[ThreadStore] Switched to thread: ${threadId}`);
+
+        // Trigger auto-save
+        autoSaveThread(threadId);
       },
 
       updateThread: (threadId: string, updates: Partial<Thread>) => {
@@ -322,6 +331,9 @@ export const useThreadStore = create<ThreadStore>()(
         }));
 
         console.log(`[ThreadStore] Updated thread: ${threadId}`, updates);
+
+        // Trigger auto-save
+        autoSaveThread(threadId);
       },
 
       // --------------------------------------------------------------

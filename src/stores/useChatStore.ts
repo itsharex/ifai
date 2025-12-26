@@ -8,6 +8,7 @@ import { useAgentStore } from './agentStore';
 import { useThreadStore } from './threadStore';
 import { invoke } from '@tauri-apps/api/core';
 import { recognizeIntent, shouldTriggerAgent, formatAgentName } from '../utils/intentRecognizer';
+import { autoSaveThread } from './persistence/threadPersistence';
 
 // Content segment interface for tracking stream reception order
 export interface ContentSegment {
@@ -43,6 +44,8 @@ export function getThreadMessages(threadId: string): Message[] {
  */
 export function setThreadMessages(threadId: string, messages: Message[]): void {
   threadMessages.set(threadId, messages);
+  // Trigger auto-save
+  autoSaveThread(threadId);
 }
 
 /**

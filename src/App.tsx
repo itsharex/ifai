@@ -33,12 +33,23 @@ function App() {
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
-    
+
     const init = async () => {
       // Defer initialization to ensure DOM and Vite preamble are settled
       await new Promise(resolve => setTimeout(resolve, 150));
+
+      // Initialize sync
       const { initializeSync } = await import('./utils/sync');
       cleanup = await initializeSync();
+
+      // Initialize thread persistence (restore from IndexedDB)
+      try {
+        const { initThreadPersistence } = await import('./stores/persistence/threadPersistence');
+        await initThreadPersistence();
+        console.log('[App] ✅ Thread persistence initialized');
+      } catch (error) {
+        console.error('[App] ❌ Failed to initialize thread persistence:', error);
+      }
     };
 
     init();
