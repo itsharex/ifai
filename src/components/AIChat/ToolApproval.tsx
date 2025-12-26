@@ -41,6 +41,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
     const isPartial = toolCall.isPartial;
 
     const getIcon = () => {
+        if (!toolCall.tool) return <Terminal size={14} />;
         const toolName = toolCall.tool.trim();
         for (const [key, icon] of Object.entries(TOOL_ICONS)) {
             if (toolName.includes(key.replace('agent_', ''))) {
@@ -97,7 +98,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject }: ToolApprovalProp
     };
 
     // 处理文件写入类工具
-    const isWriteFile = toolCall.tool.includes('write_file');
+    const isWriteFile = toolCall.tool?.includes('write_file') || false;
     const filePath = toolCall.args?.rel_path || toolCall.args?.path || '';
     const newContent = toolCall.args?.content || '';
 

@@ -64,10 +64,12 @@ async fn ai_chat(
     project_root: Option<String>,
 ) -> Result<(), String> {
     println!("[AI Chat] Entry - project_root: {:?}, event_id: {}", project_root, event_id);
+    println!("[AI Chat] Received {} messages", messages.len());
 
     // Ensure all messages have unique IDs
     // Sanitize messages
     ai_utils::sanitize_messages(&mut messages);
+    println!("[AI Chat] After sanitize: {} messages", messages.len());
 
     if let Some(root) = project_root {
         let root_clone = root.clone();
@@ -210,7 +212,9 @@ async fn ai_chat(
             }
         }
 
+        println!("[AI Chat] Before retain: {} messages", messages.len());
         messages.retain(|m| m.role != "system");
+        println!("[AI Chat] After retain: {} messages", messages.len());
         
         // Insert Main System Prompt
         messages.insert(0, core_traits::ai::Message {
@@ -232,7 +236,23 @@ async fn ai_chat(
     }
 
     ai_utils::sanitize_messages(&mut messages);
-    
+
+    // 验证至少有一条用户消息
+    let has_user_message = messages.iter().any(|m| m.role == "user");
+    if !has_user_message {
+        eprintln!("[AI Chat] ERROR: No user messages in request!");
+        return Err("No user message to process".to_string());
+    }
+
+    println!("[AI Chat] Final messages to send: {}", messages.len());
+    for (i, msg) in messages.iter().enumerate() {
+        let content_info = match &msg.content {
+            core_traits::ai::Content::Text(s) => format!("Text({} chars)", s.len()),
+            core_traits::ai::Content::Parts(p) => format!("Parts({} items)", p.len()),
+        };
+        println!("[AI Chat]   [{}] role={}, content={}", i, msg.role, content_info);
+    }
+
     // Callback wrapper for Tauri events
     let app_handle_for_stream = app.clone();
     let event_id_clone = event_id.clone();

@@ -358,25 +358,43 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             tools: messagesToSend.filter(m => m.toolCalls?.length).length,
         };
         console.log(`[Context] Selected ${messagesToSend.length}/${messagesWithoutPlaceholder.length} messages:`, selectedSummary);
+
+        // 强制包含最后一条用户消息（防止被智能选择过滤）
+        const userMessages = messagesWithoutPlaceholder.filter(m => m.role === 'user');
+        if (userMessages.length > 0) {
+            const lastUserMsg = userMessages[userMessages.length - 1];
+            if (!messagesToSend.includes(lastUserMsg)) {
+                console.log('[Chat Debug] Force-adding last user message that was filtered');
+                messagesToSend.push(lastUserMsg);
+            }
+        }
     } else {
         // 传统模式：发送所有消息
         messagesToSend = allMessages.slice(0, -1);
     }
 
     // 转换为API格式
-    const msgHistory = messagesToSend.map(m => ({
-        role: m.role,
-        content: m.content,
-        tool_calls: m.toolCalls ? m.toolCalls.map(tc => ({
-            id: tc.id,
-            type: 'function',
-            function: {
-                name: tc.tool || (tc as any).function?.name,
-                arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {})
-            }
-        })) : undefined,
-        tool_call_id: m.tool_call_id
-    }));
+    const msgHistory = messagesToSend.map(m => {
+        const toolCalls = m.toolCalls
+            ? m.toolCalls
+                .filter(tc => tc.tool) // 过滤掉没有 tool 名称的
+                .map(tc => ({
+                    id: tc.id,
+                    type: 'function',
+                    function: {
+                        name: tc.tool,
+                        arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {})
+                    }
+                }))
+            : undefined;
+
+        return {
+            role: m.role,
+            content: m.content,
+            tool_calls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+            tool_call_id: m.tool_call_id
+        };
+    });
 
     // 5. Setup Listeners
     const { listen } = await import('@tauri-apps/api/event');
@@ -630,9 +648,14 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             enableTools: true
         });
     } catch (e) {
+        console.error('[Chat] Invoke error:', e);
         const { messages } = coreUseChatStore.getState();
+        const errorMsg = e instanceof Error ? e.message : String(e);
         coreUseChatStore.setState({
-            messages: messages.map(m => m.id === assistantMsgId ? { ...m, content: `Error: ${e}` } : m)
+            messages: messages.map(m => m.id === assistantMsgId ? {
+                ...m,
+                content: `❌ 发送失败: ${errorMsg}\n\n请检查：\n1. API Key 是否配置正确\n2. 网络连接是否正常\n3. 控制台是否有详细错误信息`
+            } : m)
         });
     } finally {
         coreUseChatStore.setState({ isLoading: false });
@@ -680,29 +703,37 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
     const messages = coreUseChatStore.getState().messages;
     
     // Slice off the placeholder we just added
-    const msgHistory = messages.slice(0, -1).map(m => ({
-        role: m.role,
-        content: m.content,
-        tool_calls: m.toolCalls ? m.toolCalls.map(tc => {
-            let argsString: string;
-            if ((tc as any).function?.arguments) {
-                argsString = (tc as any).function.arguments;
-            } else if (tc.args) {
-                argsString = typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {});
-            } else {
-                argsString = '{}';
-            }
-            return {
-                id: tc.id,
-                type: 'function',
-                function: {
-                    name: tc.tool || (tc as any).function?.name,
-                    arguments: argsString
-                }
-            };
-        }) : undefined,
-        tool_call_id: m.tool_call_id
-    }));
+    const msgHistory = messages.slice(0, -1).map(m => {
+        const toolCalls = m.toolCalls
+            ? m.toolCalls
+                .filter(tc => tc.tool) // 过滤掉没有 tool 名称的
+                .map(tc => {
+                    let argsString: string;
+                    if ((tc as any).function?.arguments) {
+                        argsString = (tc as any).function.arguments;
+                    } else if (tc.args) {
+                        argsString = typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args || {});
+                    } else {
+                        argsString = '{}';
+                    }
+                    return {
+                        id: tc.id,
+                        type: 'function',
+                        function: {
+                            name: tc.tool,
+                            arguments: argsString
+                        }
+                    };
+                })
+            : undefined;
+
+        return {
+            role: m.role,
+            content: m.content,
+            tool_calls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+            tool_call_id: m.tool_call_id
+        };
+    });
 
     // 4. Setup Listeners (Duplicate logic from patchedSendMessage - refactoring would be better but keeping it self-contained for patch)
     const { listen } = await import('@tauri-apps/api/event');
