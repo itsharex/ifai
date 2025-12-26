@@ -155,25 +155,26 @@ export const ThreadSearchBar: React.FC = () => {
                   {t('threads.noTags', '暂无标签')}
                 </div>
               ) : (
-                allTags.map(tag => (
-                  <button
-                    key={tag}
-                    onClick={() => handleTagSelect(tag)}
-                    className={`
-                      w-full px-3 py-2 text-left text-sm hover:bg-gray-700 transition-colors flex items-center justify-between
-                      ${tagFilter === tag ? 'bg-blue-600/20 text-blue-400' : 'text-gray-300'}
-                    `}
-                  >
-                    <span className="truncate">{tag}</span>
-                    <span className="text-xs text-gray-500 ml-2">
-                      {Object.values(threads).filter(t => t.tags.includes(tag)).length}
-                    </span>
-                  </button>
-                ))
+                <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-700">
+                  {t('threads.filterByTagHint', '按标签筛选所有会话')}
+                </div>
               )}
 
+              {allTags.length > 0 && allTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => handleTagSelect(tag)}
+                  className={`
+                    w-full px-3 py-2 text-left text-sm hover:bg-gray-700 transition-colors
+                    ${tagFilter === tag ? 'bg-blue-600/20 text-blue-400' : 'text-gray-300'}
+                  `}
+                >
+                  {tag}
+                </button>
+              ))}
+
               {/* Tag manager link */}
-              <div className="border-t border-gray-700">
+              <div className="border-t border-gray-700 mt-1 pt-1">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -181,9 +182,13 @@ export const ThreadSearchBar: React.FC = () => {
                     openTagManager();
                   }}
                   className="w-full px-3 py-2 text-left text-sm text-blue-400 hover:bg-gray-700 transition-colors flex items-center gap-2"
+                  title={t('threads.manageCurrentThreadTags', '管理当前会话的标签')}
                 >
                   <Settings size={12} />
-                  {t('threads.manageTags', '管理标签')}
+                  <span>{t('threads.manageTags', '管理标签')}</span>
+                  <span className="text-xs text-gray-500 ml-auto">
+                    {t('threads.currentThread', '当前会话')}
+                  </span>
                 </button>
               </div>
             </div>

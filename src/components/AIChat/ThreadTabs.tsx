@@ -13,7 +13,8 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
 import { useThreadStore } from '../../stores/threadStore';
-import { switchThread } from '../../stores/useChatStore';
+import { switchThread, setThreadMessages } from '../../stores/useChatStore';
+import { useChatStore as coreUseChatStore } from 'ifainew-core';
 import { useTranslation } from 'react-i18next';
 import { ThreadSearchBar } from './ThreadSearchBar';
 
@@ -94,7 +95,20 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
 
   // Handle new thread creation
   const handleNewThread = () => {
-    createThread();
+    // Save current messages first
+    const currentThreadId = useThreadStore.getState().activeThreadId;
+    if (currentThreadId) {
+      const currentMessages = coreUseChatStore.getState().messages;
+      setThreadMessages(currentThreadId, [...currentMessages]);
+    }
+
+    // Create new thread (this sets activeThreadId)
+    const newThreadId = createThread();
+
+    // Clear messages for new thread
+    coreUseChatStore.setState({ messages: [] });
+
+    console.log(`[ThreadTabs] Created and switched to new thread: ${newThreadId}`);
   };
 
   // Handle thread click

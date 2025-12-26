@@ -2,10 +2,12 @@
  * TagManager Component
  *
  * Dialog for managing thread tags:
- * - View all tags with usage counts
+ * - View tags for the current thread
  * - Create new tags
  * - Edit tag names
  * - Delete tags
+ *
+ * Tags are thread-isolated - each thread has its own set of tags
  */
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
@@ -26,8 +28,6 @@ interface TagManagerProps {
 
 interface TagInfo {
   name: string;
-  count: number;
-  color?: string;
 }
 
 // ============================================================================
@@ -38,6 +38,7 @@ export const TagManager: React.FC<TagManagerProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
 
   // Thread store state
+  const activeThreadId = useThreadStore(state => state.activeThreadId);
   const threads = useThreadStore(state => state.threads);
   const updateThread = useThreadStore(state => state.updateThread);
 
@@ -48,18 +49,12 @@ export const TagManager: React.FC<TagManagerProps> = ({ isOpen, onClose }) => {
   const [showNewTagInput, setShowNewTagInput] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Extract all tags with counts
+  // Get current thread's tags
+  const currentThread = activeThreadId ? threads[activeThreadId] : null;
   const tags = useMemo(() => {
-    const tagMap = new Map<string, number>();
-    Object.values(threads).forEach(thread => {
-      thread.tags.forEach(tag => {
-        tagMap.set(tag, (tagMap.get(tag) || 0) + 1);
-      });
-    });
-    return Array.from(tagMap.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [threads]);
+    if (!currentThread) return [];
+    return currentThread.tags.map(name => ({ name }));
+  }, [currentThread]);
 
   // Focus input when editing
   useEffect(() => {
@@ -84,18 +79,17 @@ export const TagManager: React.FC<TagManagerProps> = ({ isOpen, onClose }) => {
 
   // Handle save edit
   const handleSaveEdit = () => {
-    if (!editingTag || !editValue.trim()) return;
+    if (!editingTag || !editValue.trim() || !activeThreadId) return;
 
     const newTagName = editValue.trim();
+    const currentThread = threads[activeThreadId];
 
-    // If name changed, update all threads with this tag
+    if (!currentThread) return;
+
+    // If name changed, update current thread's tags
     if (newTagName !== editingTag) {
-      Object.values(threads).forEach(thread => {
-        if (thread.tags.includes(editingTag)) {
-          const updatedTags = thread.tags.map(t => t === editingTag ? newTagName : t);
-          updateThread(thread.id, { tags: updatedTags });
-        }
-      });
+      const updatedTags = currentThread.tags.map(t => t === editingTag ? newTagName : t);
+      updateThread(activeThreadId, { tags: updatedTags });
     }
 
     setEditingTag(null);
@@ -108,37 +102,42 @@ export const TagManager: React.FC<TagManagerProps> = ({ isOpen, onClose }) => {
     setEditValue('');
   };
 
-  // Handle delete tag
+  // Handle delete tag (from current thread only)
   const handleDeleteTag = (tagName: string) => {
+    if (!activeThreadId) return;
     if (!confirm(t('threads.confirmDeleteTag', '确定要删除标签 "{{tag}}" 吗？', { tag: tagName }))) {
       return;
     }
 
-    Object.values(threads).forEach(thread => {
-      if (thread.tags.includes(tagName)) {
-        const updatedTags = thread.tags.filter(t => t !== tagName);
-        updateThread(thread.id, { tags: updatedTags });
-      }
-    });
+    const currentThread = threads[activeThreadId];
+    if (!currentThread) return;
+
+    // Remove tag from current thread only
+    const updatedTags = currentThread.tags.filter(t => t !== tagName);
+    updateThread(activeThreadId, { tags: updatedTags });
   };
 
-  // Handle create new tag
+  // Handle create new tag (add to current thread)
   const handleCreateTag = () => {
-    if (!newTagName.trim()) return;
+    if (!newTagName.trim() || !activeThreadId) return;
 
     const tagName = newTagName.trim();
+    const currentThread = threads[activeThreadId];
 
-    // Check if tag already exists
-    if (tags.some(t => t.name === tagName)) {
+    if (!currentThread) return;
+
+    // Check if tag already exists in current thread
+    if (currentThread.tags.includes(tagName)) {
       alert(t('threads.tagExists', '标签已存在'));
       return;
     }
 
+    // Add tag to current thread
+    const updatedTags = [...currentThread.tags, tagName];
+    updateThread(activeThreadId, { tags: updatedTags });
+
     setNewTagName('');
     setShowNewTagInput(false);
-
-    // Apply to currently active thread (optional feature)
-    // For now, just creating the tag without applying to any thread
   };
 
   // Handle keyboard shortcuts
@@ -170,7 +169,12 @@ export const TagManager: React.FC<TagManagerProps> = ({ isOpen, onClose }) => {
         <div className="flex justify-between items-center p-4 border-b border-[#333]">
           <div className="flex items-center gap-2">
             <Tag size={18} className="text-blue-400" />
-            <h2 className="text-lg font-bold text-gray-200">{t('threads.manageTags', '管理标签')}</h2>
+            <div>
+              <h2 className="text-lg font-bold text-gray-200">{t('threads.manageTags', '管理标签')}</h2>
+              {currentThread && (
+                <p className="text-xs text-gray-500">{currentThread.title}</p>
+              )}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -182,11 +186,16 @@ export const TagManager: React.FC<TagManagerProps> = ({ isOpen, onClose }) => {
 
         {/* Tag List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {tags.length === 0 ? (
+          {!activeThreadId ? (
             <div className="text-center py-8 text-gray-500">
               <Tag size={48} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">{t('threads.noTagsYet', '暂无标签')}</p>
-              <p className="text-xs mt-1">{t('threads.createTagHint', '创建标签后可以为对话添加标签')}</p>
+              <p className="text-sm">{t('threads.noActiveThread', '无活动会话')}</p>
+            </div>
+          ) : tags.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Tag size={48} className="mx-auto mb-2 opacity-30" />
+              <p className="text-sm">{t('threads.noTagsYet', '当前会话暂无标签')}</p>
+              <p className="text-xs mt-1">{t('threads.createTagHint', '创建标签后可以为当前会话添加标签')}</p>
             </div>
           ) : (
             tags.map((tag) => (
@@ -225,7 +234,6 @@ export const TagManager: React.FC<TagManagerProps> = ({ isOpen, onClose }) => {
                       <span className="px-2 py-0.5 bg-blue-600/20 text-blue-400 rounded text-xs font-medium">
                         {tag.name}
                       </span>
-                      <span className="text-xs text-gray-500">{tag.count} {t('threads.threads', '个对话')}</span>
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
