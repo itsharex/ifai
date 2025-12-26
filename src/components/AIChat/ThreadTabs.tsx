@@ -9,14 +9,16 @@
  * - Thread title display with message count
  * - Pin indicator
  * - Background task pulse indicator
+ * - Optimized with React.memo for ThreadItem
  */
 
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { useThreadStore } from '../../stores/threadStore';
 import { switchThread, setThreadMessages } from '../../stores/useChatStore';
 import { useChatStore as coreUseChatStore } from 'ifainew-core';
 import { useTranslation } from 'react-i18next';
 import { ThreadSearchBar } from './ThreadSearchBar';
+import type { Thread } from '../../stores/threadStore';
 
 // ============================================================================
 // Types
@@ -32,7 +34,118 @@ interface ThreadTabsProps {
 }
 
 // ============================================================================
-// Component
+// Thread Item Component (Memoized for performance)
+// ============================================================================
+
+interface ThreadItemProps {
+  thread: Thread;
+  isActive: boolean;
+  showMessageCount: boolean;
+  showCloseButton: boolean;
+  canClose: boolean;
+  formatTimestamp: (timestamp: number) => string;
+  onClick: (threadId: string) => void;
+  onClose: (e: React.MouseEvent, threadId: string) => void;
+  onPin: (e: React.MouseEvent, threadId: string) => void;
+}
+
+const ThreadItem: React.FC<ThreadItemProps> = memo(({
+  thread,
+  isActive,
+  showMessageCount,
+  showCloseButton,
+  canClose,
+  formatTimestamp,
+  onClick,
+  onClose,
+  onPin,
+}) => {
+  const hasBackgroundTasks = thread.agentTasks.length > 0;
+
+  return (
+    <div
+      key={thread.id}
+      data-thread-id={thread.id}
+      className={`
+        group relative flex items-center gap-2 px-3 py-2 rounded-t-lg cursor-pointer transition-all min-w-[140px] max-w-[200px]
+        ${isActive
+          ? 'bg-gray-800 text-white border-t-2 border-blue-500'
+          : 'bg-gray-850 text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+        }
+      `}
+      onClick={() => onClick(thread.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onPin(e, thread.id);
+      }}
+      title={`${thread.title}\n${formatTimestamp(thread.lastActiveAt)}\n${thread.messageCount} 条消息`}
+    >
+      {/* Pin indicator */}
+      {thread.pinned && (
+        <svg
+          className="w-3 h-3 text-yellow-500 flex-shrink-0"
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
+        </svg>
+      )}
+
+      {/* Thread title */}
+      <span className="flex-1 truncate text-sm font-medium">
+        {thread.title}
+      </span>
+
+      {/* Message count badge */}
+      {showMessageCount && thread.messageCount > 0 && (
+        <span className={`
+          text-xs px-1.5 py-0.5 rounded flex-shrink-0
+          ${isActive
+            ? 'bg-blue-600 text-white'
+            : 'bg-gray-700 text-gray-400'
+          }
+        `}>
+          {thread.messageCount}
+        </span>
+      )}
+
+      {/* Background task pulse indicator */}
+      {hasBackgroundTasks && (
+        <span className="absolute top-1 right-1 flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+        </span>
+      )}
+
+      {/* Close button (hover) */}
+      {showCloseButton && canClose && (
+        <button
+          onClick={(e) => onClose(e, thread.id)}
+          className={`
+            opacity-0 group-hover:opacity-100 transition-opacity
+            flex-shrink-0 p-0.5 rounded hover:bg-gray-700
+            ${isActive ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-300'}
+          `}
+          title="关闭对话"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
+
+      {/* Unread activity indicator */}
+      {thread.hasUnreadActivity && !isActive && (
+        <span className="absolute bottom-1 right-1 h-2 w-2 rounded-full bg-blue-500"></span>
+      )}
+    </div>
+  );
+});
+
+ThreadItem.displayName = 'ThreadItem';
+
+// ============================================================================
+// Main Component
 // ============================================================================
 
 export const ThreadTabs: React.FC<ThreadTabsProps> = ({
@@ -94,7 +207,7 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
   }, [activeThreadId]);
 
   // Handle new thread creation
-  const handleNewThread = () => {
+  const handleNewThread = useCallback(() => {
     // Save current messages first
     const currentThreadId = useThreadStore.getState().activeThreadId;
     if (currentThreadId) {
@@ -109,26 +222,26 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
     coreUseChatStore.setState({ messages: [] });
 
     console.log(`[ThreadTabs] Created and switched to new thread: ${newThreadId}`);
-  };
+  }, [createThread]);
 
   // Handle thread click
-  const handleThreadClick = (threadId: string) => {
+  const handleThreadClick = useCallback((threadId: string) => {
     if (threadId !== activeThreadId) {
       switchThread(threadId);
     }
-  };
+  }, [activeThreadId]);
 
   // Handle thread close (right-click or Ctrl+click)
-  const handleThreadClose = (e: React.MouseEvent, threadId: string) => {
+  const handleThreadClose = useCallback((e: React.MouseEvent, threadId: string) => {
     e.stopPropagation();
     deleteThread(threadId);
-  };
+  }, [deleteThread]);
 
   // Handle thread pin toggle (middle-click or Alt+click)
-  const handleThreadPin = (e: React.MouseEvent, threadId: string) => {
+  const handleThreadPin = useCallback((e: React.MouseEvent, threadId: string) => {
     e.stopPropagation();
     toggleThreadPinned(threadId);
-  };
+  }, [toggleThreadPinned]);
 
   // Format timestamp for display
   const formatTimestamp = (timestamp: number): string => {
@@ -172,89 +285,20 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
         className="flex-1 flex items-center gap-1 px-2 py-1 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
         style={{ maxWidth: `${maxVisibleTabs * 180}px` }}
       >
-        {filteredThreads.map((thread) => {
-          const isActive = thread.id === activeThreadId;
-          const hasBackgroundTasks = thread.agentTasks.length > 0;
-
-          return (
-            <div
-              key={thread.id}
-              data-thread-id={thread.id}
-              className={`
-                group relative flex items-center gap-2 px-3 py-2 rounded-t-lg cursor-pointer transition-all min-w-[140px] max-w-[200px]
-                ${isActive
-                  ? 'bg-gray-800 text-white border-t-2 border-blue-500'
-                  : 'bg-gray-850 text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-                }
-              `}
-              onClick={() => handleThreadClick(thread.id)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                handleThreadPin(e, thread.id);
-              }}
-              title={`${thread.title}\n${formatTimestamp(thread.lastActiveAt)}\n${thread.messageCount} 条消息`}
-            >
-              {/* Pin indicator */}
-              {thread.pinned && (
-                <svg
-                  className="w-3 h-3 text-yellow-500 flex-shrink-0"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
-                </svg>
-              )}
-
-              {/* Thread title */}
-              <span className="flex-1 truncate text-sm font-medium">
-                {thread.title}
-              </span>
-
-              {/* Message count badge */}
-              {showMessageCount && thread.messageCount > 0 && (
-                <span className={`
-                  text-xs px-1.5 py-0.5 rounded flex-shrink-0
-                  ${isActive
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-700 text-gray-400'
-                  }
-                `}>
-                  {thread.messageCount}
-                </span>
-              )}
-
-              {/* Background task pulse indicator */}
-              {hasBackgroundTasks && (
-                <span className="absolute top-1 right-1 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                </span>
-              )}
-
-              {/* Close button (hover) */}
-              {showCloseButton && filteredThreads.length > 1 && (
-                <button
-                  onClick={(e) => handleThreadClose(e, thread.id)}
-                  className={`
-                    opacity-0 group-hover:opacity-100 transition-opacity
-                    flex-shrink-0 p-0.5 rounded hover:bg-gray-700
-                    ${isActive ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-300'}
-                  `}
-                  title={t('threads.close', '关闭对话')}
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-
-              {/* Unread activity indicator */}
-              {thread.hasUnreadActivity && !isActive && (
-                <span className="absolute bottom-1 right-1 h-2 w-2 rounded-full bg-blue-500"></span>
-              )}
-            </div>
-          );
-        })}
+        {filteredThreads.map((thread) => (
+          <ThreadItem
+            key={thread.id}
+            thread={thread}
+            isActive={thread.id === activeThreadId}
+            showMessageCount={showMessageCount}
+            showCloseButton={showCloseButton}
+            canClose={filteredThreads.length > 1}
+            formatTimestamp={formatTimestamp}
+            onClick={handleThreadClick}
+            onClose={handleThreadClose}
+            onPin={handleThreadPin}
+          />
+        ))}
       </div>
 
       {/* New thread button */}
