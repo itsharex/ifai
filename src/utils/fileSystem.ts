@@ -181,15 +181,27 @@ export const saveFileAs = async (content: string): Promise<string | null> => {
 export const renameFile = async (oldPath: string, newPath: string): Promise<void> => {
     const normalizedOld = normalizePath(oldPath);
     const normalizedNew = normalizePath(newPath);
-    await rename(normalizedOld, normalizedNew);
+    console.log('[fileSystem] rename:', normalizedOld, '->', normalizedNew);
+    try {
+        await rename(normalizedOld, normalizedNew);
+        console.log('[fileSystem] rename successful');
+    } catch (error) {
+        console.error('[fileSystem] rename failed:', error);
+        throw error;
+    }
 };
 
 export const deleteFile = async (path: string): Promise<void> => {
     const normalizedPath = normalizePath(path);
-    // recursive true for directories, false for files (though remove handles both if recursive is true)
-    // But remove api signature might differ slightly based on version.
-    // In tauri v2 plugin-fs, remove options object: { recursive?: boolean }
-    await remove(normalizedPath, { recursive: true });
+    console.log('[fileSystem] delete:', normalizedPath);
+    try {
+        // recursive true for directories, false for files (though remove handles both if recursive is true)
+        await remove(normalizedPath, { recursive: true });
+        console.log('[fileSystem] delete successful');
+    } catch (error) {
+        console.error('[fileSystem] delete failed:', error);
+        throw error;
+    }
 };
 
 /**

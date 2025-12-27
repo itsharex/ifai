@@ -174,8 +174,8 @@ export const FileTree = () => {
     setContextMenu({ x: 0, y: 0, node: null });
   }, []);
 
-  const handleRefresh = useCallback(() => {
-    refreshFileTree();
+  const handleRefresh = useCallback(async () => {
+    await refreshFileTree();
   }, [refreshFileTree]);
 
   if (!fileTree) return (
