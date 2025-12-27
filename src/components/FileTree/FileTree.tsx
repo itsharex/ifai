@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { ContextMenu } from './ContextMenu';
+import { VirtualFileTree, useVirtualization } from './VirtualFileTree';
 
 interface ContextMenuState {
   x: number;
@@ -188,7 +189,7 @@ const getLanguageFromPath = (path: string): string => {
 };
 
 export const FileTree = () => {
-  const { fileTree, refreshFileTree, refreshFileTreePreserveExpanded, rootPath, setGitStatuses, openFile } = useFileStore();
+  const { fileTree, refreshFileTree, refreshFileTreePreserveExpanded, rootPath, setGitStatuses, gitStatuses, openFile } = useFileStore();
   const { activePaneId, assignFileToPane } = useLayoutStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ x: 0, y: 0, node: null });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -448,6 +449,38 @@ export const FileTree = () => {
     await handleRefreshPreserveExpanded();
   }, [handleRefreshPreserveExpanded]);
 
+  // Determine if virtualization should be used (for large trees)
+  const shouldVirtualize = useVirtualization(visibleNodes.length, 500);
+
+  // Helper function to compute node level from path
+  const getLevelFromPath = (path: string, rootPath: string | null): number => {
+    if (!rootPath) return 0;
+    const relativePath = path.replace(new RegExp(`^${rootPath}/?`), '');
+    return relativePath.split('/').length;
+  };
+
+  // Helper function to get status color (inline for virtual rendering)
+  const getStatusColorClassInline = (path: string): string => {
+    const status = gitStatuses.get(path);
+    switch (status) {
+      case GitStatus.Added:
+      case GitStatus.Untracked:
+        return 'text-green-500';
+      case GitStatus.Modified:
+        return 'text-yellow-500';
+      case GitStatus.Deleted:
+      case GitStatus.Conflicted:
+        return 'text-red-500';
+      case GitStatus.Renamed:
+      case GitStatus.TypeChange:
+        return 'text-blue-400';
+      case GitStatus.Ignored:
+        return 'text-gray-500 opacity-50';
+      default:
+        return 'text-gray-300';
+    }
+  };
+
   if (!fileTree) return (
     <div className="p-4 text-gray-500 text-sm text-center">
       Click folder icon to open
@@ -461,18 +494,53 @@ export const FileTree = () => {
       onContextMenu={(e) => e.preventDefault()}
       tabIndex={0}
     >
-      <FileTreeItem
-        node={fileTree}
-        level={0}
-        onContextMenu={handleContextMenu}
-        onReload={() => {}}
-        selectedNodeId={selectedNodeId}
-        onNodeSelect={handleNodeSelect}
-        onNodeActivate={activateNode}
-        expandedNodes={expandedNodes}
-        onToggleExpand={handleToggleExpand}
-        onChildrenLoaded={handleChildrenLoaded}
-      />
+      {shouldVirtualize ? (
+        // Use virtual scrolling for large trees (>500 nodes)
+        <VirtualFileTree
+          visibleNodes={visibleNodes}
+          renderNode={(node, index) => {
+            const level = getLevelFromPath(node.path, rootPath);
+            const isSelected = selectedNodeId === node.id;
+            const isExpanded = expandedNodes.has(node.id);
+
+            return (
+              <div
+                key={node.id}
+                className={`flex items-center py-1 px-2 cursor-pointer text-sm select-none transition-colors ${
+                  isSelected ? 'bg-blue-600/30 text-white' : 'hover:bg-gray-800 text-gray-300'
+                }`}
+                style={{ paddingLeft: `${level * 12 + 8}px` }}
+                onClick={() => {
+                  handleNodeSelect(node.id);
+                  activateNode(node);
+                }}
+                onContextMenu={(e) => handleContextMenu(e, node)}
+              >
+                <span className="mr-1 text-gray-500">
+                  {node.kind === 'directory' && (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
+                  {node.kind === 'file' && <File size={14} />}
+                </span>
+                {node.kind === 'directory' && !isExpanded && <Folder size={14} className="mr-1" />}
+                <span className={`truncate ${getStatusColorClassInline(node.path)}`}>{node.name}</span>
+              </div>
+            );
+          }}
+        />
+      ) : (
+        // Use regular rendering for small trees
+        <FileTreeItem
+          node={fileTree}
+          level={0}
+          onContextMenu={handleContextMenu}
+          onReload={() => {}}
+          selectedNodeId={selectedNodeId}
+          onNodeSelect={handleNodeSelect}
+          onNodeActivate={activateNode}
+          expandedNodes={expandedNodes}
+          onToggleExpand={handleToggleExpand}
+          onChildrenLoaded={handleChildrenLoaded}
+        />
+      )}
 
       {contextMenu.node && (
         <ContextMenu
