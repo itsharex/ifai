@@ -5,43 +5,61 @@
   "windows": [
     "*"
   ],
-      "permissions": [
-          "core:window:default",
-          "core:event:default",
-          "window-state:default",
-          "opener:default",    "fs:default",
+  "permissions": [
+    "core:window:default",
+    "core:event:default",
+    "window-state:default",
+    "opener:default",
+    "fs:default",
     "dialog:default",
+    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "sh", "cmd": "sh", "args": true },
+        { "name": "bash", "cmd": "bash", "args": true },
+        { "name": "zsh", "cmd": "zsh", "args": true },
+        { "name": "cmd", "cmd": "cmd", "args": true },
+        { "name": "open", "cmd": "open", "args": true },
+        { "name": "xdg-open", "cmd": "xdg-open", "args": true },
+        { "name": "explorer", "cmd": "explorer", "args": true }
+      ]
+    },
     {
       "identifier": "fs:allow-read-dir",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$HOME/**/.*" }, { "path": "$HOME/**/.*/**" }]
+      "allow": [{ "path": "**" }]
     },
     {
       "identifier": "fs:allow-read-file",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$HOME/**/.*" }, { "path": "$HOME/**/.*/**" }]
+      "allow": [{ "path": "**" }]
     },
     {
       "identifier": "fs:allow-read-text-file",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$HOME/**/.*" }, { "path": "$HOME/**/.*/**" }]
+      "allow": [{ "path": "**" }]
     },
     {
       "identifier": "fs:allow-write-file",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$HOME/**/.*" }, { "path": "$HOME/**/.*/**" }]
+      "allow": [{ "path": "**" }]
     },
     {
       "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$HOME/**/.*" }, { "path": "$HOME/**/.*/**" }]
+      "allow": [{ "path": "**" }]
     },
     {
       "identifier": "fs:allow-exists",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$HOME/**/.*" }, { "path": "$HOME/**/.*/**" }]
+      "allow": [{ "path": "**" }]
     },
     {
       "identifier": "fs:allow-rename",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$HOME/**/.*" }, { "path": "$HOME/**/.*/**" }]
+      "allow": [{ "path": "**" }]
     },
     {
       "identifier": "fs:allow-remove",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$HOME/**/.*" }, { "path": "$HOME/**/.*/**" }]
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [{ "path": "**" }]
     }
   ]
 }

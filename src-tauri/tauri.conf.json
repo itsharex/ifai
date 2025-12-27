@@ -21,6 +21,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "fs": {
+      "requireLiteralLeadingDot": false
+    },
+    "shell": {
+      "open": true
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

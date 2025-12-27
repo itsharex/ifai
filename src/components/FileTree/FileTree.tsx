@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useFileStore } from '../../stores/fileStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { ChevronRight, ChevronDown, File, Folder } from 'lucide-react';
 import { FileNode, GitStatus } from '../../stores/types';
-import { readFileContent, readDirectory, renameFile, deleteFile } from '../../utils/fileSystem';
+import { readFileContent, readDirectory } from '../../utils/fileSystem';
 import { toast } from 'sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
+import { ContextMenu } from './ContextMenu';
 
 interface ContextMenuState {
   x: number;
@@ -142,11 +143,9 @@ const getLanguageFromPath = (path: string): string => {
 };
 
 export const FileTree = () => {
-  const { fileTree, setFileTree, rootPath, setGitStatuses } = useFileStore();
+  const { fileTree, refreshFileTree, rootPath, setGitStatuses } = useFileStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ x: 0, y: 0, node: null });
-  const [renamingNode, setRenamingNode] = useState<FileNode | null>(null);
-  const [renameInput, setRenameInput] = useState('');
-  const { t } = useTranslation(); // Import useTranslation
+  const { t } = useTranslation();
 
   // Load Git Status when rootPath changes
   useEffect(() => {
@@ -165,55 +164,19 @@ export const FileTree = () => {
     }
   }, [rootPath, setGitStatuses]);
 
-  // Close context menu on click elsewhere
-  useEffect(() => {
-    const handleClick = () => setContextMenu({ x: 0, y: 0, node: null });
-    window.addEventListener('click', handleClick);
-    return () => window.removeEventListener('click', handleClick);
-  }, []);
-
   const handleContextMenu = (e: React.MouseEvent, node: FileNode) => {
     e.preventDefault();
+    e.stopPropagation();
     setContextMenu({ x: e.clientX, y: e.clientY, node });
   };
 
-  const handleRename = () => {
-    if (contextMenu.node) {
-        setRenamingNode(contextMenu.node);
-        setRenameInput(contextMenu.node.name);
-        const newName = window.prompt(t('common.renameTo') || "Rename to:", contextMenu.node.name);
-        if (newName && newName !== contextMenu.node.name) {
-             performRename(contextMenu.node, newName);
-        }
-    }
-  };
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu({ x: 0, y: 0, node: null });
+  }, []);
 
-  const performRename = async (node: FileNode, newName: string) => {
-    try {
-        const pathParts = node.path.split('/');
-        pathParts.pop();
-        const newPath = [...pathParts, newName].join('/');
-        await renameFile(node.path, newPath);
-        toast.success(t('common.renamedSuccessfully', { newName }));
-    } catch (e) {
-        console.error("Rename failed", e);
-        toast.error(t('common.renameFailed'));
-    }
-  };
-
-  const handleDelete = async () => {
-    if (contextMenu.node) {
-        if (window.confirm(t('common.confirmDeleteFile', { fileName: contextMenu.node.name }))) {
-            try {
-                await deleteFile(contextMenu.node.path);
-                toast.success(t('common.deletedSuccessfully'));
-            } catch (e) {
-                console.error("Delete failed", e);
-                toast.error(t('common.deleteFailed'));
-            }
-        }
-    }
-  };
+  const handleRefresh = useCallback(() => {
+    refreshFileTree();
+  }, [refreshFileTree]);
 
   if (!fileTree) return (
     <div className="p-4 text-gray-500 text-sm text-center">
@@ -226,23 +189,14 @@ export const FileTree = () => {
       <FileTreeItem node={fileTree} level={0} onContextMenu={handleContextMenu} onReload={() => {}} />
 
       {contextMenu.node && (
-        <div 
-            className="fixed bg-gray-800 border border-gray-600 rounded shadow-xl z-50 py-1 w-32"
-            style={{ top: contextMenu.y, left: contextMenu.x }}
-        >
-            <div 
-                className="px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 cursor-pointer"
-                onClick={handleRename}
-            >
-                {t('common.rename')}
-            </div>
-            <div 
-                className="px-3 py-1.5 text-sm text-red-400 hover:bg-gray-700 cursor-pointer"
-                onClick={handleDelete}
-            >
-                {t('common.delete')}
-            </div>
-        </div>
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          node={contextMenu.node}
+          onClose={handleCloseContextMenu}
+          onRefresh={handleRefresh}
+          rootPath={rootPath}
+        />
       )}
     </div>
   );
