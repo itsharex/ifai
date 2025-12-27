@@ -90,13 +90,13 @@ export const Sidebar = () => {
       </div>
 
       {/* Side Panel Content */}
-      <div className="w-64 flex flex-col h-full bg-gray-900">
+      <div className="w-80 flex flex-col h-full bg-gray-900">
         {activeTab === 'explorer' && (
           <>
             <div className="flex items-center justify-between p-2">
               <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">{t('sidebar.explorer')}</span>
-              <button 
-                onClick={handleOpenFolder} 
+              <button
+                onClick={handleOpenFolder}
                 className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
                 title={t('editor.openFolder')}
               >
@@ -108,9 +108,9 @@ export const Sidebar = () => {
             </div>
           </>
         )}
-        {activeTab === 'search' && (
+        <div className={`flex flex-col h-full ${activeTab === 'search' ? '' : 'hidden'}`}>
           <SearchPanel />
-        )}
+        </div>
       </div>
     </div>
   );

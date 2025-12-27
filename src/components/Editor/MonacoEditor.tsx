@@ -237,6 +237,22 @@ ${textBefore}[CURSOR]${textAfter}
     }
   }, [file?.id, file?.content, paneId, getEditorInstance]);
 
+  // Jump to initial line when specified (for search results, file tree clicks, etc.)
+  useEffect(() => {
+    const editor = getEditorInstance(paneId);
+    if (editor && file && file.initialLine && file.initialLine > 0) {
+      // Reveal the line in center and move cursor there
+      editor.revealLineInCenter(file.initialLine);
+      editor.setPosition({
+        lineNumber: file.initialLine,
+        column: 1
+      });
+      // Focus the editor
+      editor.focus();
+      console.log('[MonacoEditor] Jumped to line:', file.initialLine, 'for file:', file.path);
+    }
+  }, [file?.initialLine, file?.id, paneId, getEditorInstance]);
+
   if (!file) {
     return <WelcomeScreen />;
   }
