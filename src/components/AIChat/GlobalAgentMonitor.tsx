@@ -315,10 +315,10 @@ export const GlobalAgentMonitor: React.FC = () => {
                             {/* Expanded Logs */}
                             {expandedId === agent.id && (
                                 <div className="bg-[#1e1e1e]">
-                                    {/* Explore Agent Progress - Hierarchical Display */}
+                                    {/* Explore Agent Progress - Minimal mode */}
                                     {agent.exploreProgress && (
                                         <div className="p-3 border-b border-[#333]">
-                                            <ExploreProgress progress={agent.exploreProgress} compact={true} />
+                                            <ExploreProgress progress={agent.exploreProgress} mode="minimal" />
                                         </div>
                                     )}
 

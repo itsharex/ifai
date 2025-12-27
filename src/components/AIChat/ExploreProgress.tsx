@@ -33,7 +33,7 @@ export interface ExploreProgressData {
 
 interface ExploreProgressProps {
   progress: ExploreProgressData;
-  compact?: boolean; // Compact mode for monitor panel
+  mode?: 'full' | 'compact' | 'minimal'; // Display mode
 }
 
 // ============================================================================
@@ -200,19 +200,52 @@ interface FileStreamItem {
   timestamp: number;
 }
 
-const ScannedFileStream: React.FC<{
+export interface ScannedFileStreamProps {
   currentFile?: string;
   isComplete?: boolean;
   compact?: boolean;
-}> = ({ currentFile, isComplete, compact = false }) => {
+  scannedCount?: number;
+  totalCount?: number;
+  scannedFiles?: string[];
+}
+
+export const ScannedFileStream: React.FC<ScannedFileStreamProps> = ({
+  currentFile,
+  isComplete,
+  compact = false,
+  scannedCount = 0,
+  totalCount = 0,
+  scannedFiles: externalFiles = []
+}) => {
   const MAX_FILES = compact ? 5 : 6;
   const fileStreamRef = React.useRef<Set<string>>(new Set());
   const [fileStream, setFileStream] = React.useState<FileStreamItem[]>([]);
 
+  // Initialize from external scannedFiles list
+  React.useEffect(() => {
+    if (externalFiles.length > 0 && fileStream.length === 0) {
+      console.log('[ScannedFileStream] Initializing from scannedFiles:', externalFiles);
+      const newStream: FileStreamItem[] = externalFiles.slice(0, MAX_FILES).map(path => ({
+        path,
+        status: 'completed' as const,
+        timestamp: Date.now()
+      }));
+      newStream.forEach(f => fileStreamRef.current.add(f.path));
+      setFileStream(newStream);
+    }
+  }, [externalFiles, MAX_FILES]);
+
   // Debug log to track currentFile changes
   React.useEffect(() => {
-    console.log('[ScannedFileStream] currentFile changed:', currentFile, 'fileStream.length:', fileStream.length);
-  }, [currentFile, fileStream.length]);
+    console.log('[ScannedFileStream] State:', {
+      currentFile,
+      isComplete,
+      fileStreamLength: fileStream.length,
+      scannedCount,
+      totalCount,
+      externalFilesLength: externalFiles.length
+    });
+  }, [currentFile, isComplete, fileStream.length, scannedCount, totalCount, externalFiles.length]);
 
   // Add new file at the top when currentFile changes
   React.useEffect(() => {
@@ -232,6 +265,7 @@ const ScannedFileStream: React.FC<{
   // Mark all as completed when scan finishes
   React.useEffect(() => {
     if (isComplete && fileStream.length > 0) {
+      console.log('[ScannedFileStream] Marking all as completed');
       setFileStream(prev => prev.map(f => ({ ...f, status: 'completed' as const })));
     }
   }, [isComplete, fileStream.length]);
@@ -261,6 +295,18 @@ const ScannedFileStream: React.FC<{
         <div className="flex items-center gap-2 text-[10px] text-gray-500">
           <Loader2 size={compact ? 8 : 10} className="animate-spin text-blue-500" />
           <span>正在准备扫描...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show completion summary when scan is done but no files in stream
+  if (fileStream.length === 0 && isComplete) {
+    return (
+      <div className={`bg-gray-800/50 rounded-lg p-${compact ? '1.5' : '2'}`}>
+        <div className="flex items-center gap-2 text-[10px] text-gray-500">
+          <CheckCircle2 size={compact ? 8 : 10} className="text-green-500 flex-shrink-0" />
+          <span>扫描完成: {scannedCount} 个文件</span>
         </div>
       </div>
     );
@@ -527,28 +573,30 @@ const DirectoryTreeProgress: React.FC<{
 // Main Component
 // ============================================================================
 
-export const ExploreProgress: React.FC<ExploreProgressProps> = ({ progress, compact = false }) => {
+export const ExploreProgress: React.FC<ExploreProgressProps> = ({ progress, mode = 'full' }) => {
+  // Backwards compatibility
+  const compact = mode === 'compact';
   const { phase, currentPath, currentFile, progress: data } = progress;
   const percentage = data.total > 0 ? Math.min(100, Math.round((data.scanned / data.total) * 100)) : 0;
   const isComplete = data.scanned >= data.total && data.total > 0;
 
   // Debug log to track data flow
   console.log('[ExploreProgress] Render:', {
-    compact,
+    mode,
     phase,
     currentFile,
     scanned: data.scanned,
     total: data.total,
-    dirCount: Object.keys(data.byDirectory).length
+    dirCount: Object.keys(data.byDirectory).length,
+    scannedFilesCount: progress.scannedFiles?.length || 0,
+    scannedFiles: progress.scannedFiles
   });
 
-  if (compact) {
-    const [showDirectories, setShowDirectories] = React.useState(true);
-    const [showFileList, setShowFileList] = React.useState(true);
-
+  // Minimal mode - only progress bar and phase (for top "analysis" area)
+  if (mode === 'minimal') {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-        {/* Header */}
+        {/* Compact Phase Indicator */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             {isComplete ? (
@@ -556,10 +604,61 @@ export const ExploreProgress: React.FC<ExploreProgressProps> = ({ progress, comp
             ) : phase === 'scanning' ? (
               <Loader2 size={14} className="text-blue-500 animate-spin" />
             ) : (
-              <Search size={14} className="text-gray-400" />
+              <Search size={14} className="text-purple-500" />
             )}
             <span className="text-xs font-medium text-gray-300">
               {isComplete ? '扫描完成' : phase === 'scanning' ? '扫描中' : '分析中'}
+            </span>
+          </div>
+          <span className={`text-xs font-medium ${
+            isComplete ? 'text-green-400' : 'text-gray-400'
+          }`}>{percentage}%</span>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+          <div
+            className={`h-full transition-all duration-300 ${
+              isComplete ? 'bg-green-500' : phase === 'analyzing' ? 'bg-purple-500' : 'bg-blue-500'
+            }`}
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+
+        <div className="flex justify-between mt-1">
+          <span className="text-[10px] text-gray-500">{data.scanned} / {data.total} 目录</span>
+          <span className="text-[10px] text-gray-500">{progress.scannedFiles?.length || 0} 文件</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (compact) {
+    const [showDirectories, setShowDirectories] = React.useState(false); // Default collapsed
+    const hasScannedFiles = (progress.scannedFiles && progress.scannedFiles.length > 0);
+    const hasDirectoryData = Object.keys(data.byDirectory).length > 0;
+
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+        {/* DEBUG: Show phase value */}
+        <div className="mb-2 p-1 bg-yellow-900/20 border border-yellow-500/30 rounded text-[9px] text-yellow-400">
+          [调试] phase={phase}, currentFile={currentFile ? currentFile.split('/').pop() : 'null'}, scannedFiles={progress.scannedFiles?.length || 0}
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            {isComplete ? (
+              <CheckCircle2 size={14} className="text-green-500" />
+            ) : phase === 'scanning' ? (
+              <Loader2 size={14} className="text-blue-500 animate-spin" />
+            ) : phase === 'analyzing' ? (
+              <Search size={14} className="text-purple-500" />
+            ) : (
+              <Search size={14} className="text-gray-400" />
+            )}
+            <span className="text-xs font-medium text-gray-300">
+              {isComplete ? '扫描完成' : phase === 'scanning' ? '扫描中' : phase === 'analyzing' ? '分析中' : '探索中'}
             </span>
           </div>
           <span className={`text-xs ${
@@ -568,28 +667,28 @@ export const ExploreProgress: React.FC<ExploreProgressProps> = ({ progress, comp
         </div>
 
         {/* Progress Bar */}
-        <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden mb-3">
           <div
             className={`h-full transition-all duration-300 ${
-              isComplete ? 'bg-green-500' : 'bg-blue-500'
+              isComplete ? 'bg-green-500' : phase === 'analyzing' ? 'bg-purple-500' : 'bg-blue-500'
             }`}
             style={{ width: `${percentage}%` }}
           />
         </div>
 
-        {/* Collapsible Directories Section */}
-        {phase === 'scanning' && (data.scanned > 0 || Object.keys(data.byDirectory).length > 0) && (
-          <div className="mt-2">
+        {/* Collapsible Directories Section - Secondary, Collapsed by default */}
+        {hasDirectoryData && (
+          <div className="mb-2">
             <button
               onClick={() => setShowDirectories(!showDirectories)}
-              className="flex items-center gap-1.5 text-[9px] text-gray-400 font-medium hover:text-gray-300 transition-colors"
+              className="flex items-center gap-1.5 text-[9px] text-gray-500 font-medium hover:text-gray-400 transition-colors mb-1"
             >
               {showDirectories ? (
                 <ChevronDown size={10} />
               ) : (
                 <ChevronRight size={10} />
               )}
-              <span>扫描目录</span>
+              <span>目录详情 ({Object.keys(data.byDirectory).length})</span>
             </button>
             {showDirectories && (
               <DirectoryTreeProgress byDirectory={data.byDirectory} compact={true} />
@@ -597,23 +696,37 @@ export const ExploreProgress: React.FC<ExploreProgressProps> = ({ progress, comp
           </div>
         )}
 
-        {/* Collapsible File Stream Section - always show during scanning */}
-        {phase === 'scanning' && (
-          <div className="mt-2">
-            <button
-              onClick={() => setShowFileList(!showFileList)}
-              className="flex items-center gap-1.5 text-[9px] text-gray-400 font-medium hover:text-gray-300 transition-colors"
-            >
-              {showFileList ? (
-                <ChevronDown size={10} />
-              ) : (
-                <ChevronRight size={10} />
-              )}
-              <span>扫描文件</span>
-            </button>
-            {showFileList && (
-              <ScannedFileStream currentFile={currentFile} isComplete={isComplete} compact={true} />
-            )}
+        {/* 📁 Scanned Files Section - BOTTOM ACTIVITY AREA, Always Show when scanning or has files */}
+        {(phase === 'scanning' || phase === 'analyzing' || hasScannedFiles || currentFile) && (
+          <div className="bg-blue-900/10 border border-blue-500/30 rounded-lg p-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-1.5">
+                <File size={10} className="text-blue-400" />
+                <span className="text-[10px] font-medium text-blue-300">
+                  {phase === 'scanning' ? '正在扫描' : phase === 'analyzing' ? '分析中' : '扫描文件'}
+                </span>
+                {phase === 'scanning' && (
+                  <Loader2 size={8} className="text-blue-500 animate-spin" />
+                )}
+                {phase === 'analyzing' && (
+                  <Search size={8} className="text-purple-500 animate-pulse" />
+                )}
+                {isComplete && (
+                  <CheckCircle2 size={8} className="text-green-500" />
+                )}
+              </div>
+              <span className="text-[9px] text-gray-500">
+                {progress.scannedFiles?.length || 0} 文件
+              </span>
+            </div>
+            <ScannedFileStream
+              currentFile={isComplete ? undefined : currentFile}
+              isComplete={isComplete}
+              compact={true}
+              scannedCount={data.scanned}
+              totalCount={data.total}
+              scannedFiles={progress.scannedFiles}
+            />
           </div>
         )}
       </div>

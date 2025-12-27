@@ -288,24 +288,99 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         else if (payload.type === 'explore_progress') {
             const progress = payload.exploreProgress;
             if (progress) {
-                console.log(`[AgentStore] Explore progress: ${progress.phase}, ${progress.progress.scanned}/${progress.progress.total}, currentFile=${progress.currentFile}`);
+                console.log(`[AgentStore] 📂 Explore progress event:`, {
+                    phase: progress.phase,
+                    currentFile: progress.currentFile,
+                    currentPath: progress.currentPath,
+                    scanned: progress.progress?.scanned,
+                    total: progress.progress?.total,
+                    hasScannedFiles: !!progress.scannedFiles,
+                    scannedFilesCount: progress.scannedFiles?.length || 0
+                });
 
                 // Update agent with explore progress data
                 set(state => ({
                     runningAgents: state.runningAgents.map(a => {
                         if (a.id !== id) return a;
+
+                        // Maintain scannedFiles list
+                        let scannedFiles = a.exploreProgress?.scannedFiles || [];
+                        console.log(`[AgentStore] Before update: scannedFiles=${scannedFiles.length}, currentFile=${progress.currentFile}`);
+
+                        // Check if currentFile is new to add log entry
+                        const isNewFile = progress.currentFile && !scannedFiles.includes(progress.currentFile);
+
+                        if (progress.currentFile && !scannedFiles.includes(progress.currentFile)) {
+                            scannedFiles = [progress.currentFile, ...scannedFiles].slice(0, 10); // Keep last 10 files
+                            console.log(`[AgentStore] Added file: ${progress.currentFile}, new count=${scannedFiles.length}`);
+                        }
+
+                        // For completed phase, preserve currentFile and scannedFiles even if progress doesn't have them
+                        const finalCurrentFile = progress.currentFile || a.exploreProgress?.currentFile;
+                        if (progress.phase === 'completed' && !finalCurrentFile && scannedFiles.length > 0) {
+                            console.log(`[AgentStore] Completed phase: preserving ${scannedFiles.length} files without currentFile`);
+                        }
+
+                        // Build exploreProgress object carefully to preserve scannedFiles
+                        const newExploreProgress: any = {
+                            ...(a.exploreProgress || {}),
+                            ...progress,
+                        };
+                        // Explicitly preserve currentFile if new value is null/undefined
+                        newExploreProgress.currentFile = progress.currentFile || a.exploreProgress?.currentFile;
+                        // Always preserve scannedFiles - use calculated value if exists, otherwise preserve old
+                        if (scannedFiles.length > 0) {
+                            newExploreProgress.scannedFiles = scannedFiles;
+                        } else if (a.exploreProgress?.scannedFiles) {
+                            // Keep old scannedFiles if new ones are empty
+                            newExploreProgress.scannedFiles = a.exploreProgress.scannedFiles;
+                        }
+
+                        console.log(`[AgentStore] After update: phase=${progress.phase}, currentFile=${newExploreProgress.currentFile}, scannedFiles=${newExploreProgress.scannedFiles?.length || 0}`);
+
+                        // Add log entry when a new file is being scanned
+                        let newLogs = a.logs || [];
+                        if (isNewFile && progress.currentFile) {
+                            // Format as tree structure: group files by directory
+                            const parts = progress.currentFile.split('/').filter(p => p);
+                            const fileName = parts.pop() || progress.currentFile;
+                            const dirPath = parts.join('/');
+
+                            // Check if this directory was already shown in recent logs
+                            // Look backwards through logs to find if we're already in this directory
+                            let alreadyInDir = false;
+                            for (let i = newLogs.length - 1; i >= 0; i--) {
+                                const log = newLogs[i];
+                                if (log.startsWith(`📁 ${dirPath}`)) {
+                                    alreadyInDir = true;
+                                    break;
+                                }
+                                // If we hit another directory header, stop looking
+                                if (log.startsWith('📁 ')) {
+                                    break;
+                                }
+                            }
+
+                            if (parts.length > 0) {
+                                if (!alreadyInDir) {
+                                    // New directory, show directory path
+                                    newLogs = [...newLogs, `📁 ${dirPath}`];
+                                }
+                                // Add file with proper tree prefix
+                                newLogs = [...newLogs, `  ├─ ${fileName}`];
+                            } else {
+                                newLogs = [...newLogs, `📄 ${fileName}`];
+                            }
+                        }
+
                         return {
                             ...a,
-                            exploreProgress: {
-                                ...(a.exploreProgress || {}),
-                                ...progress,
-                                // Explicitly preserve currentFile if new value is null/undefined
-                                currentFile: progress.currentFile || a.exploreProgress?.currentFile,
-                            },
+                            exploreProgress: newExploreProgress,
                             currentStep: `${progress.phase}: ${progress.progress.scanned}/${progress.progress.total}`,
                             progress: progress.progress.total > 0
                                 ? progress.progress.scanned / progress.progress.total
-                                : a.progress
+                                : a.progress,
+                            logs: newLogs
                         };
                     })
                 }));
@@ -313,15 +388,32 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 // Sync to message for UI display
                 if (msgId) {
                     const { messages } = coreUseChatStore.getState();
+                    const currentMsg = messages.find(m => m.id === msgId);
+
+                    // Calculate scannedFiles for message too
+                    let msgScannedFiles = currentMsg?.exploreProgress?.scannedFiles || [];
+                    if (progress.currentFile && !msgScannedFiles.includes(progress.currentFile)) {
+                        msgScannedFiles = [progress.currentFile, ...msgScannedFiles].slice(0, 10);
+                    }
+
+                    // Build message exploreProgress object
+                    const newMsgExploreProgress: any = {
+                        ...(currentMsg?.exploreProgress || {}),
+                        ...progress,
+                    };
+                    newMsgExploreProgress.currentFile = progress.currentFile || currentMsg?.exploreProgress?.currentFile;
+                    if (msgScannedFiles.length > 0) {
+                        newMsgExploreProgress.scannedFiles = msgScannedFiles;
+                    } else if (currentMsg?.exploreProgress?.scannedFiles) {
+                        newMsgExploreProgress.scannedFiles = currentMsg.exploreProgress.scannedFiles;
+                    }
+
+                    console.log(`[AgentStore] Message update: scannedFiles=${newMsgExploreProgress.scannedFiles?.length || 0}`);
+
                     coreUseChatStore.setState({
                         messages: messages.map(m => m.id === msgId ? {
                             ...m,
-                            exploreProgress: {
-                                ...(m.exploreProgress || {}),
-                                ...progress,
-                                // Explicitly preserve currentFile if new value is null/undefined
-                                currentFile: progress.currentFile || m.exploreProgress?.currentFile,
-                            },
+                            exploreProgress: newMsgExploreProgress,
                         } : m)
                     });
                 }

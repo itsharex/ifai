@@ -616,7 +616,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
 
                     {/* Explore Agent Progress */}
                     {(message as any).exploreProgress && (
-                        <ExploreProgress progress={(message as any).exploreProgress} />
+                        <ExploreProgress progress={(message as any).exploreProgress} mode="minimal" />
                     )}
 
                     {/* Explore Agent Findings */}
