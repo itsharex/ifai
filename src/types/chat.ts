@@ -10,8 +10,9 @@ declare module 'ifainew-core' {
   export interface Message {
     // Explore agent specific fields
     exploreProgress?: {
-      phase: 'scanning' | 'analyzing';
+      phase: 'scanning' | 'analyzing' | 'completed';
       currentPath?: string;
+      currentFile?: string;
       progress: {
         total: number;
         scanned: number;
@@ -21,6 +22,7 @@ declare module 'ifainew-core' {
           status: 'pending' | 'scanning' | 'completed';
         }>;
       };
+      scannedFiles?: string[];
     };
 
     exploreFindings?: {

@@ -288,7 +288,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         else if (payload.type === 'explore_progress') {
             const progress = payload.exploreProgress;
             if (progress) {
-                console.log(`[AgentStore] Explore progress: ${progress.phase}, ${progress.progress.scanned}/${progress.progress.total}`);
+                console.log(`[AgentStore] Explore progress: ${progress.phase}, ${progress.progress.scanned}/${progress.progress.total}, currentFile=${progress.currentFile}`);
 
                 // Update agent with explore progress data
                 set(state => ({
@@ -296,7 +296,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                         if (a.id !== id) return a;
                         return {
                             ...a,
-                            exploreProgress: progress, // Store full progress data
+                            exploreProgress: {
+                                ...(a.exploreProgress || {}),
+                                ...progress,
+                                // Explicitly preserve currentFile if new value is null/undefined
+                                currentFile: progress.currentFile || a.exploreProgress?.currentFile,
+                            },
                             currentStep: `${progress.phase}: ${progress.progress.scanned}/${progress.progress.total}`,
                             progress: progress.progress.total > 0
                                 ? progress.progress.scanned / progress.progress.total
@@ -311,7 +316,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                     coreUseChatStore.setState({
                         messages: messages.map(m => m.id === msgId ? {
                             ...m,
-                            exploreProgress: progress
+                            exploreProgress: {
+                                ...(m.exploreProgress || {}),
+                                ...progress,
+                                // Explicitly preserve currentFile if new value is null/undefined
+                                currentFile: progress.currentFile || m.exploreProgress?.currentFile,
+                            },
                         } : m)
                     });
                 }

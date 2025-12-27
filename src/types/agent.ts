@@ -31,8 +31,9 @@ export interface Agent {
 
   // Explore agent specific data
   exploreProgress?: {
-    phase: 'scanning' | 'analyzing';
+    phase: 'scanning' | 'analyzing' | 'completed';
     currentPath?: string;
+    currentFile?: string;
     progress: {
       total: number;
       scanned: number;
@@ -42,6 +43,7 @@ export interface Agent {
         status: 'pending' | 'scanning' | 'completed';
       }>;
     };
+    scannedFiles?: string[];
   };
   exploreFindings?: {
     summary: string;
@@ -71,8 +73,9 @@ export interface AgentEventPayload {
 
   // Explore agent progress events
   exploreProgress?: {
-    phase: 'scanning' | 'analyzing';
+    phase: 'scanning' | 'analyzing' | 'completed';
     currentPath?: string;
+    currentFile?: string;
     progress: {
       total: number;
       scanned: number;
@@ -82,6 +85,7 @@ export interface AgentEventPayload {
         status: 'pending' | 'scanning' | 'completed';
       }>;
     };
+    scannedFiles?: string[];
   };
 
   // Explore agent findings events
