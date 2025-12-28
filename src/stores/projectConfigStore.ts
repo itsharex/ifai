@@ -67,7 +67,6 @@ export const useProjectConfigStore = create<ProjectConfigState>((set, get) => ({
   error: null,
 
   loadConfig: async (projectRoot: string) => {
-    console.log('[ProjectConfig] Loading config for project:', projectRoot);
     set({ isLoading: true, error: null });
 
     try {
@@ -75,12 +74,8 @@ export const useProjectConfigStore = create<ProjectConfigState>((set, get) => ({
         projectRoot,
       });
 
-      console.log('[ProjectConfig] Config content loaded, length:', content.length);
-
       // Parse the content
       const config = await invoke<ProjectConfig>('parse_project_config', { content });
-
-      console.log('[ProjectConfig] Parsed config:', config);
 
       set({
         content,
@@ -89,12 +84,10 @@ export const useProjectConfigStore = create<ProjectConfigState>((set, get) => ({
         isLoading: false,
       });
 
-      console.log('[ProjectConfig] Successfully loaded config for:', projectRoot);
       return content;
     } catch (e) {
       const error = String(e);
       console.error('[ProjectConfig] Failed to load config:', error);
-      console.error('[ProjectConfig] Error details:', e);
       set({
         error,
         isLoading: false,

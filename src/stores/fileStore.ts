@@ -12,7 +12,7 @@ interface FileState {
   openedFiles: OpenedFile[];
   activeFileId: string | null;
   gitStatuses: Map<string, GitStatus>;
-  
+
   setFileTree: (tree: FileNode) => void;
   setRootPath: (path: string | null) => Promise<void>;
   openFile: (file: OpenedFile) => string;
@@ -48,7 +48,7 @@ export const useFileStore = create<FileState>()(
 
       syncState: (newState) => set((state) => ({ ...state, ...newState })),
 
-      setFileTree: async (tree) => {
+      setFileTree: (tree) => {
         const treeWithStatus = tree ? updateGitStatusRecursive(tree, get().gitStatuses) : null;
         const newRootPath = tree ? tree.path : null;
 
@@ -57,34 +57,26 @@ export const useFileStore = create<FileState>()(
           rootPath: newRootPath,
         }));
 
-        // Load project config when file tree is set (project opened)
+        // Load project config asynchronously (don't block or fail on error)
         if (newRootPath) {
-          console.log('[FileStore] FileTree set, loading config for:', newRootPath);
-          try {
-            await useProjectConfigStore.getState().loadConfig(newRootPath);
-            console.log('[FileStore] ✅ Config loaded from setFileTree');
-          } catch (e) {
-            console.error('[FileStore] ❌ Failed to load config from setFileTree:', e);
-          }
+          useProjectConfigStore.getState().loadConfig(newRootPath)
+            .then(() => console.log('[FileStore] Config loaded successfully'))
+            .catch((e) => console.error('[FileStore] Failed to load config:', e));
         } else {
-          console.log('[FileStore] FileTree cleared, clearing config');
           useProjectConfigStore.getState().clearConfig();
         }
       },
       
       setRootPath: async (path) => {
-        console.log('[FileStore] setRootPath called with:', path);
         set({ rootPath: path });
 
         // Auto-initialize RAG index when project is opened
         if (path) {
-          console.log('[FileStore] Project opened, loading config...');
           // Load project-level configuration
           try {
-            const projectConfig = await useProjectConfigStore.getState().loadConfig(path);
-            console.log('[FileStore] ✅ Loaded project config successfully');
+            await useProjectConfigStore.getState().loadConfig(path);
           } catch (e) {
-            console.error('[FileStore] ❌ Failed to load project config:', e);
+            console.error('[FileStore] Failed to load project config:', e);
           }
 
           // Import settingsStore dynamically to avoid circular dependency
@@ -97,14 +89,12 @@ export const useFileStore = create<FileState>()(
               try {
                 const { invoke } = await import('@tauri-apps/api/core');
                 await invoke('init_rag_index', { rootPath: path });
-                console.log('[RAG] Auto-initialized for project:', path);
               } catch (e) {
                 console.warn('[RAG] Auto-initialization failed (manual /index may be needed):', e);
               }
             }, 1000);
           }
         } else {
-          console.log('[FileStore] Project closed, clearing config');
           // Clear project config when project is closed
           useProjectConfigStore.getState().clearConfig();
         }
@@ -115,11 +105,11 @@ export const useFileStore = create<FileState>()(
 
         set((state) => {
           const existing = state.openedFiles.find(f => f.path === file.path);
-      
+
           if (existing) {
             fileIdToActivate = existing.id;
             const shouldUpdateContent = file.content !== undefined && (!existing.isDirty || !file.isDirty);
-            
+
             const updatedFiles = state.openedFiles.map(f => {
               if (f.id === existing.id) {
                 return {
@@ -130,15 +120,15 @@ export const useFileStore = create<FileState>()(
               }
               return f;
             });
-      
+
             return { openedFiles: updatedFiles, activeFileId: fileIdToActivate };
           }
-      
+
           // If not existing, add it
           const newFiles = [...state.openedFiles, file];
           return { openedFiles: newFiles, activeFileId: fileIdToActivate };
         });
-      
+
         return fileIdToActivate;
       },
 

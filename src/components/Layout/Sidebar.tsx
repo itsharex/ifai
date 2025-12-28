@@ -41,10 +41,14 @@ export const Sidebar = () => {
   }, [rootPath, fileTree, setFileTree]);
 
   const handleOpenFolder = async () => {
-    const tree = await openDirectory();
-    if (tree) {
-      setFileTree(tree);
-      invoke('init_rag_index', { rootPath: tree.path }).catch(e => console.warn('RAG init warning:', e));
+    try {
+      const tree = await openDirectory();
+      if (tree) {
+        setFileTree(tree);
+        invoke('init_rag_index', { rootPath: tree.path }).catch(e => console.warn('RAG init warning:', e));
+      }
+    } catch (e) {
+      console.error('[Sidebar] Error in handleOpenFolder:', e);
     }
   };
 

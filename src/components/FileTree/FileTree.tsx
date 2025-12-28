@@ -189,7 +189,7 @@ const getLanguageFromPath = (path: string): string => {
 };
 
 export const FileTree = () => {
-  const { fileTree, refreshFileTree, refreshFileTreePreserveExpanded, rootPath, setGitStatuses, gitStatuses, openFile } = useFileStore();
+  const { fileTree, refreshFileTree, refreshFileTreePreserveExpanded, rootPath, setGitStatuses, gitStatuses, openFile, setFileTree } = useFileStore();
   const { activePaneId, assignFileToPane } = useLayoutStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ x: 0, y: 0, node: null });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -482,8 +482,27 @@ export const FileTree = () => {
   };
 
   if (!fileTree) return (
-    <div className="p-4 text-gray-500 text-sm text-center">
-      Click folder icon to open
+    <div className="p-4 text-gray-500 text-sm text-center flex flex-col items-center gap-4">
+      <p className="text-gray-400">No folder open</p>
+      <button
+        onClick={async () => {
+          try {
+            const { openDirectory } = await import('../../utils/fileSystem');
+            const tree = await openDirectory();
+            if (tree) {
+              setFileTree(tree);
+              invoke('init_rag_index', { rootPath: tree.path }).catch(e => console.warn('RAG init warning:', e));
+            }
+          } catch (e) {
+            console.error('[FileTree] Failed to open directory:', e);
+          }
+        }}
+        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2 transition-colors"
+      >
+        <Folder size={16} />
+        <span>Open Folder</span>
+      </button>
+      <p className="text-xs text-gray-600">Or click the folder icon in the title bar above</p>
     </div>
   );
 
