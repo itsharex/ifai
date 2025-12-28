@@ -326,6 +326,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                             ...(a.exploreProgress || {}),
                             ...progress,
                         };
+
+                        // Special handling: preserve progress data when transitioning to analyzing phase
+                        // (backend sends hardcoded total=1, scanned=1 which is incorrect)
+                        if (progress.phase === 'analyzing' && a.exploreProgress?.progress) {
+                            newExploreProgress.progress = a.exploreProgress.progress;
+                        }
+
                         // Explicitly preserve currentFile if new value is null/undefined
                         newExploreProgress.currentFile = progress.currentFile || a.exploreProgress?.currentFile;
                         // Always preserve scannedFiles - use calculated value if exists, otherwise preserve old
@@ -386,9 +393,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 }));
 
                 // Sync to message for UI display
-                if (msgId) {
-                    const { messages } = coreUseChatStore.getState();
-                    const currentMsg = messages.find(m => m.id === msgId);
+                // Try to find message by msgId first, then by agentId as fallback
+                const { messages } = coreUseChatStore.getState();
+                const targetMsgId = msgId || messages.find(m => m.agentId === id)?.id;
+
+                if (targetMsgId) {
+                    const currentMsg = messages.find(m => m.id === targetMsgId);
 
                     // Calculate scannedFiles for message too
                     let msgScannedFiles = currentMsg?.exploreProgress?.scannedFiles || [];
@@ -401,6 +411,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                         ...(currentMsg?.exploreProgress || {}),
                         ...progress,
                     };
+
+                    // Special handling: preserve progress data when transitioning to analyzing phase
+                    if (progress.phase === 'analyzing' && currentMsg?.exploreProgress?.progress) {
+                        newMsgExploreProgress.progress = currentMsg.exploreProgress.progress;
+                    }
+
                     newMsgExploreProgress.currentFile = progress.currentFile || currentMsg?.exploreProgress?.currentFile;
                     if (msgScannedFiles.length > 0) {
                         newMsgExploreProgress.scannedFiles = msgScannedFiles;
@@ -408,14 +424,16 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                         newMsgExploreProgress.scannedFiles = currentMsg.exploreProgress.scannedFiles;
                     }
 
-                    console.log(`[AgentStore] Message update: scannedFiles=${newMsgExploreProgress.scannedFiles?.length || 0}`);
+                    console.log(`[AgentStore] Message update: msgId=${msgId}, targetMsgId=${targetMsgId}, phase=${progress.phase}, scannedFiles=${newMsgExploreProgress.scannedFiles?.length || 0}`);
 
                     coreUseChatStore.setState({
-                        messages: messages.map(m => m.id === msgId ? {
+                        messages: messages.map(m => m.id === targetMsgId ? {
                             ...m,
                             exploreProgress: newMsgExploreProgress,
                         } : m)
                     });
+                } else {
+                    console.warn(`[AgentStore] No message found for agent ${id} to update explore progress`);
                 }
             }
         }
@@ -425,23 +443,78 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             if (findings) {
                 console.log(`[AgentStore] Explore findings:`, findings.summary);
 
-                // Store findings in agent
+                // Store findings in agent AND update exploreProgress phase to completed
                 set(state => ({
                     runningAgents: state.runningAgents.map(a => {
                         if (a.id !== id) return a;
-                        return { ...a, exploreFindings: findings };
+                        // When completed, update progress to 100%
+                        const completedProgress = a.exploreProgress?.progress
+                            ? {
+                                ...a.exploreProgress.progress,
+                                scanned: a.exploreProgress.progress.total
+                            }
+                            : undefined;
+
+                        return {
+                            ...a,
+                            exploreFindings: findings,
+                            exploreProgress: a.exploreProgress ? {
+                                ...a.exploreProgress,
+                                phase: 'completed',
+                                progress: completedProgress
+                            } : undefined
+                        };
                     })
                 }));
 
                 // Sync findings to message for UI display
-                if (msgId) {
-                    const { messages } = coreUseChatStore.getState();
+                // Try to find message by msgId first, then by agentId as fallback
+                const { messages } = coreUseChatStore.getState();
+                const targetMsgId = msgId || messages.find(m => m.agentId === id)?.id;
+
+                // Get the agent's latest exploreProgress (with scannedFiles)
+                const agent = get().runningAgents.find(a => a.id === id);
+
+                console.log(`[AgentStore] Explore findings sync: msgId=${msgId}, targetMsgId=${targetMsgId}, agentId=${id}`);
+                console.log(`[AgentStore] Agent exploreProgress:`, {
+                    phase: agent?.exploreProgress?.phase,
+                    scannedFiles: agent?.exploreProgress?.scannedFiles?.length || 0,
+                    progress: agent?.exploreProgress?.progress
+                });
+
+                if (targetMsgId) {
                     coreUseChatStore.setState({
-                        messages: messages.map(m => m.id === msgId ? {
-                            ...m,
-                            exploreFindings: findings
-                        } : m)
+                        messages: messages.map(m => {
+                            if (m.id !== targetMsgId) return m;
+
+                            // Use agent's exploreProgress as source of truth (with scannedFiles)
+                            const agentExploreProgress = agent?.exploreProgress;
+                            const msgExploreProgress = m.exploreProgress;
+
+                            // Merge: prefer agent data, fallback to message data
+                            const baseExploreProgress = agentExploreProgress || msgExploreProgress;
+
+                            // Update progress to 100% when completed
+                            const completedProgress = baseExploreProgress?.progress
+                                ? {
+                                    ...baseExploreProgress.progress,
+                                    scanned: baseExploreProgress.progress.total
+                                }
+                                : undefined;
+
+                            return {
+                                ...m,
+                                exploreFindings: findings,
+                                exploreProgress: baseExploreProgress ? {
+                                    ...baseExploreProgress,
+                                    phase: 'completed',
+                                    progress: completedProgress
+                                } : undefined
+                            };
+                        })
                     });
+                } else {
+                    console.warn(`[AgentStore] No message found for agent ${id} to update explore findings`);
                 }
             }
         }
