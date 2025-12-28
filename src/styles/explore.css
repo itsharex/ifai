@@ -1,0 +1,414 @@
+/**
+ * VS Code-inspired Explore UI Styles
+ *
+ * Professional tool-style design with:
+ * - Dark+ theme colors
+ * - Balanced spacing for readability
+ * - Hover and focus states
+ * - Smooth transitions
+ */
+
+/* ============================================================================
+   CSS Custom Properties (VS Code Dark+ Theme)
+   ============================================================================ */
+
+:root {
+  /* Background colors */
+  --explore-bg: #1e1e1e;
+  --explore-sidebar: #252526;
+  --explore-hover: #2a2d2e;
+  --explore-selection: #094771;
+
+  /* Border colors */
+  --explore-border: #3c3c3c;
+  --explore-separator: #2d2d2d;
+
+  /* Text colors */
+  --explore-text: #cccccc;
+  --explore-text-active: #ffffff;
+  --explore-text-muted: #858585;
+
+  /* Link color */
+  --explore-link: #3794ff;
+  --explore-link-hover: #1e8eff;
+
+  /* Status colors */
+  --explore-success: #4ec9b0;
+  --explore-info: #569cd6;
+  --explore-warning: #dcdcaa;
+  --explore-error: #f14c4c;
+
+  /* Icon colors */
+  --explore-icon-folder: #dcdcaa;
+  --explore-icon-file: #858585;
+
+  /* Spacing - 增加间距提高可读性 */
+  --explore-spacing-compact: 8px;
+  --explore-spacing-normal: 12px;
+  --explore-spacing-relaxed: 16px;
+
+  /* Typography */
+  --explore-font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+  --explore-font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+
+  /* Transitions */
+  --explore-transition-fast: 0.15s ease;
+  --explore-transition-normal: 0.2s ease;
+}
+
+/* ============================================================================
+   Base Styles
+   ============================================================================ */
+
+.explore-progress,
+.explore-findings {
+  font-family: var(--explore-font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--explore-bg);
+  color: var(--explore-text);
+}
+
+/* ============================================================================
+   Status Bar
+   ============================================================================ */
+
+.explore-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--explore-border);
+  font-family: var(--explore-font-mono);
+  font-size: 12px;
+  color: var(--explore-text);
+  background: var(--explore-sidebar);
+  flex-wrap: wrap;
+}
+
+.explore-status-bar > * {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ============================================================================
+   Collapsible Sections
+   ============================================================================ */
+
+.explore-collapsible-section {
+  border-bottom: 1px solid var(--explore-separator);
+  margin-bottom: 8px;
+}
+
+.explore-collapsible-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.explore-collapse-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: var(--explore-text);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--explore-transition-fast);
+}
+
+.explore-collapse-header:hover {
+  background: var(--explore-hover);
+}
+
+.explore-collapse-header:focus {
+  outline: 1px solid var(--explore-info);
+  outline-offset: -1px;
+}
+
+.explore-collapse-icon {
+  transition: transform var(--explore-transition-fast);
+  flex-shrink: 0;
+}
+
+.explore-collapse-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.explore-collapse-content {
+  padding: 12px 0;
+  animation: fadeIn var(--explore-transition-normal);
+}
+
+/* ============================================================================
+   File List
+   ============================================================================ */
+
+.explore-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.explore-directory-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.explore-directory-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--explore-text);
+  background: var(--explore-sidebar);
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+
+.explore-directory-path {
+  font-family: var(--explore-font-mono);
+  color: var(--explore-text);
+  flex: 1;
+}
+
+.explore-directory-count {
+  font-family: var(--explore-font-mono);
+  color: var(--explore-text-muted);
+  font-size: 11px;
+}
+
+.explore-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 8px 32px;
+  cursor: pointer;
+  transition: background var(--explore-transition-fast);
+  border-radius: 4px;
+}
+
+.explore-file-item:hover {
+  background: var(--explore-hover);
+}
+
+.explore-file-item:focus {
+  background: var(--explore-selection);
+  outline: none;
+}
+
+.explore-file-item:focus-visible {
+  outline: 1px solid var(--explore-info);
+  outline-offset: -1px;
+}
+
+.explore-file-link {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--explore-link);
+  text-align: left;
+  font-family: var(--explore-font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+}
+
+.explore-file-link:hover {
+  color: var(--explore-link-hover);
+  text-decoration: underline;
+}
+
+.explore-file-link:focus {
+  outline: none;
+}
+
+/* ============================================================================
+   Pattern List
+   ============================================================================ */
+
+.explore-pattern-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.explore-pattern-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--explore-sidebar);
+  border-radius: 6px;
+  transition: background var(--explore-transition-fast);
+}
+
+.explore-pattern-item:hover {
+  background: var(--explore-hover);
+}
+
+.explore-pattern-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--explore-text-muted);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.explore-pattern-description {
+  font-size: 13px;
+  color: var(--explore-text);
+  line-height: 1.5;
+}
+
+/* ============================================================================
+   Overview Text
+   ============================================================================ */
+
+.overview-text {
+  font-family: var(--explore-font-ui);
+  font-size: 13px;
+  color: var(--explore-text);
+  line-height: 1.7;
+  background: var(--explore-sidebar);
+  border-radius: 6px;
+  border-left: 3px solid var(--explore-info);
+  padding: 12px 16px;
+}
+
+/* ============================================================================
+   Progress Bar
+   ============================================================================ */
+
+.explore-progress-bar {
+  height: 3px;
+  background: var(--explore-border);
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.explore-progress-fill {
+  height: 100%;
+  background: var(--explore-info);
+  transition: width 0.3s ease;
+}
+
+.explore-progress-fill.complete {
+  background: var(--explore-success);
+}
+
+/* ============================================================================
+   Animations
+   ============================================================================ */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tailwind animation integration */
+.animate-in {
+  animation-name: fadeIn;
+  animation-duration: 0.25s;
+  animation-fill-mode: both;
+}
+
+.slide-in-from-top-2 {
+  animation-name: slideInFromTop;
+  animation-duration: 0.3s;
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation: fadeIn 0.25s ease;
+}
+
+/* ============================================================================
+   Scrollbar Styling (Webkit)
+   ============================================================================ */
+
+.explore-file-list::-webkit-scrollbar,
+.explore-collapse-content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.explore-file-list::-webkit-scrollbar-track,
+.explore-collapse-content::-webkit-scrollbar-track {
+  background: var(--explore-bg);
+  border-radius: 5px;
+}
+
+.explore-file-list::-webkit-scrollbar-thumb,
+.explore-collapse-content::-webkit-scrollbar-thumb {
+  background: var(--explore-border);
+  border-radius: 5px;
+}
+
+.explore-file-list::-webkit-scrollbar-thumb:hover,
+.explore-collapse-content::-webkit-scrollbar-thumb:hover {
+  background: var(--explore-text-muted);
+}
+
+/* ============================================================================
+   Accessibility
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .explore-collapse-icon,
+  .explore-file-item,
+  .explore-collapse-header,
+  .explore-pattern-item,
+  .animate-in,
+  .fade-in {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* Focus visible for keyboard navigation */
+*:focus-visible {
+  outline: 1px solid var(--explore-info);
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .explore-status-bar,
+  .explore-directory-header,
+  .explore-pattern-item {
+    border: 1px solid var(--explore-text);
+  }
+
+  .explore-file-link {
+    text-decoration: underline;
+  }
+}

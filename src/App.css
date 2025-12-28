@@ -1,3 +1,6 @@
+/* Import VS Code-inspired explore styles */
+@import './styles/explore.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
