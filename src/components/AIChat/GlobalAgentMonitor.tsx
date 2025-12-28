@@ -8,7 +8,9 @@ import {
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ExploreProgress } from './ExploreProgress';
-import { ExploreFindings } from './ExploreFindings';
+import { ExploreProgress as ExploreProgressNew } from './ExploreProgressNew';
+import { TaskCard } from '../TaskMonitor/TaskCard';
+import { exploreToTaskMetadata } from './exploreTaskAdapter';
 
 // Utility for status colors
 const getStatusColor = (status: string) => {
@@ -315,17 +317,13 @@ export const GlobalAgentMonitor: React.FC = () => {
                             {/* Expanded Logs */}
                             {expandedId === agent.id && (
                                 <div className="bg-[#1e1e1e]">
-                                    {/* Explore Agent Progress - Minimal mode */}
+                                    {/* Explore Agent Progress - Use TaskCard with detailed mode */}
                                     {agent.exploreProgress && (
                                         <div className="p-3 border-b border-[#333]">
-                                            <ExploreProgress progress={agent.exploreProgress} mode="minimal" />
-                                        </div>
-                                    )}
-
-                                    {/* Explore Agent Findings */}
-                                    {agent.exploreFindings && (
-                                        <div className="p-3 border-b border-[#333]">
-                                            <ExploreFindings findings={agent.exploreFindings} compact={true} />
+                                            <TaskCard
+                                                task={exploreToTaskMetadata(agent.exploreProgress)}
+                                                mode="detailed"
+                                            />
                                         </div>
                                     )}
 
