@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { useShortcuts } from './hooks/useShortcuts';
 import { openFileFromPath } from './utils/fileActions';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useChatStore } from './stores/useChatStore';
 import { useSettingsStore } from './stores/settingsStore';
 
@@ -60,6 +61,14 @@ function App() {
         console.log('[App] ✅ Project config language watcher initialized');
       } catch (error) {
         console.error('[App] ❌ Failed to initialize language watcher:', error);
+      }
+
+      // Show window after initialization to prevent splash screen issues
+      try {
+        await getCurrentWindow().show();
+        console.log('[App] ✅ Window shown');
+      } catch (error) {
+        console.error('[App] ❌ Failed to show window:', error);
       }
     };
 
