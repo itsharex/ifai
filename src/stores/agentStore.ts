@@ -118,11 +118,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             const now = Date.now();
             const timeSinceLast = now - lastFlush;
 
-            // DEBUG: Log timing to diagnose 1-3s delays
-            if (chunk.length > 0) {
-                console.log(`[AgentStore] Content chunk: ${chunk.length} chars, time since last: ${timeSinceLast}ms`);
-            }
-
             if (now - lastFlush > 10) {  // Reduced from 100ms to 10ms for faster streaming
                 const currentBuffer = thinkingBuffer;
 

@@ -549,17 +549,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     }
 
                     if (textChunk) {
-                        // Debug logging for code formatting issue
-                        console.log('[Stream] Chunk preview:', textChunk.substring(0, 100));
-                        console.log('[Stream] Has literal \\n:', textChunk.includes('\\n'));
-                        console.log('[Stream] Has actual newline (\\n):', textChunk.includes('\n'));
-
                         newMsg.content = (newMsg.content || '') + textChunk;
-
-                        // Log total content length periodically
-                        if (newMsg.content.length % 500 < 50) {
-                            console.log('[Stream] Total content length:', newMsg.content.length);
-                        }
 
                         // Track text segment in order with character position
                         // @ts-ignore
@@ -888,16 +878,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
                 if (m.id === assistantMsgId) {
                     const newMsg = { ...m };
                     if (textChunk) {
-                        // Debug logging for code formatting issue
-                        console.log('[Generate] Chunk preview:', textChunk.substring(0, 100));
-                        console.log('[Generate] Has literal \\n:', textChunk.includes('\\n'));
-                        console.log('[Generate] Has actual newline (\\n):', textChunk.includes('\n'));
-
                         newMsg.content = (newMsg.content || '') + textChunk;
-
-                        if (newMsg.content.length % 500 < 50) {
-                            console.log('[Generate] Total content length:', newMsg.content.length);
-                        }
                     }
                     if (toolCallUpdate) {
                         const toolName = toolCallUpdate.function?.name || toolCallUpdate.tool;

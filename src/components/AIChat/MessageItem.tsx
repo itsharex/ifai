@@ -77,12 +77,13 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                 clearTimeout((window as any)._streamingTimeout);
             }
 
-            // Set timeout to mark streaming as complete after 150ms of no changes
-            // Force re-render when streaming completes to apply highlighting
+            // Set timeout to mark streaming as complete after 300ms of no changes
+            // Increased from 150ms to reduce flickering on Windows
             (window as any)._streamingTimeout = setTimeout(() => {
                 isActivelyStreamingRef.current = false;
-                forceUpdate(n => n + 1);  // Force re-render to apply highlighting
-            }, 150);
+                // Removed forceUpdate to prevent DOM thrashing
+                // The component will re-render naturally on next prop change
+            }, 300);
         }
 
         // Cleanup timeout on unmount
@@ -99,7 +100,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         const { isLoading: globalIsLoading } = useChatStore.getState();
 
         if (!globalIsLoading && isActivelyStreamingRef.current) {
-            console.log('[MessageItem] Global isLoading cleared, resetting streaming state for message:', message.id);
             isActivelyStreamingRef.current = false;
 
             // Clear any pending timeout
@@ -107,11 +107,9 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                 clearTimeout((window as any)._streamingTimeout);
                 (window as any)._streamingTimeout = undefined;
             }
-
-            // Force re-render to apply highlighting
-            forceUpdate(n => n + 1);
+            // Removed forceUpdate - rely on isStreaming prop change to trigger re-render
         }
-    }, [message.id]); // Check when message ID changes (new message) or periodically
+    }, [message.id, isStreaming]); // Also trigger when isStreaming changes (via isLoading)
 
     const toggleBlock = useCallback((index: number) => {
         setExpandedBlocks(prev => {
@@ -141,8 +139,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         if (process.env.NODE_ENV === 'development') {
             console.log('[MessageItem] isStreaming changed:', { messageId: message.id, isStreaming });
         }
-        // Force re-render when isStreaming changes to ensure fresh check
-        forceUpdate(n => n + 1);
+        // Removed forceUpdate - rely on arePropsEqual in React.memo
     }, [isStreaming, message.id]);
 
     // Count pending tool calls for batch actions
