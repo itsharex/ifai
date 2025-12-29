@@ -149,11 +149,29 @@ export const useSettingsStore = create<SettingsState>()(
       setTheme: (theme) => set({ theme }),
       updateSettings: (settings) => set((state) => ({ ...state, ...settings })),
       
-      updateProviderConfig: (providerId, updates) => set((state) => ({
-        providers: state.providers.map(p => 
+      updateProviderConfig: (providerId, updates) => set((state) => {
+        const updatedProviders = state.providers.map(p =>
           p.id === providerId ? { ...p, ...updates } : p
-        )
-      })),
+        );
+
+        // 自动切换到有API密钥的已启用供应商
+        // 当用户填写API密钥时，自动切换到该供应商
+        if (updates.apiKey && updates.apiKey.trim() !== '') {
+          const targetProvider = updatedProviders.find(p => p.id === providerId);
+          if (targetProvider && targetProvider.enabled) {
+            const firstModel = targetProvider.models[0];
+            if (firstModel) {
+              return {
+                providers: updatedProviders,
+                currentProviderId: providerId,
+                currentModel: firstModel
+              };
+            }
+          }
+        }
+
+        return { providers: updatedProviders };
+      }),
 
       addProvider: (newProvider) => set((state) => {
         // Ensure unique ID
@@ -217,26 +235,45 @@ export const useSettingsStore = create<SettingsState>()(
   )
 );
 
-// Force update zhipu provider to be enabled with glm-4.6 as default
-// This runs after persist rehydration to ensure the config is correct
+// Initialize default provider on first load
+// Only set defaults if no provider has an API key configured
 setTimeout(() => {
   const state = useSettingsStore.getState();
 
-  // Check if zhipu provider needs to be updated
-  const zhipuProvider = state.providers.find(p => p.id === 'zhipu');
+  // 检查是否已有供应商配置了API密钥
+  const hasApiKey = state.providers.some(p => p.apiKey && p.apiKey.trim() !== '');
 
-  if (zhipuProvider && (!zhipuProvider.enabled || state.currentProviderId !== 'zhipu' || state.currentModel !== 'glm-4.6')) {
-    console.log('[SettingsStore] Migrating zhipu provider config...');
+  // 只在没有API密钥的情况下，设置默认的zhipu供应商
+  if (!hasApiKey) {
+    const zhipuProvider = state.providers.find(p => p.id === 'zhipu');
 
-    // Update provider to be enabled
-    useSettingsStore.setState(state => ({
-      providers: state.providers.map(p =>
-        p.id === 'zhipu'
-          ? { ...p, enabled: true, models: ['glm-4.6', 'glm-4.7', 'glm-4-plus', 'glm-4-air', 'glm-4-flash', 'glm-4', 'glm-4v', 'glm-3-turbo'] }
-          : p
-      ),
-      currentProviderId: 'zhipu',
-      currentModel: 'glm-4.6'
-    }));
+    if (zhipuProvider) {
+      console.log('[SettingsStore] Initializing default provider to zhipu (no API keys found)');
+
+      // 确保zhipu已启用并设置为默认
+      useSettingsStore.setState(state => ({
+        providers: state.providers.map(p =>
+          p.id === 'zhipu'
+            ? { ...p, enabled: true, models: ['glm-4.6', 'glm-4.7', 'glm-4-plus', 'glm-4-air', 'glm-4-flash', 'glm-4', 'glm-4v', 'glm-3-turbo'] }
+            : p
+        ),
+        currentProviderId: 'zhipu',
+        currentModel: 'glm-4.6'
+      }));
+    }
+  } else {
+    // 如果已有API密钥，确保当前选中的供应商是有效的
+    const currentProvider = state.providers.find(p => p.id === state.currentProviderId);
+    if (!currentProvider || !currentProvider.apiKey || currentProvider.apiKey.trim() === '') {
+      // 当前供应商没有API密钥，切换到第一个有API密钥的供应商
+      const firstProviderWithKey = state.providers.find(p => p.apiKey && p.apiKey.trim() !== '');
+      if (firstProviderWithKey) {
+        console.log('[SettingsStore] Switching to first provider with API key:', firstProviderWithKey.id);
+        useSettingsStore.setState({
+          currentProviderId: firstProviderWithKey.id,
+          currentModel: firstProviderWithKey.models[0] || ''
+        });
+      }
+    }
   }
 }, 0);

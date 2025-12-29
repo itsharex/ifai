@@ -120,51 +120,91 @@ export const SettingsModal = () => {
 
             {activeTab === 'ai' && (
               <div className="space-y-6">
+                {/* 当前激活的供应商提示 */}
+                <div className="bg-blue-900/20 border border-blue-700/50 rounded px-3 py-2 flex items-center">
+                    <span className="text-xs text-blue-300">
+                        当前激活：<strong>{settings.providers.find(p => p.id === settings.currentProviderId)?.name || '未选择'}</strong>
+                        （模型：{settings.currentModel}）
+                    </span>
+                </div>
+
                 <div className="flex items-center justify-between mb-2">
                     <h3 className="text-sm font-bold text-gray-300">{t('settings.aiProviders')}</h3>
                 </div>
-                
-                {settings.providers.map(provider => (
-                    <div key={provider.id} className="border border-gray-600 rounded p-3 bg-[#2d2d2d]">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="font-semibold text-gray-200">{provider.name}</span>
-                            <div className="flex items-center">
-                                <span className="text-xs text-gray-400 mr-2">{provider.enabled ? t('common.on') : t('common.off')}</span>
-                                <input 
-                                    type="checkbox"
-                                    checked={provider.enabled}
-                                    onChange={(e) => settings.updateProviderConfig(provider.id, { enabled: e.target.checked })}
-                                    className="cursor-pointer"
-                                />
+
+                {settings.providers.map(provider => {
+                    const isCurrent = provider.id === settings.currentProviderId;
+                    const hasApiKey = provider.apiKey && provider.apiKey.trim() !== '';
+
+                    return (
+                        <div key={provider.id} className={clsx(
+                            "border rounded p-3 bg-[#2d2d2d] transition-all",
+                            isCurrent ? "border-blue-500 bg-blue-900/10" : "border-gray-600"
+                        )}>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center">
+                                    <span className="font-semibold text-gray-200">{provider.name}</span>
+                                    {isCurrent && (
+                                        <span className="ml-2 px-2 py-0.5 text-xs bg-blue-600 text-white rounded">当前</span>
+                                    )}
+                                    {hasApiKey && !isCurrent && (
+                                        <span className="ml-2 px-2 py-0.5 text-xs bg-green-600/50 text-green-300 rounded">已配置</span>
+                                    )}
+                                </div>
+                                <div className="flex items-center">
+                                    <span className="text-xs text-gray-400 mr-2">{provider.enabled ? t('common.on') : t('common.off')}</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={provider.enabled}
+                                        onChange={(e) => settings.updateProviderConfig(provider.id, { enabled: e.target.checked })}
+                                        className="cursor-pointer"
+                                    />
+                                </div>
                             </div>
+
+                            {provider.enabled && (
+                                <div className="space-y-3 mt-2">
+                                    <div>
+                                        <label className="block text-xs text-gray-400 mb-1">{t('settings.apiKey')}</label>
+                                        <input
+                                            type="password"
+                                            value={provider.apiKey}
+                                            onChange={(e) => settings.updateProviderConfig(provider.id, { apiKey: e.target.value })}
+                                            className={clsx(
+                                                "w-full border rounded px-2 py-1 text-white text-xs focus:outline-none",
+                                                isCurrent ? "bg-blue-900/20 border-blue-500 focus:border-blue-400" : "bg-[#3c3c3c] border-gray-600 focus:border-blue-500"
+                                            )}
+                                            placeholder={t('settings.apiKeyFor', { providerName: provider.name })}
+                                        />
+                                        {hasApiKey && (
+                                            <div className="mt-1 text-xs text-green-400">
+                                                ✓ API密钥已配置 - {isCurrent ? '当前激活' : '点击下方设为默认'}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-400 mb-1">{t('settings.baseUrl')}</label>
+                                        <input
+                                            type="text"
+                                            value={provider.baseUrl}
+                                            onChange={(e) => settings.updateProviderConfig(provider.id, { baseUrl: e.target.value })}
+                                            className="w-full bg-[#3c3c3c] border border-gray-600 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500"
+                                            placeholder="https://..."
+                                        />
+                                    </div>
+                                    {!isCurrent && hasApiKey && (
+                                        <button
+                                            onClick={() => settings.setCurrentProviderAndModel(provider.id, provider.models[0])}
+                                            className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                                        >
+                                            设为默认
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
-                        
-                        {provider.enabled && (
-                            <div className="space-y-3 mt-2">
-                                <div>
-                                    <label className="block text-xs text-gray-400 mb-1">{t('settings.apiKey')}</label>
-                                    <input 
-                                        type="password"
-                                        value={provider.apiKey}
-                                        onChange={(e) => settings.updateProviderConfig(provider.id, { apiKey: e.target.value })}
-                                        className="w-full bg-[#3c3c3c] border border-gray-600 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500"
-                                        placeholder={t('settings.apiKeyFor', { providerName: provider.name })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs text-gray-400 mb-1">{t('settings.baseUrl')}</label>
-                                    <input 
-                                        type="text"
-                                        value={provider.baseUrl}
-                                        onChange={(e) => settings.updateProviderConfig(provider.id, { baseUrl: e.target.value })}
-                                        className="w-full bg-[#3c3c3c] border border-gray-600 rounded px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500"
-                                        placeholder="https://..."
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                ))}
+                    );
+                })}
 
                 <div className="flex items-center justify-between pt-4 border-t border-gray-600">
                   <span className="text-sm font-medium text-gray-300">{t('settings.enableAutocomplete')}</span>
