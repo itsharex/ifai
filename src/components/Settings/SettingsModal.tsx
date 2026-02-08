@@ -9,12 +9,13 @@ import { DataManagementPanel } from './DataManagementPanel';
 import { LocalModelSettings } from './LocalModelSettings';
 import { CustomProviderSettings } from './CustomProviderSettings';
 import { ToolClassificationSettings } from './ToolClassificationSettings';
+import { SkillsSettings } from './SkillsSettings';
 
 export const SettingsModal = () => {
   const { t, i18n } = useTranslation();
   const { isSettingsOpen, setSettingsOpen, sidebarPosition, setSidebarPosition } = useLayoutStore();
   const settings = useSettingsStore();
-  const [activeTab, setActiveTab] = useState<'general' | 'editor' | 'ai' | 'performance' | 'keybindings' | 'data' | 'localModel' | 'customProvider' | 'toolClassification'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'editor' | 'ai' | 'performance' | 'keybindings' | 'data' | 'localModel' | 'customProvider' | 'toolClassification' | 'skills'>('general');
 
   // 获取本地化的提供商名称
   const getProviderName = (providerId: string, fallbackName: string): string => {
@@ -62,6 +63,7 @@ export const SettingsModal = () => {
     { id: 'data', label: t('settings.dataManagement'), icon: Database },
     { id: 'localModel', label: t('settings.localModelSettings'), icon: LocalLLM },
     { id: 'toolClassification', label: '工具分类', icon: Target },
+    { id: 'skills', label: '技能中心', icon: Zap },
   ] as const;
 
   return (
@@ -95,6 +97,7 @@ export const SettingsModal = () => {
                activeTab === 'localModel' ? t('settings.localModelSettings') :
                activeTab === 'customProvider' ? t('settings.customProvider') :
                activeTab === 'toolClassification' ? '工具分类设置' :
+               activeTab === 'skills' ? '技能中心 (Skills Center)' :
                `${t(`settings.${activeTab}`)} ${t('chat.settings')}`}
             </h2>
             <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-white">
@@ -463,6 +466,7 @@ export const SettingsModal = () => {
             {activeTab === 'localModel' && <LocalModelSettings />}
             {activeTab === 'customProvider' && <CustomProviderSettings />}
             {activeTab === 'toolClassification' && <ToolClassificationSettings />}
+            {activeTab === 'skills' && <SkillsSettings />}
           </div>
         </div>
       </div>
