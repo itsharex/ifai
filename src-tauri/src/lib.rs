@@ -1050,6 +1050,7 @@ pub fn run() {
             tool_classification::tool_batch_classify,
             // v0.5.0 新增：技能系统
             commands::skill_commands::get_available_skills,
+            commands::skill_commands::init_skills_dir,
             // v0.2.8 新增：原子文件操作
             commands::atomic_commands::atomic_write_start,
             commands::atomic_commands::atomic_write_add_operation,

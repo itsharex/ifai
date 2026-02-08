@@ -1,6 +1,8 @@
-import React, { useEffect } from 'react';
-import { RefreshCw, Puzzle, ExternalLink, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { RefreshCw, Puzzle, ExternalLink, ShieldCheck, Download } from 'lucide-react';
 import { useSkillStore } from '../../stores/skillStore';
+import { invoke } from '@tauri-apps/api/core';
+import { useFileStore } from '../../stores/fileStore';
 import clsx from 'clsx';
 
 export const SkillsSettings: React.FC = () => {
@@ -12,12 +14,29 @@ export const SkillsSettings: React.FC = () => {
         toggleSkill 
     } = useSkillStore();
 
+    const [isInstalling, setIsInstalling] = useState(false);
+
     // 初始加载
     useEffect(() => {
         if (availableSkills.length === 0) {
             fetchSkills();
         }
     }, []);
+
+    const installDemo = async () => {
+        const rootPath = useFileStore.getState().rootPath;
+        if (!rootPath) return;
+        
+        setIsInstalling(true);
+        try {
+            await invoke('init_skills_dir', { projectRoot: rootPath });
+            await fetchSkills();
+        } catch (e) {
+            console.error('Failed to install demo skills:', e);
+        } finally {
+            setIsInstalling(false);
+        }
+    };
 
     return (
         <div className="flex flex-col h-full bg-[#252526] text-gray-300 p-4 overflow-hidden">
@@ -51,7 +70,18 @@ export const SkillsSettings: React.FC = () => {
                     <div className="flex flex-col items-center justify-center py-12 border border-dashed border-gray-700 rounded-lg bg-[#1e1e1e]">
                         <ShieldCheck size={48} className="text-gray-600 mb-4" />
                         <p className="text-gray-400">未发现可用技能</p>
-                        <p className="text-xs text-gray-500 mt-2">请确保技能定义存放于 .ifai/skills 目录下</p>
+                        <p className="text-xs text-gray-500 mt-2 mb-6 text-center px-8">
+                            IfAI 会自动扫描项目根目录下 .ifai/skills 中的技能插件。<br/>
+                            您可以安装内置示例来快速开始体验。
+                        </p>
+                        <button
+                            onClick={installDemo}
+                            disabled={isInstalling}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md text-sm transition-colors shadow-lg"
+                        >
+                            {isInstalling ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+                            <span>安装内置示例技能</span>
+                        </button>
                     </div>
                 )}
 
