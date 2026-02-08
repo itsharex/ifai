@@ -1,7 +1,0 @@
-{
-    "id": "test-jp",
-    "name": "Japan Expert",
-    "description": "E2E Test Skill",
-    "version": "1.0.0",
-    "system_prompt": "You MUST reply ONLY in Japanese language."
-}
