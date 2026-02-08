@@ -1,3 +1,15 @@
+
+// 🔥 v0.5.0: 全局状态扩展定义
+declare global {
+  interface Window {
+    __IFAI_EDITOR_MODE__?: 'vibe' | 'spec';
+    __IFAI_ACTIVE_SKILLS__?: string[];
+    __IFAI_SKILL_STORE__?: any;
+    __DEBUG__?: any;
+    __layoutStore?: any;
+  }
+}
+
 /**
  * Extended Message types for IfAI Editor
  * Adds explore agent specific fields to the core Message type

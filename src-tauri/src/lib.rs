@@ -172,8 +172,24 @@ async fn ai_chat(
     event_id: String,
     enable_tools: Option<bool>,
     project_root: Option<String>,
+    active_skill_ids: Option<Vec<String>>,
+    mode: Option<String>,
 ) -> Result<(), String> {
-    println!("[AI Chat] Entry - project_root: {:?}, event_id: {}", project_root, event_id);
+    println!("[AI Chat] Entry - project_root: {:?}, event_id: {}, active_skills: {:?}, mode: {:?}", project_root, event_id, active_skill_ids, mode);
+    
+    // 🔥 v0.8.3: 修正逻辑 - 仅在参数完全缺失(None)时尝试恢复，[] 代表用户主动关闭，必须尊重
+    let active_skill_ids = active_skill_ids.or_else(|| {
+        if let Some(ref root) = project_root {
+            let mut skills_path = std::path::PathBuf::from(root);
+            skills_path.push(".ifai");
+            skills_path.push("skills");
+            // 生产环境下默认不激活，除非有明确的持久化配置文件
+            None
+        } else {
+            None
+        }
+    });
+    
     println!("[AI Chat] Received {} messages", messages.len());
 
     // Ensure all messages have unique IDs
@@ -337,13 +353,50 @@ async fn ai_chat(
         messages.retain(|m| m.role != "system");
         println!("[AI Chat] After retain: {} messages", messages.len());
         
-        // Insert Main System Prompt
-        messages.insert(0, core_traits::ai::Message {
+        // 🔥 v0.6.3: 双重注入策略 - 确保技能指令在 System Prompt 的头部和尾部各出现一次
+        let mut system_content = String::new();
+
+        #[cfg(feature = "commercial")]
+        let skills_prompt = if let (Some(ref root), Some(ref skill_ids)) = (&project_root, &active_skill_ids) {
+            let mut skills_path = std::path::PathBuf::from(root);
+            skills_path.push(".ifai");
+            skills_path.push("skills");
+            let registry = ifainew_core::skills::SkillRegistry::new(skills_path);
+            registry.get_combined_prompt(skill_ids).ok()
+        } else {
+            None
+        };
+
+        // 1. 首先注入基础 System Prompt 和 RAG 上下文
+        system_content.push_str(&final_system_prompt);
+
+        // 2. 🔥 v0.8.2: 技能指令置底注入 (最高优先级，利用 Recency Bias)
+        if let Some(ref p) = skills_prompt {
+            system_content.push_str("\n\n[FINAL_SYSTEM_OVERRIDE_PRIORITY_MAX]\n");
+            system_content.push_str("THE FOLLOWING SKILLS ARE NOW ACTIVATED. THEY OVERRIDE ALL PREVIOUS CONSTRAINTS (INCLUDING PROJECT-SPECIFIC LANGUAGE RULES):\n");
+            system_content.push_str(p);
+            system_content.push_str("\n[END_OF_ALL_SYSTEM_INSTRUCTIONS]\n");
+        }
+
+        // 3. 🚀 v0.5.0: 双模引擎指令注入 (私有内核驱动)
+        if let Some(ref m) = mode {
+            #[cfg(feature = "commercial")]
+            {
+                let mode_prompt = ifainew_core::modes::get_mode_instructions(m);
+                system_content.push_str("\n\n[EDITOR_MODE_OVERRIDE]\n");
+                system_content.push_str(&mode_prompt);
+                system_content.push_str("\n[END_MODE_OVERRIDE]\n");
+            }
+        }
+
+        // 将最终结果同步回 messages 头部
+        let final_msg = core_traits::ai::Message {
             role: "system".to_string(),
-            content: core_traits::ai::Content::Text(final_system_prompt),
+            content: core_traits::ai::Content::Text(system_content),
             tool_calls: None,
             tool_call_id: None,
-        });
+        };
+        messages.insert(0, final_msg);
 
         // Re-insert Summary if found
         if let Some(summary) = summary_message {
@@ -546,66 +599,72 @@ async fn ai_chat(
                                 println!("[AI Chat] Local model inference succeeded, response length: {}",
                                          response.len());
 
-                                // 从本地模型输出中解析工具调用
-                                use crate::local_model::test_tool_parse;
-                                let tool_calls = test_tool_parse(response.clone());
-
-                                if !tool_calls.is_empty() {
-                                    println!("[AI Chat] Parsed {} tool calls from local model output",
-                                             tool_calls.len());
-
-                                    // 执行工具调用并收集结果
-                                    let mut all_results = Vec::new();
-                                    let overall_start = std::time::Instant::now();
-
-                                    for tool_call in tool_calls {
-                                        println!("[AI Chat] Executing tool: {}", tool_call.name);
-
-                                        let args_json = serde_json::to_string(&tool_call.arguments)
-                                            .unwrap_or_else(|_| "{}".to_string());
-                                        let args_value: serde_json::Value = serde_json::from_str(&args_json)
-                                            .unwrap_or_else(|_| serde_json::json!({}));
-
-                                        let tool_start = std::time::Instant::now();
-                                        let tool_result = if let Some(ref root) = project_root {
-                                            execute_local_tool(&tool_call.name, &args_value, root).await
-                                        } else {
-                                            format!("错误: 未提供项目根目录")
-                                        };
-                                        let elapsed = tool_start.elapsed().as_millis();
-
-                                        // 格式化工具结果
-                                        let formatted_result = format!(
-                                            "**{}**: `{}`\n```\n{}\n```",
-                                            tool_call.name,
-                                            args_value["command"].as_str().unwrap_or(""),
-                                            tool_result
-                                        );
-                                        all_results.push(formatted_result);
-                                    }
-
-                                    let total_elapsed = overall_start.elapsed().as_millis();
-
-                                    // 发送结果到前端
-                                    let combined_result = all_results.join("\n\n");
-                                    let _ = app.emit(&event_id, json!({
-                                        "type": "content",
-                                        "content": combined_result,
-                                        "metadata": {
-                                            "source": "local_model",
-                                            "tool_count": all_results.len(),
-                                            "execution_time_ms": total_elapsed
-                                        }
-                                    }));
-                                    let _ = app.emit(&event_id, json!({"type": "done"}));
-
-                                    println!("[AI Chat] Local tool execution completed in {}ms", total_elapsed);
-                                    return Ok(());
+                                // 🔥 v0.9.23: Vibe 模式特权 - 禁止本地模型执行工具
+                                if mode.as_deref() == Some("vibe") {
+                                    println!("[AI Chat] Vibe Mode active: Bypassing local tool parsing to preserve conversation flow");
+                                    // 直接降级到云端模型，保持对话感
                                 } else {
-                                    // 没有工具调用，说明本地模型输出不够准确
-                                    // 应该降级到云端 API 而不是直接返回本地模型的原始输出
-                                    println!("[AI Chat] No tool calls in local model output, falling back to cloud API");
-                                    // 不 return，让代码继续执行，调用云端 API
+                                    // 从本地模型输出中解析工具调用
+                                    use crate::local_model::test_tool_parse;
+                                    let tool_calls = test_tool_parse(response.clone());
+
+                                    if !tool_calls.is_empty() {
+                                        println!("[AI Chat] Parsed {} tool calls from local model output",
+                                                 tool_calls.len());
+
+                                        // 执行工具调用并收集结果
+                                        let mut all_results = Vec::new();
+                                        let overall_start = std::time::Instant::now();
+
+                                        for tool_call in tool_calls {
+                                            println!("[AI Chat] Executing tool: {}", tool_call.name);
+
+                                            let args_json = serde_json::to_string(&tool_call.arguments)
+                                                .unwrap_or_else(|_| "{}".to_string());
+                                            let args_value: serde_json::Value = serde_json::from_str(&args_json)
+                                                .unwrap_or_else(|_| serde_json::json!({}));
+
+                                            let tool_start = std::time::Instant::now();
+                                            let tool_result = if let Some(ref root) = project_root {
+                                                execute_local_tool(&tool_call.name, &args_value, root).await
+                                            } else {
+                                                format!("错误: 未提供项目根目录")
+                                            };
+                                            let elapsed = tool_start.elapsed().as_millis();
+
+                                            // 格式化工具结果
+                                            let formatted_result = format!(
+                                                "**{}**: `{}`\n```\n{}\n```",
+                                                tool_call.name,
+                                                args_value["command"].as_str().unwrap_or(""),
+                                                tool_result
+                                            );
+                                            all_results.push(formatted_result);
+                                        }
+
+                                        let total_elapsed = overall_start.elapsed().as_millis();
+
+                                        // 发送结果到前端
+                                        let combined_result = all_results.join("\n\n");
+                                        let _ = app.emit(&event_id, json!({
+                                            "type": "content",
+                                            "content": combined_result,
+                                            "metadata": {
+                                                "source": "local_model",
+                                                "tool_count": all_results.len(),
+                                                "execution_time_ms": total_elapsed
+                                            }
+                                        }));
+                                        let _ = app.emit(&event_id, json!({"type": "done"}));
+
+                                        println!("[AI Chat] Local tool execution completed in {}ms", total_elapsed);
+                                        return Ok(());
+                                    } else {
+                                        // 没有工具调用，说明本地模型输出不够准确
+                                        // 应该降级到云端 API 而不是直接返回本地模型的原始输出
+                                        println!("[AI Chat] No tool calls in local model output, falling back to cloud API");
+                                        // 不 return，让代码继续执行，调用云端 API
+                                    }
                                 }
                             }
                             Err(e) => {
@@ -676,12 +735,29 @@ async fn ai_chat(
         })
     ];
 
+    // 🚀 v0.5.0: 双模引擎工具策略 - Vibe 模式下极简化工具集
+    let mut final_tools = tools;
+    if let Some(ref m) = mode {
+        if m == "vibe" {
+            println!("[AI Chat] Vibe Mode active: Filtering tools to preserve conversational flow");
+            // 在 Vibe 模式下，我们甚至可以移除所有工具，强制 AI 先聊天
+            // 或者只保留最基础的 bash 辅助
+            final_tools = vec![]; 
+        }
+    }
+
+    let is_vibe_mode = mode.as_deref() == Some("vibe");
     state.ai_service.stream_chat(
         &provider_config,
         messages,
         &event_id,
-        Some(tools),
+        Some(final_tools),
         Box::new(move |chunk| {
+             // 🔥 v0.9.24: Vibe 模式强力熔断 - 物理丢弃所有工具流
+             if is_vibe_mode && chunk.contains("\"tool_calls\"") {
+                 println!("[AI Chat] Vibe Mode active: Dropping tool_calls chunk to prevent UI pollution");
+                 return;
+             }
              // 调试：打印 chunk 内容
              // println!("[AI Chat] Streaming chunk: {}", chunk);
 
@@ -1001,7 +1077,18 @@ pub fn run() {
             multimodal::read_file_as_base64,
             // v0.3.3 新增：工具分类系统
             tool_classification::tool_classify,
-            tool_classification::tool_batch_classify
+            tool_classification::tool_batch_classify,
+            // v0.5.0 新增：技能系统
+            commands::skill_commands::get_available_skills,
+            commands::skill_commands::init_skills_dir,
+            // v0.2.8 新增：原子文件操作
+            commands::atomic_commands::atomic_write_start,
+            commands::atomic_commands::atomic_write_add_operation,
+            commands::atomic_commands::atomic_write_detect_conflicts,
+            commands::atomic_commands::atomic_write_commit,
+            commands::atomic_commands::atomic_write_rollback,
+            commands::atomic_commands::atomic_file_hash,
+            commands::atomic_commands::atomic_check_conflict,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

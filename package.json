@@ -1,7 +1,7 @@
 {
   "name": "ifai",
   "description": "若爱 (IfAI) - 基于 Tauri 2.0 构建的跨平台 AI 代码编辑器 | A cross-platform AI code editor built with Tauri 2.0",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "author": {
     "name": "peterfei",
     "email": "peterfeispace@gmail.com",
@@ -55,6 +55,8 @@
     "tauri:dev:commercial-local-llm-rag": "export APP_EDITION=commercial && tauri dev --features commercial-local-llm-rag",
     "tauri:dev:local-llm": "export APP_EDITION=community && tauri dev --features community,llm-inference",
     "tauri:dev": "export APP_EDITION=community && tauri dev --features community",
+    "lint": "eslint .",
+    "check:file": "tsc --noEmit --skipLibCheck",
     "test:e2e": "playwright test",
     "test:e2e:tauri": "TAURI_DEV=true playwright test",
     "test:e2e:tauri:commercial": "TAURI_DEV=true APP_EDITION=commercial playwright test",

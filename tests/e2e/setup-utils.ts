@@ -615,6 +615,42 @@ export async function setupE2ETestEnvironment(
             console.log('[E2E Mock] File deleted from memory:', filePath);
             return `File deleted: ${args.relPath}`;
         }
+        // 🔥 商业版使用的 bash 命令
+        if (cmd === 'agent_bash') {
+            console.log('[E2E Mock] agent_bash:', args);
+            // 复用 execute_bash_command 的逻辑
+            const command = args?.command || '';
+            
+            if (command.includes('echo')) {
+                const echoMatch = command.match(/echo\s+"([^"]+)"/) || command.match(/echo\s+'([^']+)'/) || command.match(/echo\s+(.+)/);
+                if (echoMatch) {
+                    return JSON.stringify({
+                        stdout: echoMatch[1],
+                        stderr: '',
+                        exit_code: 0,
+                        success: true,
+                        elapsed_ms: 10
+                    });
+                }
+            } else if (command.includes('npm run dev')) {
+                return JSON.stringify({
+                    stdout: '> vite-project@0.0.0 dev\n> vite\n\n  VITE v5.0.0  ready in 250 ms\n\n  ➜  Local:   http://localhost:5173/\n  ➜  Network: use --host to expose\n  ➜  press h + enter to show help',
+                    stderr: '',
+                    exit_code: 0,
+                    success: true,
+                    elapsed_ms: 300
+                });
+            }
+            
+            return JSON.stringify({
+                stdout: 'Mock agent bash output',
+                stderr: '',
+                exit_code: 0,
+                success: true,
+                elapsed_ms: 10
+            });
+        }
+
         if (cmd === 'execute_bash_command') {
             console.log('[E2E Mock] execute_bash_command:', args);
             const command = args?.command || '';
@@ -710,18 +746,9 @@ export async function setupE2ETestEnvironment(
 
             console.log(`[E2E Mock] useRealAI: ${useRealAI}, agentType: ${agentType}`);
 
-            // 🔥 如果启用真实 AI 模式，调用真实的后端
-            if (useRealAI) {
-                console.log(`[E2E Mock] 🔥 Using REAL backend for agent: ${agentType}`);
-                // 返回一个 Promise，让调用者等待真实后端响应
-                // 这里我们不直接调用，而是让真实的 Tauri invoke 处理
-                // 但由于我们在 mock 环境中，需要特殊处理
-                // 暂时返回成功，实际逻辑由真实的 Tauri 后端处理
-                return { success: true, agent_id: agentId };
-            }
-
-            // 🔥 否则，使用 mock 响应（仅用于非真实 AI 模式的测试）
-            console.log(`[E2E Mock] ⚠️ Using MOCK response for agent: ${agentType} (real AI not enabled)`);
+            // 🔥 如果启用真实 AI 模式且在真实 Tauri 环境下，调用真实的后端
+            // 在 E2E Mock 环境下，即使 useRealAI 为 true，也应该使用 mock 响应
+            // 因为此时并没有真实的 Rust 后端在运行
 
             // Simulate agent execution with delay
             setTimeout(async () => {

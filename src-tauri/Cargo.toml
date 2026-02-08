@@ -87,3 +87,4 @@ num_cpus = { version = "1.16", optional = true }
 # tracing for debugging (dev dependency only)
 [dev-dependencies]
 tracing-subscriber = "0.3"
+tempfile = "3.10"

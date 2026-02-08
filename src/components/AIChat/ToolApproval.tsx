@@ -281,10 +281,23 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
 
     // 解析bash命令输出
     const parseBashOutput = () => {
-        const result = toolCall.result;
+        let result = toolCall.result;
         if (!result) return null;
 
-        // 如果是字符串，直接返回
+        // 🔥 FIX: 如果是字符串，尝试解析为 JSON（因为 useChatStore 会将其序列化）
+        if (typeof result === 'string') {
+            try {
+                const parsed = JSON.parse(result);
+                if (parsed && typeof parsed === 'object') {
+                    // 如果解析成功且是对象，则使用解析后的结果
+                    result = parsed;
+                }
+            } catch (e) {
+                // 不是有效的 JSON，保持原样作为字符串处理
+            }
+        }
+
+        // 如果结果是字符串，直接返回
         if (typeof result === 'string') {
             return {
                 output: result,
@@ -294,13 +307,13 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
             };
         }
 
-        // 如果是对象，尝试解析
+        // 如果是对象，处理标准结构
         if (typeof result === 'object') {
             const res = result as any;
             return {
                 output: res.stdout || res.stderr || res.output || JSON.stringify(res),
                 command: res.command || toolCall.args?.command || undefined,
-                exitCode: res.exit_code || res.exitCode || 0,
+                exitCode: res.exit_code !== undefined ? res.exit_code : (res.exitCode !== undefined ? res.exitCode : 0),
                 success: res.success !== undefined ? res.success : toolCall.status === 'completed'
             };
         }

@@ -51,8 +51,20 @@ function extractTaskSummary(message: Message): ToolCallSummary | null {
     hasCompletedTools = true;
     summary.completedToolCalls++;
 
-    const result: any = toolCall.result;
+    let result: any = toolCall.result;
     if (!result) return;
+
+    // 🔥 FIX: 如果是字符串，尝试解析为 JSON
+    if (typeof result === 'string') {
+      try {
+        const parsed = JSON.parse(result);
+        if (parsed && typeof parsed === 'object') {
+          result = parsed;
+        }
+      } catch (e) {
+        // 不是有效的 JSON，保持原样
+      }
+    }
 
     // 提取文件路径
     if (result.path) {

@@ -28,6 +28,7 @@ export interface LayoutState {
 
   // 新增：布局模式
   layoutMode: 'default' | 'custom';
+  editorMode: 'vibe' | 'spec';
 
   // 分屏状态
   panes: Pane[];
@@ -58,6 +59,7 @@ export interface LayoutState {
 
   // 新增：布局模式操作
   setLayoutMode: (mode: 'default' | 'custom') => void;
+  setEditorMode: (mode: 'vibe' | 'spec') => void;
 
   // v0.2.9 新增：审查历史操作
   toggleReviewHistory: () => void;
@@ -80,6 +82,16 @@ export interface LayoutState {
 const MAX_PANES = 4;
 const MIN_PANE_SIZE = 20; // 最小窗格大小 (百分比)
 
+
+// 🔥 v0.5.0: 物理层绝对同步
+const syncModeToGlobal = (mode: 'vibe' | 'spec') => {
+  if (typeof window !== 'undefined') {
+    (window as any).__IFAI_EDITOR_MODE__ = mode;
+    (window as any).__IFAI_DISABLE_INTENT__ = (mode === 'vibe');
+    console.log('[LayoutStore] Persistent Mode Synced:', mode);
+  }
+};
+
 export const useLayoutStore = create<LayoutState>()(
   persist(
     (set, get) => ({
@@ -100,6 +112,7 @@ export const useLayoutStore = create<LayoutState>()(
 
       // 新增：布局模式初始状态
       layoutMode: 'default',
+      editorMode: 'vibe',
 
       // 分屏状态
       panes: [
@@ -139,6 +152,7 @@ export const useLayoutStore = create<LayoutState>()(
 
       // 新增：布局模式操作函数
       setLayoutMode: (mode) => set({ layoutMode: mode }),
+      setEditorMode: (mode) => { syncModeToGlobal(mode); set({ editorMode: mode }); },
 
       // v0.2.9 新增：审查历史操作
       toggleReviewHistory: () => {
@@ -386,7 +400,15 @@ export const useLayoutStore = create<LayoutState>()(
         sidebarWidth: state.sidebarWidth,
         // 新增：持久化布局模式
         layoutMode: state.layoutMode,
+        editorMode: state.editorMode,
       }),
+      
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          syncModeToGlobal(state.editorMode);
+        }
+      },
+
       migrate: (persistedState: any, version: number) => {
         console.log(`[LayoutStore] Migrating from version ${version} to 1`);
         return persistedState;
