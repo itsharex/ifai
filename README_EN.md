@@ -1,4 +1,8 @@
-# IfAI - AI Code Editor
+# IfAI
+
+### 🌟 Featured in v0.3.4: Dual-Engine Soul
+IfAI now understands your state of mind. Switch between **VIBE Mode** for pure creative brainstorming and **SPEC Mode** for rigorous contract-driven engineering.
+ - AI Code Editor
 
 <div align="center">
 
