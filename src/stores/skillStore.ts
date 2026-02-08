@@ -22,47 +22,72 @@ interface SkillState {
     reset: () => void;
 }
 
-export const useSkillStore = create<SkillState>((set, get) => ({
+// 🔥 建立绝对全局的同步容器
+const syncToGlobal = (ids: string[]) => {
+    if (typeof window !== 'undefined') {
+        (window as any).__IFAI_ACTIVE_SKILLS__ = ids;
+        console.log('[SkillStore] Global sync updated:', ids);
+    }
+};
+
+const createSkillStore = () => create<SkillState>((set, get) => ({
     availableSkills: [],
-    activeSkillIds: [],
+    activeSkillIds: (typeof window !== 'undefined' ? (window as any).__IFAI_ACTIVE_SKILLS__ : []) || [],
     isLoading: false,
     error: null,
 
     fetchSkills: async () => {
         const rootPath = useFileStore.getState().rootPath;
         if (!rootPath) return;
-
         set({ isLoading: true, error: null });
         try {
             const skills = await invoke<Skill[]>('get_available_skills', { projectRoot: rootPath });
-            set({ availableSkills: skills, isLoading: false });
+            set({ availableSkills: [...skills], isLoading: false });
         } catch (e) {
             set({ error: String(e), isLoading: false });
-            console.error('[SkillStore] Failed to fetch skills:', e);
         }
     },
 
     toggleSkill: (id: string) => {
         const { activeSkillIds } = get();
-        if (activeSkillIds.includes(id)) {
-            set({ activeSkillIds: activeSkillIds.filter(sid => sid !== id) });
-        } else {
-            set({ activeSkillIds: [...activeSkillIds, id] });
-        }
+        const next = activeSkillIds.includes(id) 
+            ? activeSkillIds.filter(sid => sid !== id)
+            : [...activeSkillIds, id];
+        set({ activeSkillIds: next });
+        syncToGlobal(next);
     },
 
     activateSkill: (id: string) => {
         const { activeSkillIds } = get();
         if (!activeSkillIds.includes(id)) {
-            set({ activeSkillIds: [...activeSkillIds, id] });
+            const next = [...activeSkillIds, id];
+            set({ activeSkillIds: next });
+            syncToGlobal(next);
         }
     },
 
     deactivateSkill: (id: string) => {
-        set({ activeSkillIds: get().activeSkillIds.filter(sid => sid !== id) });
+        const next = get().activeSkillIds.filter(sid => sid !== id);
+        set({ activeSkillIds: next });
+        syncToGlobal(next);
     },
 
     reset: () => {
         set({ availableSkills: [], activeSkillIds: [], error: null });
+        syncToGlobal([]);
     }
 }));
+
+const GLOBAL_KEY = '__IFAI_SKILL_STORE__';
+let storeInstance: any;
+
+if (typeof window !== 'undefined') {
+    if (!(window as any)[GLOBAL_KEY]) {
+        (window as any)[GLOBAL_KEY] = createSkillStore();
+    }
+    storeInstance = (window as any)[GLOBAL_KEY];
+} else {
+    storeInstance = createSkillStore();
+}
+
+export const useSkillStore = storeInstance;

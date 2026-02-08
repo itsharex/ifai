@@ -90,6 +90,25 @@ window.MonacoEnvironment = {
 // (window as any).__reactRenderCounts = renderCounts;
 // (window as any).__pathRenderCounts = pathRenderCounts;
 
+// 暴露 Store 到全局以便调试 (仅限开发模式)
+if (import.meta.env.DEV) {
+  Promise.all([
+    import('./stores/skillStore'),
+    import('./stores/fileStore'),
+    import('./stores/useChatStore'),
+    import('./stores/settingsStore')
+  ]).then(([skill, file, chat, settings]) => {
+    (window as any).__DEBUG__ = {
+      ...(window as any).__DEBUG__,
+      skillStore: skill.useSkillStore,
+      fileStore: file.useFileStore,
+      chatStore: chat.useChatStore,
+      settingsStore: settings.useSettingsStore
+    };
+    console.log('[Main] 🛠️  Core Stores exposed to window.__DEBUG__');
+  });
+}
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   // 🔥 E2E: 临时禁用 StrictMode 以避免双重渲染导致的混淆
   <App />

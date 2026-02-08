@@ -2117,7 +2117,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         const settings = useSettingsStore.getState();
 
-        const assistantIndex = updatedMessages.findIndex(m => m.id === assistantMsgId);
+        const assistantIndex = coreUseChatStore.getState().messages.findIndex(m => m.id === assistantMsgId);
 
         // Find the user message that triggered this assistant message
 
@@ -2183,7 +2183,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         if (shouldAutoApprove) {
 
-            const message = updatedMessages.find(m => m.id === assistantMsgId);
+            const message = coreUseChatStore.getState().messages.find(m => m.id === assistantMsgId);
 
             if (message && message.toolCalls) {
 
@@ -2363,7 +2363,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             eventId: assistantMsgId,
             projectRoot: useFileStore.getState().rootPath,
             enableTools: true,
-            active_skill_ids: useSkillStore.getState().activeSkillIds
+            activeSkillIds: (window.__IFAI_ACTIVE_SKILLS__ || [])
         });
 
     } catch (e) {
@@ -2775,7 +2775,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
                 enableTools: true,
 
-                active_skill_ids: useSkillStore.getState().activeSkillIds
+                activeSkillIds: (window.__IFAI_ACTIVE_SKILLS__ || [])
 
             });
 
