@@ -2165,7 +2165,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
             (approvalMode === 'always') ||
 
-            (approvalMode === 'session-once' && isSessionTrusted);
+            (approvalMode === 'session-once' && isSessionTrusted) || (window.__IFAI_EDITOR_MODE__ === 'spec');
 
         console.log(`[Chat] 🔥 v0.3.4 Auto-approve check:`, {
 
@@ -2706,7 +2706,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
         const isSessionTrusted = sessionTrust ? Date.now() < sessionTrust.expiresAt : false;
 
-        const shouldAutoApprove = settings.agentAutoApprove || userMessageHasAutoApprove || (approvalMode === 'always') || (approvalMode === 'session-once' && isSessionTrusted);
+        const shouldAutoApprove = settings.agentAutoApprove || userMessageHasAutoApprove || (approvalMode === 'always') || (approvalMode === 'session-once' && isSessionTrusted) || (window.__IFAI_EDITOR_MODE__ === 'spec');
 
         if (shouldAutoApprove) {
 
@@ -2798,6 +2798,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
 };
 
+const autoApprovedIds = new Set();
 const patchedApproveToolCall = async (
 
     messageId: string,

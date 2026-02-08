@@ -7,13 +7,14 @@ export const ModeSwitch: React.FC = () => {
   const { editorMode, setEditorMode } = useLayoutStore();
 
   const handleModeChange = (mode: 'vibe' | 'spec') => {
-    setEditorMode(mode);
+    // 1. 物理层立即同步 (防止 React 闭包延迟)
     if (typeof window !== 'undefined') {
       (window as any).__IFAI_EDITOR_MODE__ = mode;
-      // 🔥 v0.5.0: 显式禁用意图拦截的全局标志位
       (window as any).__IFAI_DISABLE_INTENT__ = (mode === 'vibe');
-      console.log('[ModeSwitch] Global mode synchronized:', mode, 'Intent Disabled:', (mode === 'vibe'));
+      console.log('[ModeSwitch] 🚀 PHYSICAL SYNC:', mode);
     }
+    // 2. React 状态更新
+    setEditorMode(mode);
   };
 
   return (
