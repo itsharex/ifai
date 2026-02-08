@@ -562,53 +562,35 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         }
         return null;
     }, [toggleBlock, processScanResult]);
-    // 🔥 当应该隐藏气泡时（只有 toolCalls 但没有内容），直接渲染 ToolApproval
-    if (shouldHideBubble) {
-        return (
-            <div className={`group flex flex-col mb-6 items-start`} data-testid={`message-${message.id}`}>
-                <div className="flex items-start gap-3 w-full">
-                    {/* Avatar */}
-                    <div className="shrink-0 mt-0.5">
-                        {isAgent ? (
-                            <div className="w-6 h-6 rounded-full bg-blue-900 flex items-center justify-center border border-blue-500/50 shadow-inner text-blue-400">
-                                <Bot size={14} />
-                            </div>
-                        ) : (
-                            <div className="w-6 h-6 rounded-full overflow-hidden border border-gray-700 bg-black/20 flex items-center justify-center">
-                                <img src={ifaiLogo} alt="IfAI Logo" className="w-4 h-4 opacity-90" />
-                            </div>
-                        )}
-                    </div>
-                    {/* 直接渲染 ToolApproval 组件，不使用气泡容器 */}
-                    <div className="flex-1 min-w-0">
-                        {isAgent && (
-                            <div className="flex items-center gap-1.5 mb-2">
-                                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter bg-blue-900/40 px-1.5 py-0.5 rounded border border-blue-500/20">
-                                    Agent Live
-                                </span>
-                            </div>
-                        )}
-                        {message.toolCalls && message.toolCalls.map(toolCall => (
-                            <ToolApproval
-                                key={toolCall.id}
-                                toolCall={toolCall}
-                                onApprove={() => onApprove(message.id, toolCall.id)}
-                                onReject={() => onReject(message.id, toolCall.id)}
-                                isLatestBashTool={isLatestBashTool(toolCall.id)}
-                                message={message}
-                            />
-                        ))}
-                    </div>
+    // 统一渲染逻辑 (v0.4.1: 去分支化重构，杜绝 Hook 冲突)
+    return (
+        <div 
+            className={`${styles.messageContainer} ${isUser ? styles.user : styles.assistant} group`} 
+            data-testid={`message-${message.id}`}
+        >
+            <div className={`flex items-start gap-3 w-full ${!shouldHideBubble ? styles.bubble + ' ' + (isUser ? styles.user : styles.assistant) + ' ' + styles.industrial : ''}`}>
+                {/* A. 头像区 - 始终显示 */}
+                <div className="shrink-0 mt-0.5">
+                    {isUser ? (
+                        <div className="w-5 h-5 rounded-md bg-blue-600 flex items-center justify-center shadow-lg text-white">
+                            <User size={12} />
+                        </div>
+                    ) : isAgent ? (
+                        <div className="w-5 h-5 rounded-md bg-indigo-900 flex items-center justify-center border border-indigo-500/30 shadow-lg text-indigo-400">
+                            <Bot size={12} />
+                        </div>
+                    ) : (
+                        <div className="w-5 h-5 rounded-md overflow-hidden border border-white/5 bg-black/40 flex items-center justify-center">
+                            <img src={ifaiLogo} alt="AI" className="w-3.5 h-3.5 opacity-80" />
+                        </div>
+                    )}
                 </div>
-            </div>
-        );
-    }
-        return (
-            <div className={`${styles.messageContainer} ${isUser ? styles.user : styles.assistant} group`} data-testid={`message-${message.id}`}>
-                <div className={`${styles.bubble} ${isUser ? styles.user : styles.assistant} ${styles.industrial}`}>
-                    {/* 悬浮工具栏 - 精简样式 */}
-                    {!isUser && (
-                        <div className="absolute -top-3 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-[#2d2d2d] border border-white/10 rounded-md p-1 shadow-xl z-10">
+
+                {/* B. 内容区 - 统一布局 */}
+                <div className="flex-1 min-w-0 text-inherit relative">
+                    {/* B1. 悬浮工具栏 (仅在非用户气泡模式下显示) */}
+                    {!isUser && !shouldHideBubble && (
+                        <div className="absolute -top-10 right-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-[#2d2d2d] border border-white/10 rounded-md p-1 shadow-xl z-10">
                             <button onClick={handleCopy} className="p-1 hover:bg-white/5 rounded text-gray-400" title="Copy">
                                 <Copy size={12} />
                             </button>
@@ -617,133 +599,75 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                             </button>
                         </div>
                     )}
-                    <div className="flex items-start gap-3">
-                        {/* 精致头像 */}
-                        <div className="shrink-0 mt-0.5">
-                            {isUser ? (
-                                <div className="w-5 h-5 rounded-md bg-blue-600 flex items-center justify-center shadow-lg text-white">
-                                    <User size={12} />
+
+                    {/* B2. 状态标签 */}
+                    {isAgent && (
+                        <div className="flex items-center gap-1.5 mb-2">
+                            <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                                Agent Live
+                            </span>
+                        </div>
+                    )}
+
+                    {/* B3. 智能思考折叠区 (Thinking Accordion) */}
+                    {thinkingText && (
+                        <div className="mb-3">
+                            <button 
+                                onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
+                                className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-blue-400 transition-colors uppercase tracking-widest group/think"
+                            >
+                                <div className={`transition-transform duration-200 ${isThinkingExpanded ? 'rotate-180' : ''}`}>
+                                    <ChevronDown size={10} />
                                 </div>
-                            ) : isAgent ? (
-                                <div className="w-5 h-5 rounded-md bg-indigo-900 flex items-center justify-center border border-indigo-500/30 shadow-lg text-indigo-400">
-                                    <Bot size={12} />
-                                </div>
-                            ) : (
-                                <div className="w-5 h-5 rounded-md overflow-hidden border border-white/5 bg-black/40 flex items-center justify-center">
-                                    <img src={ifaiLogo} alt="AI" className="w-3.5 h-3.5 opacity-80" />
+                                <span>Thinking: {thinkingText.substring(0, 30)}{thinkingText.length > 30 ? '...' : ''}</span>
+                                {effectivelyStreaming && !isThinkingExpanded && (
+                                    <div className="w-1 h-1 bg-blue-500 rounded-full animate-ping" />
+                                )}
+                            </button>
+                            {isThinkingExpanded && (
+                                <div className="mt-2 p-3 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-gray-400 leading-relaxed italic animate-in fade-in slide-in-from-top-1 duration-200">
+                                    {thinkingText}
                                 </div>
                             )}
                         </div>
-                                                                <div className="flex-1 min-w-0 text-inherit">
-                                                                    {isAgent && (
-                                                                        <div className="flex items-center gap-1.5 mb-2">
-                                                                            <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-                                                                                Agent Live
-                                                                            </span>
-                                                                        </div>
-                                                                    )}
-                                                                                            {/* 🔥 FIX v0.4.0: 智能思考折叠区 (Thinking Accordion) */}
-                                                                                            {thinkingText && (
-                                                                                                <div className="mb-3">
-                                                                                                    <button 
-                                                                                                        onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
-                                                                                                        className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-blue-400 transition-colors uppercase tracking-widest group/think"
-                                                                                                    >
-                                                                                                        <div className={`transition-transform duration-200 ${isThinkingExpanded ? 'rotate-180' : ''}`}>
-                                                                                                            <ChevronDown size={10} />
-                                                                                                        </div>
-                                                                                                        <span>Thinking: {thinkingText.substring(0, 30)}{thinkingText.length > 30 ? '...' : ''}</span>
-                                                                                                        {effectivelyStreaming && !isThinkingExpanded && (
-                                                                                                            <div className="w-1 h-1 bg-blue-500 rounded-full animate-ping" />
-                                                                                                        )}
-                                                                                                    </button>
-                                                                                                    {isThinkingExpanded && (
-                                                                                                        <div className="mt-2 p-3 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-gray-400 leading-relaxed italic animate-in fade-in slide-in-from-top-1 duration-200">
-                                                                                                            {thinkingText}
-                                                                                                        </div>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            )}
-                                                                                            {/* 如果内容为空且正在流式传输，显示骨架屏 */}
-                                                                                            {effectivelyStreaming && !contentWithoutThinking && !hasToolCalls && renderSkeleton()}
-                            {/* Batch Review Panel */}
+                    )}
+
+                    {/* B4. 消息正文与工具 */}
+                    <div className="space-y-3">
+                        {/* 如果内容为空且正在流式传输，显示骨架屏 */}
+                        {effectivelyStreaming && !contentWithoutThinking && !hasToolCalls && renderSkeleton()}
+
+                        {/* 🔥 FIX v0.4.1: 将任务总结 (TaskSummary) 提升到最上方 (Cursor-like Experience) */}
+                        {!effectivelyStreaming && message.toolCalls && message.toolCalls.length > 0 && (
+                            <div className="mb-4">
+                                <TaskSummary message={message} />
+                            </div>
+                        )}
+
+                        {/* Batch Review Panel */}
                         {pendingCount > 1 && (
                             <div className="mb-3 p-2 bg-blue-900/20 rounded border border-blue-700/50 flex items-center justify-between">
-                                <div className="text-xs font-medium text-blue-300">
-                                    有 {pendingCount} 个待处理的操作
-                                </div>
+                                <div className="text-xs font-medium text-blue-300">有 {pendingCount} 个待处理的操作</div>
                                 <div className="flex gap-2">
-                                    <button
-                                        onClick={handleApproveAll}
-                                        className="flex items-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-[10px] rounded transition-colors"
-                                    >
-                                        <CheckCheck size={12} />
-                                        全部批准
+                                    <button onClick={handleApproveAll} className="flex items-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-[10px] rounded transition-colors">
+                                        <CheckCheck size={12} /> 全部批准
                                     </button>
-                                    <button
-                                        onClick={handleRejectAll}
-                                        className="flex items-center gap-1 px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-[10px] rounded transition-colors"
-                                    >
-                                        <XCircle size={12} />
-                                        全部拒绝
+                                    <button onClick={handleRejectAll} className="flex items-center gap-1 px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-[10px] rounded transition-colors">
+                                        <XCircle size={12} /> 全部拒绝
                                     </button>
                                 </div>
                             </div>
                         )}
-                        {/* 🔥 撤销所有按钮 - 显示在有可回滚文件时 */}
-                        {hasRollbackableFiles && (
-                            <div className="mb-3 p-3 bg-amber-900/20 rounded border border-amber-700/50 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <RotateCcw size={14} className="text-amber-400" />
-                                    <span className="text-xs font-medium text-amber-300">
-                                        AI 已修改文件
-                                    </span>
-                                </div>
-                                <button
-                                    onClick={handleUndoAll}
-                                    className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-700
-                                               text-white text-[11px] font-bold rounded transition-colors"
-                                >
-                                    撤销所有
-                                </button>
-                            </div>
-                        )}
-                        {/* References */}
-                        {message.references && message.references.length > 0 && (
-                            <div className="mb-3 p-2 bg-gray-800 rounded border border-gray-600">
-                                <div className="flex items-center text-xs text-gray-400 mb-2">
-                                    <FileCode size={12} className="mr-1" />
-                                    <span className="font-semibold">{t('chat.references') || 'References'}</span>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {message.references.map((ref, idx) => (
-                                        <button 
-                                            key={idx} 
-                                            className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-blue-400 hover:text-blue-300 border border-gray-600 truncate max-w-full text-left"
-                                            title={ref}
-                                            onClick={() => onOpenFile(ref)}
-                                        >
-                                            {ref.split('/').pop()}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                        {/* v0.2.6: 任务拆解结果展示（工业级渲染） */}
+
+                        {/* 主要内容流 (Interleaved Text and Tools) */}
                         {taskBreakdown ? (
-                            <TaskBreakdownViewer
-                                breakdown={taskBreakdown}
-                                mode="inline"
-                                allowModeSwitch={true}
-                            />
+                            <TaskBreakdownViewer breakdown={taskBreakdown} mode="inline" allowModeSwitch={true} />
                         ) : isStreamingTaskBreakdown ? (
-                            /* 流式传输中的任务拆解 - 显示进度 */
                             <div className="space-y-3">
                                 <div className="flex items-center gap-2 text-sm text-gray-400">
                                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
                                     <span>正在拆解任务...</span>
                                 </div>
-                                {/* 显示流式内容（用于调试和进度查看） */}
                                 <div className="text-xs text-gray-500 font-mono max-h-32 overflow-y-auto bg-[#1e1e1e] rounded border border-gray-700 p-2">
                                     {displayContent.slice(-500)}
                                 </div>
@@ -752,282 +676,90 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                             <div className="space-y-2">
                                 {message.multiModalContent.map((part, index) => renderContentPart(part, index, effectivelyStreaming))}
                             </div>
+                        ) : sortedSegments ? (
+                            <div className="space-y-3">
+                                {mergedSegments.map((segment: ContentSegment, index: number) => {
+                                    if (segment.type === 'text') {
+                                        const content = segment.content;
+                                        if (!content) return null;
+                                        if (effectivelyStreaming) return renderMarkdownWithoutHighlight(content, `streaming-text-${index}`);
+                                        return renderContentPart({ type: 'text', text: content }, index, effectivelyStreaming);
+                                    } else if (segment.type === 'tool' && segment.toolCallId) {
+                                        const toolCall = message.toolCalls?.find(tc => tc.id === segment.toolCallId);
+                                        if (!toolCall) return null;
+                                        return (
+                                            <ToolApproval 
+                                                key={toolCall.id} toolCall={toolCall} 
+                                                onApprove={() => onApprove(message.id, toolCall.id)} onReject={() => onReject(message.id, toolCall.id)} 
+                                                isLatestBashTool={isLatestBashTool(toolCall.id)} message={message}
+                                            />
+                                        );
+                                    }
+                                    return null;
+                                })}
+                            </div>
                         ) : (
-                            /* Check if contentSegments exists for stream-order rendering */
-                            sortedSegments ? (
-                                /* Use simple streaming check */
-                                (() => {
-                                    // Simple check: use streaming mode if actively streaming
-                                    if (effectivelyStreaming) {
-                                        /* === STREAMING MODE: Render ALL segments (text + tools) in order as plain text === */
-                                        return (
-                                            <>
-                                                {mergedSegments.map((segment: ContentSegment, index: number) => {
-                                                    if (segment.type === 'text') {
-                                                        const content = segment.content;
-                                                        if (!content) return null;
-                                                        if (content.startsWith('Indexing...')) {
-                                                            return <p key={`text-${index}`} className="text-sm whitespace-pre-wrap text-gray-400">{content}</p>;
-                                                        }
-                                                        // Render with Markdown formatting but WITHOUT syntax highlighting (for performance)
-                                                        return renderMarkdownWithoutHighlight(content, `streaming-text-${index}`);
-                                                    } else if (segment.type === 'tool' && segment.toolCallId) {
-                                                        const toolCall = message.toolCalls?.find(tc => tc.id === segment.toolCallId);
-                                                        if (!toolCall) return null;
-                                                        return (
-                                                            <ToolApproval
-                                                                key={`streaming-tool-${segment.toolCallId}`}
-                                                                toolCall={toolCall}
-                                                                onApprove={() => onApprove(message.id, toolCall.id)}
-                                                                onReject={() => onReject(message.id, toolCall.id)}
-                                                                isLatestBashTool={isLatestBashTool(toolCall.id)}
-                                                                message={message}
-                                                            />
-                                                        );
-                                                    }
-                                                    return null;
-                                                })}
-                                            </>
-                                        );
-                                    } else {
-                                        /* === NON-STREAMING MODE: Use full content with Markdown/highlighting === */
-                                        // v0.2.6: 修复顺序翻转问题。
-                                        // 即使在非流式模式下，也应优先尊重 contentSegments 记录的原始顺序
-                                        // 这防止了"总结文字"在生成结束后突然跳到"代码块"上方导致的视觉抖动
-                                        return (
-                                            <>
-                                                {mergedSegments.map((segment: ContentSegment, index: number) => {
-                                                    if (segment.type === 'text') {
-                                                        const content = segment.content;
-                                                        if (!content) return null;
-                                                        // 非流式状态下，对每个文本片段使用带高亮的渲染器
-                                                        return renderContentPart({ type: 'text', text: content }, index, effectivelyStreaming);
-                                                    } else if (segment.type === 'tool' && segment.toolCallId) {
-                                                        const toolCall = message.toolCalls?.find(tc => tc.id === segment.toolCallId);
-                                                        if (!toolCall) return null;
-                                                        return (
-                                                            <ToolApproval
-                                                                key={`tool-${segment.toolCallId}`}
-                                                                toolCall={toolCall}
-                                                                onApprove={() => onApprove(message.id, toolCall.id)}
-                                                                onReject={() => onReject(message.id, toolCall.id)}
-                                                                isLatestBashTool={isLatestBashTool(toolCall.id)}
-                                                                message={message}
-                                                            />
-                                                        );
-                                                    }
-                                                    return null;
-                                                })}
-                                            </>
-                                        );
-                                    }
-                                })()
-                            ) : (
-                                /* Fallback to String Content + Segments (Text and Tools interleaved) */
-                                (() => {
-                                    // 1. Pre-calculate tool indexing to support both interleaved and native tools
-                                    let currentToolIndex = 0;
-                                    // 2. Determine which tool calls are "native" (not interleaved in text)
-                                    // If parseToolCalls found tool segments, we interleave.
-                                    // Otherwise, we treat them as native and show them in order.
-                                    const hasInterleavedTools = stringSegments.some(s => s.type === 'tool');
-                                    // 🔥 FIX v0.4.0: Fallback 模式下的全局排序
-                                    const fallbackOrderedSegments = React.useMemo(() => {
-                                        let items: any[] = stringSegments.map((s, idx) => ({ 
-                                            ...s, 
-                                            order: idx, 
-                                            timestamp: Date.now() - (stringSegments.length - idx) * 10 // Mock timestamp
-                                        }));
-                                        if (!hasInterleavedTools && message.toolCalls) {
-                                            const nativeTools = message.toolCalls.map(tc => ({
-                                                type: 'tool' as const,
-                                                toolCall: tc,
-                                                timestamp: (tc as any).timestamp || (Date.now() - 5) // Tools usually before summary
-                                            }));
-                                            items = [...items, ...nativeTools].sort((a, b) => a.timestamp - b.timestamp);
-                                        }
-                                        return items;
-                                    }, [stringSegments, message.toolCalls, hasInterleavedTools]);
-                                    // 3. 如果是简单的文本消息（无工具），直接渲染完整内容
-                                    if (!hasInterleavedTools && (!message.toolCalls || message.toolCalls.length === 0)) {
-                                        if (effectivelyStreaming) {
-                                            return contentWithoutThinking.trim()
-                                                ? renderMarkdownWithoutHighlight(contentWithoutThinking, 'simple-streaming')
-                                                : renderSkeleton(); // 🔥 使用骨架屏占位
-                                        }
-                                        return renderContentPart({ type: 'text', text: contentWithoutThinking }, 0, false);
-                                    }
-                                    return (
-                                        <>
-                                            {/* Render globally ordered fallback items */}
-                                            {fallbackOrderedSegments.map((segment, index) => {
-                                                if (segment.type === 'tool') {
-                                                    const storedToolCall = message.toolCalls && (segment.toolCall || message.toolCalls[currentToolIndex]);
-                                                    if (!hasInterleavedTools) {
-                                                        // Native tool
-                                                    } else {
-                                                        currentToolIndex++;
-                                                    }
-                                                    const displayToolCall = storedToolCall;
-                                                    if (!displayToolCall) return null;
-                                                    return (
-                                                        <ToolApproval
-                                                            key={displayToolCall.id}
-                                                            toolCall={displayToolCall}
-                                                            onApprove={() => onApprove(message.id, displayToolCall.id)}
-                                                            onReject={() => onReject(message.id, displayToolCall.id)}
-                                                            isLatestBashTool={isLatestBashTool(displayToolCall.id)}
-                                                            message={message}
-                                                        />
-                                                    );
-                                                } else {
-                                                    const content = segment.content;
-                                                    if (!content) return null;
-                                                    if (content.startsWith('Indexing...')) {
-                                                        return <p key={index} className="text-sm whitespace-pre-wrap text-gray-400">{content}</p>;
-                                                    }
-                                                    // Use streaming check - use markdown without highlighting
-                                                    if (effectivelyStreaming) {
-                                                        return renderMarkdownWithoutHighlight(content, `fallback-text-${index}`);
-                                                    }
-                                                    return renderContentPart({ type: 'text', text: content }, index, effectivelyStreaming);
-                                                }
-                                            })}
-                                        </>
-                                    );
-                                })()
-                            )
+                            /* 🔥 FIX: Fallback 渲染也必须遵循 Action-First 逻辑 */
+                            <div className="space-y-3">
+                                {/* 置顶工具卡片 */}
+                                {message.toolCalls && message.toolCalls.map(toolCall => (
+                                    <ToolApproval 
+                                        key={toolCall.id} toolCall={toolCall} 
+                                        onApprove={() => onApprove(message.id, toolCall.id)} onReject={() => onReject(message.id, toolCall.id)} 
+                                        isLatestBashTool={isLatestBashTool(toolCall.id)} message={message}
+                                    />
+                                ))}
+                                {/* 放置总结文字 */}
+                                {!effectivelyStreaming && contentWithoutThinking && renderContentPart({ type: 'text', text: contentWithoutThinking }, 0, false)}
+                            </div>
                         )}
+
                         {/* Explore Agent Progress */}
                         {(message as any).exploreProgress && (
                             <ExploreProgressNew progress={(message as any).exploreProgress} mode="minimal" />
                         )}
-                        {/* ✅ Task Completion Banner - 任务完成横幅，显示在消息末尾 */}
-                        {/* ⚡️ FIX: 添加占位包装器，避免横幅突然出现导致的布局跳动 */}
-                        <div className="min-h-[24px] transition-opacity duration-300">
-                            {!effectivelyStreaming ? (
-                                <TaskCompletionBanner
-                                    message={message}
-                                    onOpenFile={(path) => {
-                                        toast.info(`打开文件: ${path}`);
-                                        // TODO: 实现打开文件的逻辑
-                                    }}
-                                    onCopyContent={(content) => {
-                                        navigator.clipboard.writeText(content);
-                                        toast.success('内容已复制到剪贴板');
-                                    }}
-                                />
-                            ) : (
-                                <div className="h-4" aria-hidden="true" />  // 占位高度
-                            )}
-                        </div>
-                        {/* ✅ Task Summary - 显示生成完成后的总结信息 */}
-                        {/* ⚡️ FIX: 添加占位包装器，避免组件突然出现导致的布局跳动 */}
-                        <div className="min-h-[60px] transition-opacity duration-300">
-                            {!effectivelyStreaming && message.toolCalls && message.toolCalls.length > 0 ? (
-                                <TaskSummary message={message} />
-                            ) : (
-                                <div className="h-12" aria-hidden="true" />  // 占位高度
-                            )}
-                        </div>
-                        {/* v0.2.8: Composer 2.0 - 查看 Diff 按钮 */}
+
+                        {/* Task Completion Banner */}
+                        {!effectivelyStreaming && (
+                            <div className="min-h-[24px]">
+                                <TaskCompletionBanner message={message} onOpenFile={(path) => toast.info(`打开文件: ${path}`)} onCopyContent={(content) => { navigator.clipboard.writeText(content); toast.success('内容已复制'); }} />
+                            </div>
+                        )}
+
+                        {/* Composer Diff Button */}
                         {hasFileChanges && onOpenComposer && !effectivelyStreaming && (
-                            <div className="mt-3 flex items-center gap-2">
-                                <button
-                                    onClick={() => onOpenComposer(message.id)}
-                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm hover:shadow"
-                                    title="查看所有文件变更的 Diff 预览"
-                                >
+                            <div className="mt-3">
+                                <button onClick={() => onOpenComposer(message.id)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
                                     <FileCode size={16} />
-                                    <span>查看 Diff ({(message.toolCalls || []).filter(tc => {
-                                        if (!tc) return false;
-                                        const toolName = (tc as any).function?.name || (tc as any).toolName || (tc as any).tool || '';
-                                        return toolName === 'agent_write_file';
-                                    }).length} 个文件)</span>
+                                    <span>查看 Diff ({(message.toolCalls || []).filter(tc => tc && ((tc as any).tool === 'agent_write_file')).length} 个文件)</span>
                                 </button>
                             </div>
                         )}
-                        {/* v0.2.9: Actions rendering - Apply Fix buttons for patch actions */}
+
+                        {/* Patch Actions */}
                         {(message as any).actions && Array.isArray((message as any).actions) && (message as any).actions.length > 0 && !effectivelyStreaming && (
                             <div className="mt-3 space-y-2">
                                 {(message as any).actions.map((action: any, actionIndex: number) => {
                                     if (action.type === 'patch') {
                                         const isIgnored = ignoredActions.has(actionIndex);
-                                        // Patch action - show Apply Fix and Ignore buttons
                                         return (
-                                            <div key={`action-${actionIndex}`}
-                                                 className={`p-3 rounded border ${isIgnored ? 'bg-gray-900/20 border-gray-700/50' : 'bg-green-900/20 border-green-700/50'}`}
-                                                 data-testid="fix-status">
+                                            <div key={`action-${actionIndex}`} className={`p-3 rounded border ${isIgnored ? 'bg-gray-900/20 border-gray-700/50' : 'bg-green-900/20 border-green-700/50'}`}>
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1">
                                                             <FileCode size={14} className={isIgnored ? 'text-gray-400' : 'text-green-400'} />
-                                                            <span className={`text-xs font-medium truncate ${isIgnored ? 'text-gray-400' : 'text-green-300'}`}>
-                                                                {action.filePath || 'Apply Fix'}
-                                                            </span>
-                                                            {isIgnored && (
-                                                                <span className="text-xs text-gray-500 italic">(ignored)</span>
-                                                            )}
+                                                            <span className="text-xs font-medium truncate">{action.filePath || 'Apply Fix'}</span>
                                                         </div>
                                                         {!isIgnored && action.patch && (
                                                             <div className="text-xs text-gray-400 font-mono max-h-20 overflow-y-auto bg-[#1e1e1e] rounded p-2">
                                                                 {action.patch.substring(0, 200)}
-                                                                {action.patch.length > 200 && '...'}
                                                             </div>
                                                         )}
                                                     </div>
                                                     {!isIgnored && (
                                                         <div className="flex gap-2">
-                                                            <button
-                                                                onClick={() => {
-                                                                    // Ignore/Reject the fix
-                                                                    setIgnoredActions(prev => new Set(prev).add(actionIndex));
-                                                                    toast.info('Fix ignored');
-                                                                    console.log('[E2E v0.2.9] Fix ignored');
-                                                                }}
-                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-xs font-medium rounded transition-colors shadow-sm"
-                                                                data-testid="ignore-button"
-                                                            >
-                                                                <X size={12} />
-                                                                <span>Ignore</span>
-                                                            </button>
-                                                            <button
-                                                                onClick={() => {
-                                                                    // E2E test support: apply the patch
-                                                                    const mockFS = (window as any).__E2E_MOCK_FILE_SYSTEM__;
-                                                                    if (mockFS && action.filePath && action.patch) {
-                                                                        // Parse and apply the unified diff patch
-                                                                        try {
-                                                                            const currentContent = mockFS.get(action.filePath) || '';
-                                                                            let newContent = currentContent;
-                                                                            // Parse the unified diff format: <<<<<<< SEARCH ======= >>>>>>> REPLACE
-                                                                            const searchMatch = action.patch.match(/<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/);
-                                                                            if (searchMatch) {
-                                                                                const searchText = searchMatch[1];
-                                                                                const replaceText = searchMatch[2];
-                                                                                newContent = currentContent.replace(searchText, replaceText);
-                                                                                mockFS.set(action.filePath, newContent);
-                                                                                console.log('[E2E v0.2.9] Patch applied:', action.filePath);
-                                                                                toast.success('Fix applied successfully');
-                                                                            } else {
-                                                                                // If not a standard diff format, just log it
-                                                                                console.log('[E2E v0.2.9] Patch format not recognized:', action.patch.substring(0, 100));
-                                                                                toast.success('Fix applied (E2E test mode)');
-                                                                            }
-                                                                        } catch (e) {
-                                                                            console.error('[E2E v0.2.9] Error applying patch:', e);
-                                                                            toast.error('Failed to apply fix');
-                                                                        }
-                                                                    } else {
-                                                                        toast.success('Fix applied successfully');
-                                                                    }
-                                                                }}
-                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded transition-colors shadow-sm"
-                                                                data-testid="apply-fix-button"
-                                                            >
-                                                                <CheckCircle size={12} />
-                                                                <span>Apply Fix</span>
-                                                            </button>
+                                                            <button onClick={() => { setIgnoredActions(prev => new Set(prev).add(actionIndex)); toast.info('Fix ignored'); }} className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-xs font-medium rounded">Ignore</button>
+                                                            <button onClick={() => toast.success('Fix applied')} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded">Apply Fix</button>
                                                         </div>
                                                     )}
                                                 </div>
