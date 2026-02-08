@@ -201,7 +201,10 @@ fn save_project_config_internal(
         let skills_dir = ifai_dir.join("skills");
         if !skills_dir.exists() {
             let _ = fs::create_dir_all(&skills_dir);
-            let readme_path = skills_dir.join("README.md");
+        }
+        
+        let readme_path = skills_dir.join("README.md");
+        if !readme_path.exists() {
             let readme_content = r#"# IfAI 技能插件集成指南
 
 欢迎来到 IfAI 技能生态！通过简单的 JSON 配置，你可以为 AI 助手注入特定领域的专家能力。

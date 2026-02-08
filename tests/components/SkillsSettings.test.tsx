@@ -9,7 +9,7 @@ vi.mock('lucide-react', () => ({
   RefreshCw: () => <div data-testid="refresh-icon" />,
   Puzzle: () => <div data-testid="skill-icon" />,
   ExternalLink: () => <div data-testid="link-icon" />,
-  ShieldCheck: () => <div data-testid="shield-icon" />,
+  ShieldCheck: () => <div data-testid="shield-icon" />, Download: () => <div data-testid="download-icon" />,
 }));
 
 describe('SkillsSettings Component (TDD Phase 1 & 2)', () => {
