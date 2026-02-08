@@ -480,24 +480,24 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             toolCallId: tc.id
         }));
         
-        // E. 统一排序 (Priority: order -> timestamp)
-        // ⚡️ 工业级优化：在生成结束后，如果内容和工具是在极短时间内产生的，优先排工具
+        // E. 统一排序 (Priority: Action-First in non-streaming mode)
         const sorted = [...filteredItems, ...untrackedSegments].sort((a, b) => {
-            // 如果都有有效的顺序
+            // 🔥 工业级优化：在生成结束后，强行让工具排在所有文本前面
+            // 我们必须先于 order 判断执行此逻辑，否则 order 会覆盖权重
+            if (!effectivelyStreaming) {
+                if (a.type === 'tool' && b.type === 'text') return -1;
+                if (a.type === 'text' && b.type === 'tool') return 1;
+            }
+
+            // 如果都有有效的顺序（流式传输中尊重 order 以维持打字机感）
             if (a.order !== undefined && b.order !== undefined && a.order < 999 && b.order < 999) {
                 return a.order - b.order;
             }
             
-            // 非流式状态下的权重微调
-            if (!effectivelyStreaming) {
-                const timeDiff = Math.abs(a.timestamp - b.timestamp);
-                if (timeDiff < 5000) { // 5秒内的视为同一批次
-                    if (a.type === 'tool' && b.type === 'text') return -1;
-                    if (a.type === 'text' && b.type === 'tool') return 1;
-                }
-            }
-
-            return a.timestamp - b.timestamp;
+            // 兜底：基于时间戳排序
+            const timeA = a.timestamp || 0;
+            const timeB = b.timestamp || 0;
+            return timeA - timeB;
         });
 
         // F. 归并相邻文本片段
