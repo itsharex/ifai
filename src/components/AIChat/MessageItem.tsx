@@ -80,7 +80,7 @@ const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps)
         return false;
     }
 
-    // 🔥 FIX: 深度比较 toolCalls，因为 status/result 可能变化（pending -> completed）
+    // 🔥 FIX v0.3.9.3: 更彻底的 toolCalls 深度比较
     const prevToolCalls = prevProps.message.toolCalls;
     const nextToolCalls = nextProps.message.toolCalls;
 
@@ -89,29 +89,35 @@ const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps)
         return false;
     }
 
-    // 如果有 toolCalls，深度比较每个 toolCall 的 status、result、isPartial 和 args
+    // 如果有 toolCalls，深度比较每个 toolCall
     if (prevToolCalls && nextToolCalls) {
         for (let i = 0; i < prevToolCalls.length; i++) {
             const prevTC = prevToolCalls[i];
             const nextTC = nextToolCalls[i];
-            // 🔥 FIX: 添加 isPartial 检查，确保工具批准状态变化时触发重新渲染
-            // 🔥 FIX v0.3.2: 添加 args 检查，确保工具参数流式更新时触发重新渲染
-            // 问题：当 Agent 工具调用在流式更新参数时（isPartial=true），UI 没有实时显示更新的内容
-            // 根因：React.memo 比较函数没有检查 toolCall.args 的变化
-            if (prevTC.status !== nextTC.status ||
+            
+            // 检查所有关键字段
+            if (prevTC.id !== nextTC.id ||
+                prevTC.tool !== nextTC.tool ||
+                prevTC.status !== nextTC.status ||
                 prevTC.result !== nextTC.result ||
                 prevTC.isPartial !== nextTC.isPartial ||
-                JSON.stringify(prevTC.args) !== JSON.stringify(nextTC.args)) {  // 🔥 关键修复：args 变化检测
+                // 使用 JSON.stringify 进行深度比较 args
+                JSON.stringify(prevTC.args) !== JSON.stringify(nextTC.args)) {
                 return false;
             }
         }
     } else if (prevToolCalls !== nextToolCalls) {
-        // 其中一个是 null/undefined
+        // 其中一个是 null/undefined 而另一个不是
         return false;
     }
 
     // Re-render if message ID changes
     if (prevProps.message.id !== nextProps.message.id) {
+        return false;
+    }
+
+    // Re-render if references change
+    if ((prevProps.message.references?.length || 0) !== (nextProps.message.references?.length || 0)) {
         return false;
     }
 
@@ -441,15 +447,27 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     const isAgent = !!(message as any).agentId;
     const bubbleClass = isUser ? STYLES.userBubble : (isAgent ? STYLES.agentBubble : STYLES.assistantBubble);
 
-    // 🔥 FIX: 检查是否是只有 toolCalls 但没有实际内容的消息
-    // 如果是，则不显示气泡，只显示 ToolApproval 组件
-    // 这适用于 assistant 和 agent 消息（Agent 消息也可能有工具调用但无内容）
-    // 只检查 message.content，不检查 contentSegments（避免复杂的多媒体内容判断）
-    const hasContent = message.content && typeof message.content === 'string' && message.content.trim().length > 0;
+    // 🔥 FIX v0.3.9.3: 更加稳健的内容检测逻辑，支持字符串和数组
+    const hasVisibleContent = React.useMemo(() => {
+        if (!message.content) return false;
+        if (typeof message.content === 'string') {
+            return message.content.trim().length > 0;
+        }
+        if (Array.isArray(message.content)) {
+            // 检查数组中是否有任何文本片段非空
+            return message.content.some(part => 
+                (part.type === 'text' && part.text?.trim().length > 0) || 
+                part.type === 'image_url'
+            );
+        }
+        return false;
+    }, [message.content]);
+
     const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
-    // 🔥 修复：移除 !isAgent 条件，让 Agent 消息也可以隐藏气泡
-    // 这样 Agent 消息中的工具调用也能直接显示 ToolApproval 组件
-    const shouldHideBubble = !isUser && !hasContent && hasToolCalls;
+    
+    // 决定是否隐藏气泡
+    // 如果没有可见内容，但有工具调用，则隐藏气泡，直接显示工具卡片
+    const shouldHideBubble = !isUser && !hasVisibleContent && hasToolCalls;
 //...
 
     // Parse segments from string content (for non-multi-modal or fallback)
@@ -755,6 +773,23 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                                     }
                                                     return null;
                                                 })}
+
+                                                {/* 🔥 FIX v0.3.9.3: 渲染未在 contentSegments 中追踪的"原生"工具调用（如 Agent 调用的工具） */}
+                                                {(() => {
+                                                    const trackedIds = new Set(mergedSegments.filter(s => s.type === 'tool').map(s => s.toolCallId));
+                                                    const untrackedToolCalls = message.toolCalls?.filter(tc => !trackedIds.has(tc.id)) || [];
+                                                    
+                                                    return untrackedToolCalls.map(toolCall => (
+                                                        <ToolApproval
+                                                            key={`untracked-streaming-tool-${toolCall.id}`}
+                                                            toolCall={toolCall}
+                                                            onApprove={() => onApprove(message.id, toolCall.id)}
+                                                            onReject={() => onReject(message.id, toolCall.id)}
+                                                            isLatestBashTool={isLatestBashTool(toolCall.id)}
+                                                            message={message}
+                                                        />
+                                                    ));
+                                                })()}
                                             </>
                                         );
                                     } else {
@@ -786,6 +821,23 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                                     }
                                                     return null;
                                                 })}
+
+                                                {/* 🔥 FIX v0.3.9.3: 非流式状态下也需要渲染未追踪的工具调用 */}
+                                                {(() => {
+                                                    const trackedIds = new Set(mergedSegments.filter(s => s.type === 'tool').map(s => s.toolCallId));
+                                                    const untrackedToolCalls = message.toolCalls?.filter(tc => !trackedIds.has(tc.id)) || [];
+                                                    
+                                                    return untrackedToolCalls.map(toolCall => (
+                                                        <ToolApproval
+                                                            key={`untracked-tool-${toolCall.id}`}
+                                                            toolCall={toolCall}
+                                                            onApprove={() => onApprove(message.id, toolCall.id)}
+                                                            onReject={() => onReject(message.id, toolCall.id)}
+                                                            isLatestBashTool={isLatestBashTool(toolCall.id)}
+                                                            message={message}
+                                                        />
+                                                    ));
+                                                })()}
                                             </>
                                         );
                                     }
@@ -915,16 +967,17 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                     title="查看所有文件变更的 Diff 预览"
                                 >
                                     <FileCode size={16} />
-                                    <span>查看 Diff ({message.toolCalls?.filter(tc => {
+                                    <span>查看 Diff ({(message.toolCalls || []).filter(tc => {
+                                        if (!tc) return false;
                                         const toolName = (tc as any).function?.name || (tc as any).toolName || (tc as any).tool || '';
                                         return toolName === 'agent_write_file';
-                                    }).length || 0} 个文件)</span>
+                                    }).length} 个文件)</span>
                                 </button>
                             </div>
                         )}
 
                         {/* v0.2.9: Actions rendering - Apply Fix buttons for patch actions */}
-                        {(message as any).actions && (message as any).actions.length > 0 && !effectivelyStreaming && (
+                        {(message as any).actions && Array.isArray((message as any).actions) && (message as any).actions.length > 0 && !effectivelyStreaming && (
                             <div className="mt-3 space-y-2">
                                 {(message as any).actions.map((action: any, actionIndex: number) => {
                                     if (action.type === 'patch') {

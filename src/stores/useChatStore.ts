@@ -2595,6 +2595,7 @@ const patchedApproveToolCall = async (
         let stderr = '';
         let exitCode = 0;
         let success = false;
+        let elapsed_ms = 0; // 🔥 定义变量
 
         if (typeof bashResult === 'string') {
             try {
@@ -2603,6 +2604,7 @@ const patchedApproveToolCall = async (
                 stderr = parsed.stderr || '';
                 exitCode = parsed.exitCode !== undefined ? parsed.exitCode : parsed.exit_code || 0;
                 success = parsed.success !== undefined ? parsed.success : exitCode === 0;
+                elapsed_ms = parsed.elapsed_ms || 0; // 🔥 提取时间
             } catch {
                 // 不是 JSON，可能是原始输出
                 stdout = bashResult;
@@ -2613,15 +2615,19 @@ const patchedApproveToolCall = async (
             stderr = bashResult.stderr || '';
             exitCode = bashResult.exitCode !== undefined ? bashResult.exitCode : bashResult.exit_code || 0;
             success = bashResult.success !== undefined ? bashResult.success : exitCode === 0;
+            elapsed_ms = bashResult.elapsed_ms || 0; // 🔥 提取时间
         }
 
         // 更新 toolCall 状态为 completed 并保存结果
-        const resultJson = JSON.stringify({
+        // 🔥 FIX v0.3.9.3: 存储对象而不是字符串，与 agentStore.ts 保持一致
+        const resultObj = {
             success,
             stdout,
             stderr,
-            exitCode
-        });
+            exitCode,
+            elapsed_ms,
+            command: args.command // 🔥 使用 args.command
+        };
 
         coreUseChatStore.setState(state => ({
             messages: state.messages.map(m =>
@@ -2631,20 +2637,19 @@ const patchedApproveToolCall = async (
                         tc.id === toolCallId ? {
                             ...tc,
                             status: 'completed' as const,
-                            result: resultJson
+                            result: JSON.stringify(resultObj) // 保持字符串序列化，但确保结构完整
                         } : tc
                     )
                 } : m
             )
         }));
 
-        // 构建输出内容
+        // 构建输出内容 (用于 tool 角色消息)
         const outputParts = [];
 
         if (success) {
             outputParts.push(`✅ Command executed successfully (exit code: ${exitCode})`);
-
-            // 检测是否是服务器启动成功
+            // ... (keep server startup check)
             const stdoutLower = stdout.toLowerCase();
             const isServerStartup =
                 stdoutLower.includes('local:') ||
@@ -2675,8 +2680,13 @@ const patchedApproveToolCall = async (
             outputParts.push(`\nStderr:\n${stderr.trim()}`);
         }
 
-        if (outputParts.length === 1) {
-            outputParts.push('\n(no output)');
+        // 如果没有任何输出，提供更友好的提示
+        if (!stdout && !stderr) {
+            if (success) {
+                outputParts.push('\n(Command completed with no output)');
+            } else {
+                outputParts.push('\n(Command failed with no output)');
+            }
         }
 
         const outputContent = outputParts.join('\n');
