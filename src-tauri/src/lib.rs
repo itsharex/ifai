@@ -729,11 +729,22 @@ async fn ai_chat(
         })
     ];
 
+    // 🚀 v0.5.0: 双模引擎工具策略 - Vibe 模式下极简化工具集
+    let mut final_tools = tools;
+    if let Some(ref m) = mode {
+        if m == "vibe" {
+            println!("[AI Chat] Vibe Mode active: Filtering tools to preserve conversational flow");
+            // 在 Vibe 模式下，我们甚至可以移除所有工具，强制 AI 先聊天
+            // 或者只保留最基础的 bash 辅助
+            final_tools = vec![]; 
+        }
+    }
+
     state.ai_service.stream_chat(
         &provider_config,
         messages,
         &event_id,
-        Some(tools),
+        Some(final_tools),
         Box::new(move |chunk| {
              // 调试：打印 chunk 内容
              // println!("[AI Chat] Streaming chunk: {}", chunk);
