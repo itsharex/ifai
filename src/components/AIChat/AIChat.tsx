@@ -155,24 +155,38 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     if (!scrollContainerRef.current) return;
 
     const container = scrollContainerRef.current;
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    const THRESHOLD = 50; // 更加严格的底部判定阈值
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < THRESHOLD;
 
     if (!isNearBottom) {
-      // User scrolled away from bottom - mark as user scrolling
+      // 用户离开底部：标记为正在手动滚动
+      // 🔥 FIX v0.4.0: 如果当前正在加载且之前不在滚动状态，则记录起始锁定位置
+      if (!isUserScrolling.current) {
+        console.log('[AIChat] 🔒 Scroll Locked: User moved away from bottom during streaming');
+      }
       isUserScrolling.current = true;
 
-      // Clear existing timeout
       if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
+        window.clearTimeout(scrollTimeoutRef.current);
       }
 
-      // Reset user scrolling flag after 2 seconds of no scroll
+      // 延长锁定期限到 3 秒，确保用户有足够时间阅读
       scrollTimeoutRef.current = window.setTimeout(() => {
-        isUserScrolling.current = false;
-      }, 2000);
+        // 只有当用户真的停留在底部附近时才解除锁定
+        if (container.scrollHeight - container.scrollTop - container.clientHeight < THRESHOLD) {
+          isUserScrolling.current = false;
+          console.log('[AIChat] 🔓 Scroll Unlocked: User returned to bottom');
+        }
+      }, 3000);
     } else {
-      // User scrolled back to bottom - re-enable auto-scroll
+      // 用户主动滑到底部：立即解除锁定
+      if (isUserScrolling.current) {
+        console.log('[AIChat] 🔓 Scroll Unlocked: User manually returned to bottom');
+      }
       isUserScrolling.current = false;
+      if (scrollTimeoutRef.current) {
+        window.clearTimeout(scrollTimeoutRef.current);
+      }
     }
   };
 
@@ -2233,6 +2247,7 @@ ${suggestion.fixContext.code_context}
           ref={scrollContainerRef}
           onScroll={handleScroll}
           className="min-h-0 overflow-auto p-4"
+          data-testid="chat-scroll-container"
           style={{
             // v0.2.6 性能优化：单一滚动容器，虚拟滚动使用此容器
             flex: '1 1 0%', // 明确设置 flex 属性，确保正确计算高度

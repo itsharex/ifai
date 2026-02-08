@@ -15,6 +15,7 @@ import ifaiLogo from '../../../imgs/ifai.png';
 import { TaskBreakdownViewer } from '../TaskBreakdown/TaskBreakdownViewer';
 import { TaskBreakdown } from '../../types/taskBreakdown';
 import { MarkdownRenderer, SimpleMarkdownRenderer } from './MarkdownRenderer';
+import styles from './MessageItem.module.css';
 
 /**
  * 工业级消息样式常量
@@ -134,6 +135,8 @@ const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps)
 export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFile, onOpenComposer, isStreaming }: MessageItemProps) => {
     const { t } = useTranslation();
     const isUser = message.role === 'user';
+
+    const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
 
     // PERFORMANCE: State for managing code block folding (for >50 line blocks)
     const [expandedBlocks, setExpandedBlocks] = useState<Set<number>>(new Set());
@@ -470,12 +473,25 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     const shouldHideBubble = !isUser && !hasVisibleContent && hasToolCalls;
 //...
 
+    // 🔥 FIX v0.4.0: 智能内容预处理 - 提取思考内容
+    const { thinkingText, contentWithoutThinking } = React.useMemo(() => {
+        const content = typeof displayContent === 'string' ? displayContent : '';
+        const thinkingMatch = content.match(/^_\(([^)]+)\)_/);
+        if (thinkingMatch) {
+            return {
+                thinkingText: thinkingMatch[1],
+                contentWithoutThinking: content.replace(/^_\([^)]+\)_\s*/, '')
+            };
+        }
+        return { thinkingText: null, contentWithoutThinking: content };
+    }, [displayContent]);
+
     // Parse segments from string content (for non-multi-modal or fallback)
     const stringSegments = React.useMemo(() => {
-        // Use displayContent (throttled) instead of raw message.content
-        const { segments } = parseToolCalls(displayContent);
+        // Use contentWithoutThinking instead of raw displayContent
+        const { segments } = parseToolCalls(contentWithoutThinking);
         return segments;
-    }, [displayContent]);
+    }, [contentWithoutThinking]);
 
     // PERFORMANCE: Cache sorted contentSegments to avoid O(n log n) sort on every render
     const sortedSegments = React.useMemo(() => {
@@ -486,6 +502,15 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         // @ts-ignore
         return [...message.contentSegments].sort((a: ContentSegment, b: ContentSegment) => a.order - b.order);
     }, [message.contentSegments]);
+
+    // 🔥 FIX v0.4.0: 工业级骨架屏占位，防止 CLS (布局抖动)
+    const renderSkeleton = () => (
+        <div className="space-y-3 py-2 animate-pulse w-full max-w-[280px]">
+            <div className="h-2.5 bg-blue-500/10 rounded-full w-full opacity-60"></div>
+            <div className="h-2.5 bg-blue-500/10 rounded-full w-[90%] opacity-40"></div>
+            <div className="h-2.5 bg-blue-500/10 rounded-full w-[70%] opacity-20"></div>
+        </div>
+    );
 
     // ⚡️ FIX: Merge adjacent text segments to reduce DOM nodes and improve rendering performance
     // This fixes the "styling mess" issue where each character creates its own Markdown container
@@ -601,55 +626,167 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         );
     }
 
-    return (
-        <div className={`group flex flex-col mb-6 ${isUser ? 'items-end' : 'items-start'}`} data-testid={`message-${message.id}`}>
-            <div className={bubbleClass}>
-                {/* Actions Toolbar - Floating on top right of assistant messages */}
-                {/* ⚡️ FIX: 始终渲染，使用 opacity 控制可见性，避免布局跳动 */}
-                {!isUser && (
-                    <div className={`absolute -top-3 right-4 flex items-center gap-1 transition-opacity bg-gray-800 border border-gray-700 rounded-md p-1 shadow-lg z-10 ${
-                        effectivelyStreaming ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'
-                    }`} style={{ height: '28px', minWidth: '80px' }}>
-                        <button onClick={handleCopy} className="p-1 hover:bg-gray-700 rounded text-gray-400" title="Copy content">
-                            <Copy size={12} />
-                        </button>
-                        <button className="p-1 hover:bg-gray-700 rounded text-gray-400" title="Regenerate">
-                            <RotateCcw size={12} />
-                        </button>
-                        <button className="p-1 hover:bg-gray-700 rounded text-gray-400">
-                            <MoreHorizontal size={12} />
-                        </button>
-                    </div>
-                )}
-
-                <div className="flex items-start gap-3">
-                    {/* Avatar Logic */}
-                    <div className="shrink-0 mt-0.5">
-                        {isUser ? (
-                            <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center shadow-inner text-white">
-                                <User size={14} />
-                            </div>
-                        ) : isAgent ? (
-                            <div className="w-6 h-6 rounded-full bg-blue-900 flex items-center justify-center border border-blue-500/50 shadow-inner text-blue-400">
-                                <Bot size={14} />
-                            </div>
-                        ) : (
-                            <div className="w-6 h-6 rounded-full overflow-hidden border border-gray-700 bg-black/20 flex items-center justify-center">
-                                <img src={ifaiLogo} alt="IfAI Logo" className="w-4 h-4 opacity-90" />
-                            </div>
-                        )}
-                    </div>
-                    
-                    <div className="flex-1 min-w-0 text-inherit">
-                        {isAgent && (
-                            <div className="flex items-center gap-1.5 mb-2">
-                                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter bg-blue-900/40 px-1.5 py-0.5 rounded border border-blue-500/20">
-                                    Agent Live
-                                </span>
-                            </div>
-                        )}
-
-                        {/* Batch Review Panel */}
+        return (
+            <div className={`${styles.messageContainer} ${isUser ? styles.user : styles.assistant} group`} data-testid={`message-${message.id}`}>
+                <div className={`${styles.bubble} ${isUser ? styles.user : styles.assistant} ${styles.industrial}`}>
+                    {/* 悬浮工具栏 - 精简样式 */}
+                    {!isUser && (
+                        <div className="absolute -top-3 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-[#2d2d2d] border border-white/10 rounded-md p-1 shadow-xl z-10">
+                            <button onClick={handleCopy} className="p-1 hover:bg-white/5 rounded text-gray-400" title="Copy">
+                                <Copy size={12} />
+                            </button>
+                            <button className="p-1 hover:bg-white/5 rounded text-gray-400" title="Regenerate">
+                                <RotateCcw size={12} />
+                            </button>
+                        </div>
+                    )}
+    
+                    <div className="flex items-start gap-3">
+                        {/* 精致头像 */}
+                        <div className="shrink-0 mt-0.5">
+                            {isUser ? (
+                                <div className="w-5 h-5 rounded-md bg-blue-600 flex items-center justify-center shadow-lg text-white">
+                                    <User size={12} />
+                                </div>
+                            ) : isAgent ? (
+                                <div className="w-5 h-5 rounded-md bg-indigo-900 flex items-center justify-center border border-indigo-500/30 shadow-lg text-indigo-400">
+                                    <Bot size={12} />
+                                </div>
+                            ) : (
+                                <div className="w-5 h-5 rounded-md overflow-hidden border border-white/5 bg-black/40 flex items-center justify-center">
+                                    <img src={ifaiLogo} alt="AI" className="w-3.5 h-3.5 opacity-80" />
+                                </div>
+                            )}
+                        </div>
+    
+                                                                <div className="flex-1 min-w-0 text-inherit">
+    
+                                                                    {isAgent && (
+    
+                                                                        <div className="flex items-center gap-1.5 mb-2">
+    
+                                                                            <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+    
+                                                                                Agent Live
+    
+                                                                            </span>
+    
+                                                                        </div>
+    
+                                                                    )}
+    
+                                            
+    
+                                                                                            {/* 🔥 FIX v0.4.0: 智能思考折叠区 (Thinking Accordion) */}
+    
+                                            
+    
+                                                                                            {thinkingText && (
+    
+                                            
+    
+                                                                                                <div className="mb-3">
+    
+                                            
+    
+                                                                                                    <button 
+    
+                                            
+    
+                                                                                                        onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
+    
+                                            
+    
+                                                                                                        className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-blue-400 transition-colors uppercase tracking-widest group/think"
+    
+                                            
+    
+                                                                                                    >
+    
+                                            
+    
+                                                                                                        <div className={`transition-transform duration-200 ${isThinkingExpanded ? 'rotate-180' : ''}`}>
+    
+                                            
+    
+                                                                                                            <ChevronDown size={10} />
+    
+                                            
+    
+                                                                                                        </div>
+    
+                                            
+    
+                                                                                                        <span>Thinking: {thinkingText.substring(0, 30)}{thinkingText.length > 30 ? '...' : ''}</span>
+    
+                                            
+    
+                                                                                                        {effectivelyStreaming && !isThinkingExpanded && (
+    
+                                            
+    
+                                                                                                            <div className="w-1 h-1 bg-blue-500 rounded-full animate-ping" />
+    
+                                            
+    
+                                                                                                        )}
+    
+                                            
+    
+                                                                                                    </button>
+    
+                                            
+    
+                                                                                                    
+    
+                                            
+    
+                                                                                                    {isThinkingExpanded && (
+    
+                                            
+    
+                                                                                                        <div className="mt-2 p-3 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-gray-400 leading-relaxed italic animate-in fade-in slide-in-from-top-1 duration-200">
+    
+                                            
+    
+                                                                                                            {thinkingText}
+    
+                                            
+    
+                                                                                                        </div>
+    
+                                            
+    
+                                                                                                    )}
+    
+                                            
+    
+                                                                                                </div>
+    
+                                            
+    
+                                                                                            )}
+    
+                                            
+    
+                                                                    
+    
+                                            
+    
+                                                                                            {/* 如果内容为空且正在流式传输，显示骨架屏 */}
+    
+                                            
+    
+                                                                                            {effectivelyStreaming && !contentWithoutThinking && !hasToolCalls && renderSkeleton()}
+    
+                                            
+    
+                                                                    
+    
+                                            
+    
+                        
+                            {/* Batch Review Panel */}
                         {pendingCount > 1 && (
                             <div className="mb-3 p-2 bg-blue-900/20 rounded border border-blue-700/50 flex items-center justify-between">
                                 <div className="text-xs font-medium text-blue-300">
@@ -855,9 +992,12 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
 
                                     // 3. 如果是简单的文本消息（无工具），直接渲染完整内容
                                     if (!hasInterleavedTools && (!message.toolCalls || message.toolCalls.length === 0)) {
-                                        return effectivelyStreaming
-                                            ? renderMarkdownWithoutHighlight(displayContent, 'simple-streaming')
-                                            : renderContentPart({ type: 'text', text: displayContent }, 0, false);
+                                        if (effectivelyStreaming) {
+                                            return contentWithoutThinking.trim()
+                                                ? renderMarkdownWithoutHighlight(contentWithoutThinking, 'simple-streaming')
+                                                : renderSkeleton(); // 🔥 使用骨架屏占位
+                                        }
+                                        return renderContentPart({ type: 'text', text: contentWithoutThinking }, 0, false);
                                     }
 
                                     return (

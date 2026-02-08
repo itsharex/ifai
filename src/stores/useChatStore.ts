@@ -932,12 +932,22 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     });
 
     // Stream Content Listener - 接收流式消息内容
-    const unlistenStream = await listen<string>(assistantMsgId, (event) => {
+    // 🔥 FIX v0.4.0: 引入高性能缓冲渲染机制
+    let renderRequested = false;
+    let localMessagesBuffer: Message[] = [...coreUseChatStore.getState().messages];
+    
+    // 强制同步更新函数（用于关键时刻如 finish）
+    const flushUpdates = () => {
         const { messages } = coreUseChatStore.getState();
+        // 这里的逻辑在 unlistenStream 外部已经处理好了 updatedMessages
+        // 所以我们只需要在这里触发最终的同步更新即可
+    };
+
+    const unlistenStream = await listen<string>(assistantMsgId, (event) => {
+        // [v3 Robust Stream Listener] - 彻底防御 event.payload.match 崩溃
         let textChunk = '';
         let toolCallUpdate: any = null;
 
-        // [v3 Robust Stream Listener] - 彻底防御 event.payload.match 崩溃
         try {
             const rawPayload: any = event.payload;
             if (rawPayload === null || rawPayload === undefined) return;
@@ -948,7 +958,6 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     const content = String(rawPayload.content);
 
                     // 🔥 FIX: 过滤掉本地模型工具执行摘要
-                    // 这些摘要会导致工具结果显示两次（一次在 ToolApproval，一次在消息内容中）
                     const isLocalModelToolSummary =
                         content.includes('[Local Model] Completed in') ||
                         (content.includes('[OK] ') && content.includes('ms)\n{')) ||
@@ -956,7 +965,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
                     if (isLocalModelToolSummary) {
                         console.log('[Chat] 🚫 过滤掉本地模型工具执行摘要，避免重复显示');
-                        return;  // 不追加这个内容到消息中
+                        return;
                     }
 
                     textChunk = content;
@@ -972,24 +981,17 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     const parsed = JSON.parse(rawPayload);
                     if (parsed && parsed.type === 'content' && parsed.content) {
                         const content = String(parsed.content);
-
-                        // 🔥 FIX: 过滤掉本地模型工具执行摘要
                         const isLocalModelToolSummary =
                             content.includes('[Local Model] Completed in') ||
                             (content.includes('[OK] ') && content.includes('ms)\n{')) ||
                             (parsed.metadata?.source === 'local_model' && content.includes('[OK]'));
 
-                        if (isLocalModelToolSummary) {
-                            console.log('[Chat] 🚫 过滤掉本地模型工具执行摘要（字符串解析）');
-                            return;
-                        }
-
+                        if (isLocalModelToolSummary) return;
                         textChunk = content;
                     } else if (parsed && parsed.type === 'tool_call' && parsed.toolCall) {
                         toolCallUpdate = parsed.toolCall;
                     }
                 } catch (jsonErr) {
-                    // 策略 C: 处理拼接 JSON
                     if (typeof rawPayload.match === 'function') {
                         const objects = rawPayload.match(/\{[^{}]+\}/g);
                         if (objects) {
@@ -998,18 +1000,12 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                                     const obj = JSON.parse(objects[i]);
                                     if (obj && obj.type === 'content' && obj.content) {
                                         const content = String(obj.content);
-
-                                        // 🔥 FIX: 过滤掉本地模型工具执行摘要（拼接 JSON 模式）
                                         const isLocalModelToolSummary =
                                             content.includes('[Local Model] Completed in') ||
                                             (content.includes('[OK] ') && content.includes('ms)\n{')) ||
                                             (obj.metadata?.source === 'local_model' && content.includes('[OK]'));
 
-                                        if (isLocalModelToolSummary) {
-                                            console.log('[Chat] 🚫 过滤掉本地模型工具执行摘要（拼接 JSON）');
-                                            continue;  // 跳过这个对象，继续尝试下一个
-                                        }
-
+                                        if (isLocalModelToolSummary) continue;
                                         textChunk = content;
                                         break;
                                     }
@@ -1024,54 +1020,42 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         }
 
         if (textChunk || toolCallUpdate) {
-            const updatedMessages = messages.map(m => {
+            // 🔥 v0.4.0: 批量处理逻辑
+            // 并不是在这里直接更新 updatedMessages，而是先计算出结果
+            // 由于 Zustand 的特性，我们直接对当前状态进行计算
+            
+            if (renderRequested) {
+                // 已经调度了渲染，我们只需更新 buffer 即可（这里通过 closure 共享 messages 变量）
+                // 但是 useChatStore.setState 是外部调用的，所以我们需要在内部维护一个最新的 messages
+            }
+
+            // 我们执行逻辑计算，更新本地缓冲区
+            localMessagesBuffer = localMessagesBuffer.map(m => {
                 if (m.id === assistantMsgId) {
                     const newMsg = { ...m };
-
-                    // Initialize contentSegments if not exists
                     // @ts-ignore
-                    if (!newMsg.contentSegments) {
-                        // @ts-ignore
-                        newMsg.contentSegments = [];
-                    }
+                    if (!newMsg.contentSegments) newMsg.contentSegments = [];
 
                     if (textChunk) {
-                        // Ensure textChunk is a string (prevent [object Object])
                         const safeTextChunk = typeof textChunk === 'string' ? textChunk : JSON.stringify(textChunk);
                         newMsg.content = (newMsg.content || '') + safeTextChunk;
-
-                        // Track text segment in order with character position
                         // @ts-ignore
                         const order = newMsg.contentSegments.length;
-                        // Calculate start position (before appending textChunk)
                         const startPos = (newMsg.content || '').length - textChunk.length;
                         // @ts-ignore
                         newMsg.contentSegments.push({
-                            type: 'text' as const,
-                            order,
-                            timestamp: Date.now(),
-                            content: textChunk,
-                            startPos,  // Track character position for precise tool interleaving
-                            endPos: newMsg.content.length
+                            type: 'text' as const, order, timestamp: Date.now(),
+                            content: textChunk, startPos, endPos: newMsg.content.length
                         });
                     }
 
                     if (toolCallUpdate) {
-                        console.log('[Chat] Received tool_call event:', toolCallUpdate);
                         const toolName = toolCallUpdate.function?.name || toolCallUpdate.tool;
-                        console.log('[Chat] Tool name:', toolName);
                         const newArgsChunk = toolCallUpdate.function?.arguments || '';
-
                         const existingCalls = newMsg.toolCalls || [];
-                        // 🔥 FIX: DeepSeek sends subsequent chunks with id=null, so we need to match by index as well
                         const existingIndex = existingCalls.findIndex(tc => {
-                            // First try to match by id
-                            if (toolCallUpdate.id && tc.id === toolCallUpdate.id) {
-                                return true;
-                            }
-                            // Fallback: match by index when id is null (DeepSeek API behavior)
+                            if (toolCallUpdate.id && tc.id === toolCallUpdate.id) return true;
                             if (toolCallUpdate.id === null && toolCallUpdate.index !== null) {
-                                // Find call with matching index
                                 return (tc as any).index === toolCallUpdate.index;
                             }
                             return false;
@@ -1080,113 +1064,65 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                         if (existingIndex !== -1) {
                             const existingCall = existingCalls[existingIndex];
                             const updatedCalls = [...existingCalls];
-
-                            // Typewriter effect: concatenate arguments string
                             const updatedArgsString = ((existingCall as any).function?.arguments || '') + newArgsChunk;
-
-                            // Try to parse JSON (handles escaping automatically)
                             let parsedArgs: any;
                             try {
                                 parsedArgs = JSON.parse(updatedArgsString);
-                                console.log('[Stream] JSON parse success:', parsedArgs);
                             } catch (e) {
-                                // Partial JSON: extract fields via regex and manually unescape
-                                parsedArgs = { ...existingCall.args }; // Keep previous values
-
-                                // Extract content field with proper unescaping
-                                // Safety check: Ensure updatedArgsString is a string before calling match
+                                parsedArgs = { ...existingCall.args };
                                 const safeArgsString = String(updatedArgsString);
                                 const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
                                 if (contentMatch) {
-                                    // Manually unescape JSON string
                                     let content = contentMatch[1];
-                                    content = content
-                                        .replace(/\\n/g, '\n')
-                                        .replace(/\\r/g, '\r')
-                                        .replace(/\\t/g, '\t')
-                                        .replace(/\\"/g, '"')
-                                        .replace(/\\\\/g, '\\');
+                                    content = content.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
                                     parsedArgs.content = content;
-                                    console.log('[Stream] Regex extracted content (unescaped):', content.substring(0, 50));
                                 }
-
-                                // Extract rel_path field
                                 const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"/);
-                                if (relPathMatch) {
-                                    parsedArgs.rel_path = relPathMatch[1];
-                                }
+                                if (relPathMatch) parsedArgs.rel_path = relPathMatch[1];
                             }
-
                             updatedCalls[existingIndex] = {
                                 ...existingCall,
                                 id: toolCallUpdate.id || existingCall.id,
                                 tool: toolName || (existingCall as any).tool,
                                 args: parsedArgs,
-                                function: {
-                                    name: toolName || (existingCall as any).function?.name,
-                                    arguments: updatedArgsString
-                                },
+                                function: { name: toolName || (existingCall as any).function?.name, arguments: updatedArgsString },
                                 isPartial: true
                             } as any;
                             newMsg.toolCalls = updatedCalls;
                         } else {
-                            // New tool call
-                            // FILTER: Skip invalid tool names (empty, "unknown", whitespace)
-                            // This prevents "unknown" tool calls from cluttering the UI
-                            const isValidToolName = toolName &&
-                                toolName !== 'unknown' &&
-                                toolName.trim().length > 0;
-
-                            if (!isValidToolName) {
-                                console.warn(`[useChatStore] Skipping invalid tool call: tool="${toolName}", chunk="${newArgsChunk?.substring(0, 50)}"`);
-                                // Skip this tool call, don't add it to the message
-                                return newMsg;
+                            const isValidToolName = toolName && toolName !== 'unknown' && toolName.trim().length > 0;
+                            if (isValidToolName) {
+                                let initialArgs: any;
+                                try { initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {}; } catch (e) { initialArgs = {}; }
+                                const newToolCallId = toolCallUpdate.id || crypto.randomUUID();
+                                const newToolCall = {
+                                    id: newToolCallId, type: 'function' as const, tool: toolName, args: initialArgs,
+                                    function: { name: toolName, arguments: newArgsChunk },
+                                    status: 'pending' as const, isPartial: true, index: toolCallUpdate.index
+                                };
+                                // @ts-ignore
+                                newMsg.toolCalls = [...existingCalls, newToolCall];
+                                // @ts-ignore
+                                const order = newMsg.contentSegments.length;
+                                // @ts-ignore
+                                newMsg.contentSegments.push({ type: 'tool' as const, order, timestamp: Date.now(), toolCallId: newToolCallId });
                             }
-
-                            let initialArgs: any;
-                            try {
-                                initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {};
-                            } catch (e) {
-                                initialArgs = {};
-                            }
-
-                            const newToolCallId = toolCallUpdate.id || crypto.randomUUID();
-                            const newToolCall = {
-                                id: newToolCallId,
-                                type: 'function' as const,
-                                tool: toolName,  // Use toolName directly, no default
-                                args: initialArgs,
-                                function: {
-                                    name: toolName,  // Use toolName directly, no default
-                                    arguments: newArgsChunk
-                                },
-                                status: 'pending' as const,
-                                isPartial: true,
-                                // 🔥 FIX: Store index for matching subsequent chunks (DeepSeek API sends id=null)
-                                index: toolCallUpdate.index
-                            };
-                            // @ts-ignore
-                            newMsg.toolCalls = [...existingCalls, newToolCall];
-
-                            // Track tool call segment in order
-                            // @ts-ignore
-                            const order = newMsg.contentSegments.length;
-                            // @ts-ignore
-                            newMsg.contentSegments.push({
-                                type: 'tool' as const,
-                                order,
-                                timestamp: Date.now(),
-                                toolCallId: newToolCallId
-                            });
                         }
                     }
-                    
                     return newMsg;
                 }
                 return m;
             });
 
-            coreUseChatStore.setState({ messages: updatedMessages });
+            // 🔥 v0.4.0 高性能渲染：使用 requestAnimationFrame 进行节流
+            if (!renderRequested) {
+                renderRequested = true;
+                requestAnimationFrame(() => {
+                    // 在下一帧触发真正的 UI 更新，使用最新的本地缓冲区
+                    coreUseChatStore.setState({ messages: [...localMessagesBuffer] });
+                    renderRequested = false;
+                });
+            }
         }
     });
 
@@ -1251,9 +1187,8 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         clearTimeout(finishTimeout);
         console.log("[Chat] Stream finished event received", event.payload); // Updated log message
 
-        // Finalize all partial tool calls
-        const { messages } = coreUseChatStore.getState();
-        const updatedMessages = messages.map(m => {
+        // 🔥 v0.4.0: 最终刷新缓冲区，确保没有任何残余更新未应用
+        localMessagesBuffer = localMessagesBuffer.map(m => {
             if (m.id === assistantMsgId && m.toolCalls) {
                 return {
                     ...m,
@@ -1265,11 +1200,12 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             }
             return m;
         });
+        
+        coreUseChatStore.setState({ messages: [...localMessagesBuffer] });
 
-        coreUseChatStore.setState({ messages: updatedMessages });
-
-        // Debug: Log tool calls found
-        const assistantMsg = updatedMessages.find(m => m.id === assistantMsgId);
+        // Finalize all partial tool calls
+        const finalizedMessages = coreUseChatStore.getState().messages;
+        const assistantMsg = finalizedMessages.find(m => m.id === assistantMsgId);
         console.log(`[Chat] Assistant message toolCalls:`, assistantMsg?.toolCalls?.length || 0);
         if (assistantMsg?.toolCalls) {
             console.log(`[Chat] Tool calls:`, assistantMsg.toolCalls.map(tc => ({
