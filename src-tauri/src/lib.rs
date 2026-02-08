@@ -599,66 +599,72 @@ async fn ai_chat(
                                 println!("[AI Chat] Local model inference succeeded, response length: {}",
                                          response.len());
 
-                                // 从本地模型输出中解析工具调用
-                                use crate::local_model::test_tool_parse;
-                                let tool_calls = test_tool_parse(response.clone());
-
-                                if !tool_calls.is_empty() {
-                                    println!("[AI Chat] Parsed {} tool calls from local model output",
-                                             tool_calls.len());
-
-                                    // 执行工具调用并收集结果
-                                    let mut all_results = Vec::new();
-                                    let overall_start = std::time::Instant::now();
-
-                                    for tool_call in tool_calls {
-                                        println!("[AI Chat] Executing tool: {}", tool_call.name);
-
-                                        let args_json = serde_json::to_string(&tool_call.arguments)
-                                            .unwrap_or_else(|_| "{}".to_string());
-                                        let args_value: serde_json::Value = serde_json::from_str(&args_json)
-                                            .unwrap_or_else(|_| serde_json::json!({}));
-
-                                        let tool_start = std::time::Instant::now();
-                                        let tool_result = if let Some(ref root) = project_root {
-                                            execute_local_tool(&tool_call.name, &args_value, root).await
-                                        } else {
-                                            format!("错误: 未提供项目根目录")
-                                        };
-                                        let elapsed = tool_start.elapsed().as_millis();
-
-                                        // 格式化工具结果
-                                        let formatted_result = format!(
-                                            "**{}**: `{}`\n```\n{}\n```",
-                                            tool_call.name,
-                                            args_value["command"].as_str().unwrap_or(""),
-                                            tool_result
-                                        );
-                                        all_results.push(formatted_result);
-                                    }
-
-                                    let total_elapsed = overall_start.elapsed().as_millis();
-
-                                    // 发送结果到前端
-                                    let combined_result = all_results.join("\n\n");
-                                    let _ = app.emit(&event_id, json!({
-                                        "type": "content",
-                                        "content": combined_result,
-                                        "metadata": {
-                                            "source": "local_model",
-                                            "tool_count": all_results.len(),
-                                            "execution_time_ms": total_elapsed
-                                        }
-                                    }));
-                                    let _ = app.emit(&event_id, json!({"type": "done"}));
-
-                                    println!("[AI Chat] Local tool execution completed in {}ms", total_elapsed);
-                                    return Ok(());
+                                // 🔥 v0.9.23: Vibe 模式特权 - 禁止本地模型执行工具
+                                if mode.as_deref() == Some("vibe") {
+                                    println!("[AI Chat] Vibe Mode active: Bypassing local tool parsing to preserve conversation flow");
+                                    // 直接降级到云端模型，保持对话感
                                 } else {
-                                    // 没有工具调用，说明本地模型输出不够准确
-                                    // 应该降级到云端 API 而不是直接返回本地模型的原始输出
-                                    println!("[AI Chat] No tool calls in local model output, falling back to cloud API");
-                                    // 不 return，让代码继续执行，调用云端 API
+                                    // 从本地模型输出中解析工具调用
+                                    use crate::local_model::test_tool_parse;
+                                    let tool_calls = test_tool_parse(response.clone());
+
+                                    if !tool_calls.is_empty() {
+                                        println!("[AI Chat] Parsed {} tool calls from local model output",
+                                                 tool_calls.len());
+
+                                        // 执行工具调用并收集结果
+                                        let mut all_results = Vec::new();
+                                        let overall_start = std::time::Instant::now();
+
+                                        for tool_call in tool_calls {
+                                            println!("[AI Chat] Executing tool: {}", tool_call.name);
+
+                                            let args_json = serde_json::to_string(&tool_call.arguments)
+                                                .unwrap_or_else(|_| "{}".to_string());
+                                            let args_value: serde_json::Value = serde_json::from_str(&args_json)
+                                                .unwrap_or_else(|_| serde_json::json!({}));
+
+                                            let tool_start = std::time::Instant::now();
+                                            let tool_result = if let Some(ref root) = project_root {
+                                                execute_local_tool(&tool_call.name, &args_value, root).await
+                                            } else {
+                                                format!("错误: 未提供项目根目录")
+                                            };
+                                            let elapsed = tool_start.elapsed().as_millis();
+
+                                            // 格式化工具结果
+                                            let formatted_result = format!(
+                                                "**{}**: `{}`\n```\n{}\n```",
+                                                tool_call.name,
+                                                args_value["command"].as_str().unwrap_or(""),
+                                                tool_result
+                                            );
+                                            all_results.push(formatted_result);
+                                        }
+
+                                        let total_elapsed = overall_start.elapsed().as_millis();
+
+                                        // 发送结果到前端
+                                        let combined_result = all_results.join("\n\n");
+                                        let _ = app.emit(&event_id, json!({
+                                            "type": "content",
+                                            "content": combined_result,
+                                            "metadata": {
+                                                "source": "local_model",
+                                                "tool_count": all_results.len(),
+                                                "execution_time_ms": total_elapsed
+                                            }
+                                        }));
+                                        let _ = app.emit(&event_id, json!({"type": "done"}));
+
+                                        println!("[AI Chat] Local tool execution completed in {}ms", total_elapsed);
+                                        return Ok(());
+                                    } else {
+                                        // 没有工具调用，说明本地模型输出不够准确
+                                        // 应该降级到云端 API 而不是直接返回本地模型的原始输出
+                                        println!("[AI Chat] No tool calls in local model output, falling back to cloud API");
+                                        // 不 return，让代码继续执行，调用云端 API
+                                    }
                                 }
                             }
                             Err(e) => {
@@ -740,12 +746,18 @@ async fn ai_chat(
         }
     }
 
+    let is_vibe_mode = mode.as_deref() == Some("vibe");
     state.ai_service.stream_chat(
         &provider_config,
         messages,
         &event_id,
         Some(final_tools),
         Box::new(move |chunk| {
+             // 🔥 v0.9.24: Vibe 模式强力熔断 - 物理丢弃所有工具流
+             if is_vibe_mode && chunk.contains("\"tool_calls\"") {
+                 println!("[AI Chat] Vibe Mode active: Dropping tool_calls chunk to prevent UI pollution");
+                 return;
+             }
              // 调试：打印 chunk 内容
              // println!("[AI Chat] Streaming chunk: {}", chunk);
 

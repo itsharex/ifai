@@ -1663,7 +1663,11 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     textChunk = content;
 
                 } else if (rawPayload.type === 'tool_call' && rawPayload.toolCall) {
-
+                    // 🔥 v0.9.25: 前端渲染断路器 - Vibe 模式禁止渲染工具卡片
+                    const editorMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
+                    if (editorMode === "vibe") {
+                        return;
+                    }
                     toolCallUpdate = rawPayload.toolCall;
 
                 } else if (rawPayload.type === 'thinking' || rawPayload.type === 'tool-result' || rawPayload.type === 'done') {
@@ -2267,7 +2271,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
                                     providerConfig,
 
-                                    { enableTools: true }
+                                    { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") }
 
                                 );
 
@@ -2360,7 +2364,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             messages: msgHistory,
             eventId: assistantMsgId,
             projectRoot: useFileStore.getState().rootPath,
-            enableTools: true,
+            enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe"),
             activeSkillIds: (window as any).__IFAI_ACTIVE_SKILLS__ || [],
             mode: (window as any).__IFAI_EDITOR_MODE__ || "vibe"
         });
@@ -2730,7 +2734,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
                             unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
 
-                            await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig, { enableTools: true });
+                            await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig, { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") });
 
                         }, 500);
 
@@ -2772,7 +2776,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
                 projectRoot: useFileStore.getState().rootPath, 
 
-                enableTools: true,
+                enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe"),
 
                                 activeSkillIds: (window as any).__IFAI_ACTIVE_SKILLS__ || [],
 
@@ -3454,7 +3458,7 @@ const patchedApproveToolCall = async (
 
                     providerConfig,
 
-                    { enableTools: true }
+                    { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") }
 
                 );
 
@@ -3516,7 +3520,7 @@ const patchedApproveToolCall = async (
 
                      providerConfig, 
 
-                     { enableTools: true }
+                     { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") }
 
                  );
 
