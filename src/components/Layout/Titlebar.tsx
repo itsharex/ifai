@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { detectLanguageFromPath } from '../../utils/languageDetection';
 import { LayoutSwitcher } from './LayoutSwitcher';
 import { HelpMenu } from '../Help/HelpMenu';
+import { ModeSwitch } from './ModeSwitch';
 
 // v0.3.0: 工作区菜单分隔线组件
 const MenuSeparator = () => <div className="border-t border-gray-600 my-1" />;
@@ -280,6 +281,11 @@ export const Titlebar = ({ onToggleChat, isChatOpen, onToggleTerminal, isTermina
 
         {/* v0.3.0: 帮助菜单 */}
         <HelpMenu className="ml-2" />
+      </div>
+
+      {/* 🚀 v0.5.0: 震撼人心的中央模式切换器 */}
+      <div className="absolute left-1/2 -translate-x-1/2">
+        <ModeSwitch />
       </div>
 
       <div className="flex items-center space-x-2">

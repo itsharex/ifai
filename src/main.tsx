@@ -59,14 +59,16 @@ const exposeDebugStores = () => {
         import('./stores/skillStore'),
         import('./stores/fileStore'),
         import('./stores/useChatStore'),
-        import('./stores/settingsStore')
-      ]).then(([skill, file, chat, settings]) => {
+        import('./stores/settingsStore'),
+        import('./stores/layoutStore')
+      ]).then(([skill, file, chat, settings, layout]) => {
         (window as any).__DEBUG__ = {
           ...(window as any).__DEBUG__,
           skillStore: skill.useSkillStore,
           fileStore: file.useFileStore,
           chatStore: chat.useChatStore,
-          settingsStore: settings.useSettingsStore
+          settingsStore: settings.useSettingsStore,
+          layoutStore: layout.useLayoutStore
         };
         console.log('[Main] 🛠️  Core Stores exposed to window.__DEBUG__ (Idle)');
       });

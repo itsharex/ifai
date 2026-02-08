@@ -28,6 +28,7 @@ export interface LayoutState {
 
   // 新增：布局模式
   layoutMode: 'default' | 'custom';
+  editorMode: 'vibe' | 'spec';
 
   // 分屏状态
   panes: Pane[];
@@ -58,6 +59,7 @@ export interface LayoutState {
 
   // 新增：布局模式操作
   setLayoutMode: (mode: 'default' | 'custom') => void;
+  setEditorMode: (mode: 'vibe' | 'spec') => void;
 
   // v0.2.9 新增：审查历史操作
   toggleReviewHistory: () => void;
@@ -100,6 +102,7 @@ export const useLayoutStore = create<LayoutState>()(
 
       // 新增：布局模式初始状态
       layoutMode: 'default',
+      editorMode: 'vibe',
 
       // 分屏状态
       panes: [
@@ -139,6 +142,7 @@ export const useLayoutStore = create<LayoutState>()(
 
       // 新增：布局模式操作函数
       setLayoutMode: (mode) => set({ layoutMode: mode }),
+      setEditorMode: (mode) => set({ editorMode: mode }),
 
       // v0.2.9 新增：审查历史操作
       toggleReviewHistory: () => {
@@ -386,6 +390,7 @@ export const useLayoutStore = create<LayoutState>()(
         sidebarWidth: state.sidebarWidth,
         // 新增：持久化布局模式
         layoutMode: state.layoutMode,
+        editorMode: state.editorMode,
       }),
       migrate: (persistedState: any, version: number) => {
         console.log(`[LayoutStore] Migrating from version ${version} to 1`);

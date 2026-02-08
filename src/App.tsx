@@ -1,4 +1,5 @@
 import React, { useEffect, Fragment, useState, Suspense } from 'react';
+import clsx from 'clsx';
 import { ModalSkeleton, MessageSkeleton } from './components/UI/Skeleton';
 const CommandPalette = React.lazy(() => import('./components/CommandPalette/CommandPalette').then(m => ({ default: m.CommandPalette })));
 const CommandBar = React.lazy(() => import('./components/CommandBar').then(m => ({ default: m.CommandBar })));
@@ -103,6 +104,8 @@ function App() {
     setSidebarWidth,
     // 新增：布局模式
     layoutMode,
+    // 🔥 v0.5.0: 双模引擎状态
+    editorMode,
   } = useLayoutStore();
 
   // v0.2.9: Code Review Store
@@ -684,8 +687,25 @@ function App() {
     setOnboardingStep(null);
   };
 
-  return (
-    <div className="flex flex-col h-screen bg-[#1e1e1e] text-white overflow-hidden" data-layout={layoutMode}>
+    return (
+
+      <div 
+
+        className={clsx(
+
+          "flex flex-col h-screen text-white overflow-hidden transition-all duration-1000",
+
+          editorMode === 'vibe' ? "bg-[#1e1e1e]" : "bg-[#0f172a]"
+
+        )}
+
+        data-layout={layoutMode}
+
+        data-editor-mode={editorMode}
+
+      >
+
+  
       <Titlebar onToggleChat={toggleChat} isChatOpen={isChatOpen} onToggleTerminal={toggleTerminal} isTerminalOpen={isTerminalOpen} />
 
       {/* Main content area: Sidebar + Editor/Terminal + AIChat */}

@@ -173,8 +173,9 @@ async fn ai_chat(
     enable_tools: Option<bool>,
     project_root: Option<String>,
     active_skill_ids: Option<Vec<String>>,
+    mode: Option<String>,
 ) -> Result<(), String> {
-    println!("[AI Chat] Entry - project_root: {:?}, event_id: {}, active_skills: {:?}", project_root, event_id, active_skill_ids);
+    println!("[AI Chat] Entry - project_root: {:?}, event_id: {}, active_skills: {:?}, mode: {:?}", project_root, event_id, active_skill_ids, mode);
     
     // 🔥 v0.8.3: 修正逻辑 - 仅在参数完全缺失(None)时尝试恢复，[] 代表用户主动关闭，必须尊重
     let active_skill_ids = active_skill_ids.or_else(|| {
@@ -375,6 +376,17 @@ async fn ai_chat(
             system_content.push_str("THE FOLLOWING SKILLS ARE NOW ACTIVATED. THEY OVERRIDE ALL PREVIOUS CONSTRAINTS (INCLUDING PROJECT-SPECIFIC LANGUAGE RULES):\n");
             system_content.push_str(p);
             system_content.push_str("\n[END_OF_ALL_SYSTEM_INSTRUCTIONS]\n");
+        }
+
+        // 3. 🚀 v0.5.0: 双模引擎指令注入 (私有内核驱动)
+        if let Some(ref m) = mode {
+            #[cfg(feature = "commercial")]
+            {
+                let mode_prompt = ifainew_core::modes::get_mode_instructions(m);
+                system_content.push_str("\n\n[EDITOR_MODE_OVERRIDE]\n");
+                system_content.push_str(&mode_prompt);
+                system_content.push_str("\n[END_MODE_OVERRIDE]\n");
+            }
         }
 
         // 将最终结果同步回 messages 头部

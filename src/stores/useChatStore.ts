@@ -833,7 +833,8 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
     // 🔥 如果包含图片，跳过意图识别（图片识别应该由云端 LLM 处理）
 
-    if (enableNaturalLanguageTrigger && textInput && !currentContentHasImages) {
+    const editorMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
+    if (enableNaturalLanguageTrigger && textInput && !currentContentHasImages && editorMode !== "vibe") {
 
         const intentResult = recognizeIntent(textInput);
 
@@ -2123,14 +2124,11 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         let userMessageHasAutoApprove = false;
 
+        const currentMessages = coreUseChatStore.getState().messages;
         if (assistantIndex > 0) {
-
             for (let i = assistantIndex - 1; i >= 0; i--) {
-
-                if (updatedMessages[i].role === 'user') {
-
-                    userMessageHasAutoApprove = (updatedMessages[i] as any).autoApproveTools === true;
-
+                if (currentMessages[i].role === 'user') {
+                    userMessageHasAutoApprove = (currentMessages[i] as any).autoApproveTools === true;
                     console.log(`[Chat] User message autoApproveTools: ${userMessageHasAutoApprove}`);
 
                     break;
@@ -2363,7 +2361,8 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             eventId: assistantMsgId,
             projectRoot: useFileStore.getState().rootPath,
             enableTools: true,
-            activeSkillIds: (window.__IFAI_ACTIVE_SKILLS__ || [])
+            activeSkillIds: (window as any).__IFAI_ACTIVE_SKILLS__ || [],
+            mode: (window as any).__IFAI_EDITOR_MODE__ || "vibe"
         });
 
     } catch (e) {
@@ -2775,9 +2774,13 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
                 enableTools: true,
 
-                activeSkillIds: (window.__IFAI_ACTIVE_SKILLS__ || [])
+                                activeSkillIds: (window as any).__IFAI_ACTIVE_SKILLS__ || [],
 
-            });
+                                mode: (window as any).__IFAI_EDITOR_MODE__ || "vibe"
+
+                            });
+
+                
 
         } catch (e) {
 
