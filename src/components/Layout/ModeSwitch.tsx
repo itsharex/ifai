@@ -21,6 +21,7 @@ export const ModeSwitch: React.FC = () => {
     <div className="flex items-center bg-[#1e1e1e]/80 backdrop-blur-md p-1 rounded-full border border-gray-700/50 shadow-inner">
       <button
         onClick={() => handleModeChange('vibe')}
+        data-testid="mode-toggle-vibe"
         className={clsx(
           "relative flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-500 overflow-hidden",
           editorMode === 'vibe' 
@@ -37,6 +38,7 @@ export const ModeSwitch: React.FC = () => {
 
       <button
         onClick={() => handleModeChange('spec')}
+        data-testid="mode-toggle-spec"
         className={clsx(
           "relative flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-500 overflow-hidden",
           editorMode === 'spec' 
