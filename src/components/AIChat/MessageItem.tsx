@@ -16,7 +16,6 @@ import { TaskBreakdownViewer } from '../TaskBreakdown/TaskBreakdownViewer';
 import { TaskBreakdown } from '../../types/taskBreakdown';
 import { MarkdownRenderer, SimpleMarkdownRenderer } from './MarkdownRenderer';
 import styles from './MessageItem.module.css';
-
 /**
  * 工业级消息样式常量
  */
@@ -26,7 +25,6 @@ const STYLES = {
     agentBubble: 'w-full rounded-2xl p-4 bg-[#1e1e1e] text-blue-100 border border-blue-900/30 shadow-sm relative group',
     timestamp: 'text-[10px] text-gray-500 mt-1'
 };
-
 /**
  * 检测内容是否是任务拆解 JSON
  * @param content 消息内容
@@ -34,19 +32,15 @@ const STYLES = {
  */
 function detectTaskBreakdown(content: string): TaskBreakdown | null {
   if (!content || typeof content !== 'string') return null;
-
   try {
     // 移除可能的 markdown 代码块标记
     const cleanContent = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-
     // 检查是否包含 taskTree 字段（任务拆解的核心标识）
     if (!cleanContent.includes('"taskTree"') && !cleanContent.includes('"title"')) {
       return null;
     }
-
     // 尝试解析 JSON
     const parsed = JSON.parse(cleanContent);
-
     // 验证是否是有效的 TaskBreakdown 结构
     if (parsed && parsed.taskTree && parsed.title && parsed.id) {
       return parsed as TaskBreakdown;
@@ -55,10 +49,8 @@ function detectTaskBreakdown(content: string): TaskBreakdown | null {
     // JSON 解析失败，可能是不完整的内容或流式传输中
     return null;
   }
-
   return null;
 }
-
 interface MessageItemProps {
     message: Message;
     onApprove: (messageId: string, toolCallId: string) => void;
@@ -67,7 +59,6 @@ interface MessageItemProps {
     onOpenComposer?: (messageId: string) => void; // v0.2.8: 打开 Composer 面板
     isStreaming?: boolean;
 }
-
 // Custom comparison function for React.memo
 // Optimized to avoid unnecessary re-renders during streaming
 const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps) => {
@@ -75,27 +66,22 @@ const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps)
     if (prevProps.isStreaming !== nextProps.isStreaming) {
         return false;
     }
-
     // Re-render if message content changes
     if (prevProps.message.content !== nextProps.message.content) {
         return false;
     }
-
     // 🔥 FIX v0.3.9.3: 更彻底的 toolCalls 深度比较
     const prevToolCalls = prevProps.message.toolCalls;
     const nextToolCalls = nextProps.message.toolCalls;
-
     // 如果数量不同，重新渲染
     if ((prevToolCalls?.length || 0) !== (nextToolCalls?.length || 0)) {
         return false;
     }
-
     // 如果有 toolCalls，深度比较每个 toolCall
     if (prevToolCalls && nextToolCalls) {
         for (let i = 0; i < prevToolCalls.length; i++) {
             const prevTC = prevToolCalls[i];
             const nextTC = nextToolCalls[i];
-            
             // 检查所有关键字段
             if (prevTC.id !== nextTC.id ||
                 prevTC.tool !== nextTC.tool ||
@@ -111,45 +97,35 @@ const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps)
         // 其中一个是 null/undefined 而另一个不是
         return false;
     }
-
     // Re-render if message ID changes
     if (prevProps.message.id !== nextProps.message.id) {
         return false;
     }
-
     // Re-render if references change
     if ((prevProps.message.references?.length || 0) !== (nextProps.message.references?.length || 0)) {
         return false;
     }
-
     // Re-render if metadata changes (like exploreProgress)
     if ((prevProps.message as any).exploreProgress !== (nextProps.message as any).exploreProgress) {
         return false;
     }
-
     // Otherwise skip re-render
     return true;
 };
-
 // 🔥 FIX: 添加自定义比较函数，确保 toolCalls 变化时触发重新渲染
 export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFile, onOpenComposer, isStreaming }: MessageItemProps) => {
     const { t } = useTranslation();
     const isUser = message.role === 'user';
-
     const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
-
     // PERFORMANCE: State for managing code block folding (for >50 line blocks)
     const [expandedBlocks, setExpandedBlocks] = useState<Set<number>>(new Set());
     // Force re-render counter for isStreaming changes
     const [, forceUpdate] = useState(0);
-
     // Store latest isStreaming in ref for renderContentPart to access
     const isStreamingRef = useRef(isStreaming);
     isStreamingRef.current = isStreaming;
-
     // Track content length to detect active streaming (more reliable than isStreaming prop)
     const lastContentLengthRef = useRef(0);
-
     // Helper to process scan result i18n
     const processScanResult = useCallback((text: string): string => {
         const SCAN_RESULT_MARKER = '__SCAN_RESULT__';
@@ -164,10 +140,8 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     // FIXED: Use state instead of ref to ensure re-render when streaming state changes
     // v0.2.6: 优化流式检测逻辑，结合外部 props 和内部内容增长
     const [isActivelyStreaming, setIsActivelyStreaming] = useState(false);
-
     // v0.2.9: Track ignored actions for E2E testing
     const [ignoredActions, setIgnoredActions] = useState<Set<number>>(new Set());
-
     // 强制使用外部传进来的 isStreaming 作为主要判定依据
     // 🔥 FIX v0.3.1: 恢复到工作版本（8572973）的逻辑
     // 问题分析：
@@ -176,7 +150,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     // - 恢复原始逻辑：effectivelyStreaming 只由 isStreaming 和 isActivelyStreaming 控制
     // - 工具执行完成的检测由 isActivelyStreaming 的 timeout 处理（1500ms）
     const effectivelyStreaming = isStreaming || isActivelyStreaming;
-
     // v0.2.8: Composer 2.0 - 检测消息中是否有文件变更
     const hasFileChanges = React.useMemo(() => {
         if (!message.toolCalls || isStreaming) return false;
@@ -195,11 +168,9 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             return toolName === 'agent_write_file' && (result as any)?.success;
         });
     }, [message.toolCalls, isStreaming]);
-
     // ⚡️ FIX: 辅助函数 - 判断toolCall是否是最新的bash命令
     const isLatestBashTool = useCallback((toolCallId: string): boolean => {
         if (!message.toolCalls) return false;
-
         // 找到所有bash命令
         const bashToolCalls = message.toolCalls.filter(tc => {
             const toolName = tc.tool?.toLowerCase() || '';
@@ -209,23 +180,18 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                    toolName.includes('agent_list_dir') ||
                    toolName.includes('agent_read_file');
         });
-
         if (bashToolCalls.length === 0) return false;
-
         // 检查当前toolCall是否是最后一个bash命令
         const latestBashTool = bashToolCalls[bashToolCalls.length - 1];
         return latestBashTool.id === toolCallId;
     }, [message.toolCalls]);
-
     // Component-level timeout to avoid global variable collision between multiple MessageItem instances
     const streamingTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
     // Convert content to string for display
     // Handle both string and ContentPart[] types
     const displayContent = React.useMemo(() => {
       const content = message.content;
       let rawText = '';
-      
       // If content is an array (ContentPart[]), convert to string
       if (Array.isArray(content)) {
         rawText = content.map(part => part.type === 'text' ? part.text : '[image]').join('');
@@ -233,59 +199,48 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         // If content is already a string, use as-is
         rawText = content || '';
       }
-
       // v0.2.6: 过滤思维链标记 <think>...</think>
       // 移除完整的 think 块以及由于流式截断可能残留的 </think> 标签
       return rawText
         .replace(/<think>[\s\S]*?<\/think>/gi, '') // 移除完整的思考块
         .replace(/<\/think>/gi, '');               // 移除残留的闭合标签
     }, [message.content]);
-
     // v0.2.6: 检测任务拆解内容
     const taskBreakdown = React.useMemo(() => {
       // 仅在非流式状态时检测（流式中的 JSON 不完整）
       if (effectivelyStreaming) return null;
       return detectTaskBreakdown(displayContent);
     }, [displayContent, effectivelyStreaming]);
-
     // v0.2.6: 检测是否正在流式传输任务拆解内容
     const isStreamingTaskBreakdown = React.useMemo(() => {
       if (!effectivelyStreaming) return false;
       // 检查内容是否包含任务拆解的特征
       const cleanContent = displayContent.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-
       // v0.2.6: 优先检测 proposal-generator，避免与 task-breakdown 混淆
       const isProposalGenerator = cleanContent.includes('"specDeltas"') ||
                                    cleanContent.includes('"changeId"') ||
                                    cleanContent.includes('"whatChanges"');
-
       if (isProposalGenerator) return false; // proposal-generator 不显示为任务拆解
-
       return cleanContent.includes('"taskTree"') ||
              cleanContent.includes('"children"') ||
              (cleanContent.includes('"title"') && cleanContent.includes('"tasks"'));
     }, [displayContent, effectivelyStreaming]);
-
     // Update streaming status based on content growth
     React.useEffect(() => {
         const currentLength = displayContent.length;
-
         // Initialize on first run
         if (lastContentLengthRef.current === 0 && currentLength > 0) {
             lastContentLengthRef.current = currentLength;
         }
         const isGrowing = currentLength > lastContentLengthRef.current;
-
         if (isGrowing) {
             // Content is growing - actively streaming
             setIsActivelyStreaming(true);
             lastContentLengthRef.current = currentLength;
-
             // Clear previous timeout
             if (streamingTimeoutRef.current) {
                 clearTimeout(streamingTimeoutRef.current);
             }
-
             // Set timeout to mark streaming as complete after 1500ms of no changes
             // ⚡️ FIX: 延长超时时间，减少频繁的状态切换，降低重渲染次数
             streamingTimeoutRef.current = setTimeout(() => {
@@ -293,11 +248,9 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                 streamingTimeoutRef.current = undefined;
             }, 1500);
         }
-
         // 🔥 FIX: 检查 toolCalls 状态，如果所有都完成了，立即停止流式状态
         const hasCompletedToolCallsOnly = message.toolCalls && message.toolCalls.length > 0 &&
             message.toolCalls.every(tc => tc.status === 'completed' || tc.status === 'failed');
-
         // 如果所有工具调用都完成了，立即停止流式状态
         if (hasCompletedToolCallsOnly && isActivelyStreaming) {
             setIsActivelyStreaming(false);
@@ -306,7 +259,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                 streamingTimeoutRef.current = undefined;
             }
         }
-
         // Cleanup timeout on unmount
         return () => {
             if (streamingTimeoutRef.current) {
@@ -315,7 +267,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             }
         };
     }, [displayContent, message.toolCalls, isActivelyStreaming]);
-
     const toggleBlock = useCallback((index: number) => {
         setExpandedBlocks(prev => {
             const newSet = new Set(prev);
@@ -327,42 +278,35 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             return newSet;
         });
     }, []);
-
     // Create a stable reference to expandedBlocks for useCallback
     const expandedBlocksRef = useRef(expandedBlocks);
     expandedBlocksRef.current = expandedBlocks;
-
     // Debug: Log message toolCalls on every render (development only)
     React.useEffect(() => {
         if (process.env.NODE_ENV === 'development' && message.toolCalls && message.toolCalls.length > 0) {
             console.log('[MessageItem] Rendering message with toolCalls:', message.id, message.toolCalls.length);
         }
     }, [message.toolCalls, message.id]);
-
     // Debug: Log when isStreaming changes
     React.useEffect(() => {
         if (process.env.NODE_ENV === 'development' && isStreaming && message.role === 'assistant') {
             console.log('[MessageItem] 🚀 Message is actively streaming:', message.id);
         }
     }, [isStreaming, message.id]);
-
     // Count pending tool calls for batch actions
     const pendingCount = React.useMemo(() => {
         if (!message.toolCalls) return 0;
         return message.toolCalls.filter(tc => tc.status === 'pending' && !tc.isPartial).length;
     }, [message.toolCalls]);
-
     const handleApproveAll = () => {
         const store = useChatStore.getState() as any;
         if (store.approveAllToolCalls) {
             // 🔥 v0.3.4: 记录会话信任（批量批准时）
             const settings = useSettingsStore.getState();
             const approvalMode = settings.agentApprovalMode || 'session-once'; // 🔥 默认值处理
-
             if (approvalMode === 'session-once') {
                 const threadId = useThreadStore.getState().activeThreadId || 'default';
                 const sessionTrust = settings.trustedSessions[threadId];
-
                 // 只在首次批准时记录
                 if (!sessionTrust || Date.now() >= sessionTrust.expiresAt) {
                     const now = Date.now();
@@ -378,18 +322,15 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                     console.log(`[MessageItem] 🔥 v0.3.4 Session trusted via batch approval: ${threadId}`);
                 }
             }
-
             store.approveAllToolCalls(message.id);
         }
     };
-
     const handleRejectAll = () => {
         const store = useChatStore.getState() as any;
         if (store.rejectAllToolCalls) {
             store.rejectAllToolCalls(message.id);
         }
     };
-
     // 🔥 回滚功能 - 检查 result 是否有回滚数据
     // 🔥 必须在 hasRollbackableFiles 之前定义，避免初始化顺序错误
     // 🔥 FIX: 同时支持 Rust 后端的 snake_case (original_content) 和 camelCase (originalContent)
@@ -403,7 +344,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             return false;
         }
     };
-
     // 🔥 回滚功能 - 检查是否有可回滚的文件
     const hasRollbackableFiles = React.useMemo(() => {
         if (!message.toolCalls) return false;
@@ -413,7 +353,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             hasRollbackData(tc.result)
         );
     }, [message.toolCalls]);
-
     // 🔥 撤销所有处理函数
     const handleUndoAll = async () => {
         const store = useChatStore.getState() as any;
@@ -421,15 +360,12 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             toast.error('回滚功能不可用');
             return;
         }
-
         try {
             const result = await store.rollbackMessageToolCalls(message.id, false);
-
             if (result?.hasConflict) {
                 toast.error('检测到文件冲突，请单独回滚每个文件');
                 return;
             }
-
             if (result?.success) {
                 toast.success(`已回滚 ${result.count || 0} 个文件`);
             } else {
@@ -440,16 +376,13 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             toast.error('回滚失败: ' + String(e));
         }
     };
-
     const handleCopy = () => {
         navigator.clipboard.writeText(displayContent);
         toast.success(t('common.copied') || 'Copied to clipboard');
     };
-
     // Determine bubble style
     const isAgent = !!(message as any).agentId;
     const bubbleClass = isUser ? STYLES.userBubble : (isAgent ? STYLES.agentBubble : STYLES.assistantBubble);
-
     // 🔥 FIX v0.3.9.3: 更加稳健的内容检测逻辑，支持字符串和数组
     const hasVisibleContent = React.useMemo(() => {
         if (!message.content) return false;
@@ -465,14 +398,11 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         }
         return false;
     }, [message.content]);
-
     const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
-    
     // 决定是否隐藏气泡
     // 如果没有可见内容，但有工具调用，则隐藏气泡，直接显示工具卡片
     const shouldHideBubble = !isUser && !hasVisibleContent && hasToolCalls;
 //...
-
     // 🔥 FIX v0.4.0: 智能内容预处理 - 提取思考内容
     const { thinkingText, contentWithoutThinking } = React.useMemo(() => {
         const content = typeof displayContent === 'string' ? displayContent : '';
@@ -485,14 +415,12 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         }
         return { thinkingText: null, contentWithoutThinking: content };
     }, [displayContent]);
-
     // Parse segments from string content (for non-multi-modal or fallback)
     const stringSegments = React.useMemo(() => {
         // Use contentWithoutThinking instead of raw displayContent
         const { segments } = parseToolCalls(contentWithoutThinking);
         return segments;
     }, [contentWithoutThinking]);
-
     // PERFORMANCE: Cache sorted contentSegments to avoid O(n log n) sort on every render
     const sortedSegments = React.useMemo(() => {
         // @ts-ignore
@@ -502,7 +430,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         // @ts-ignore
         return [...message.contentSegments].sort((a: ContentSegment, b: ContentSegment) => a.order - b.order);
     }, [message.contentSegments]);
-
     // 🔥 FIX v0.4.0: 工业级骨架屏占位，防止 CLS (布局抖动)
     const renderSkeleton = () => (
         <div className="space-y-3 py-2 animate-pulse w-full max-w-[280px]">
@@ -511,39 +438,86 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             <div className="h-2.5 bg-blue-500/10 rounded-full w-[70%] opacity-20"></div>
         </div>
     );
-
-    // ⚡️ FIX: Merge adjacent text segments to reduce DOM nodes and improve rendering performance
-    // This fixes the "styling mess" issue where each character creates its own Markdown container
+    // ⚡️ FIX: 全局排序渲染中枢 - 确保文字与工具调用严格按接收顺序排列
     const mergedSegments = React.useMemo(() => {
-        if (!sortedSegments || sortedSegments.length === 0) {
-            return null;
+        // A. 收集显式追踪的段落 (Text & Tools)
+        // @ts-ignore
+        let items: any[] = message.contentSegments ? [...message.contentSegments] : [];
+        
+        // B. 如果没有显式段落（Fallback），根据当前内容解析
+        if (items.length === 0 && contentWithoutThinking) {
+            const { segments } = parseToolCalls(contentWithoutThinking);
+            items = segments.map((s, idx) => ({
+                ...s,
+                order: idx,
+                timestamp: Date.now() - (segments.length - idx) * 10
+            }));
         }
 
-        const merged: ContentSegment[] = [];
+        // C. 过滤掉已经作为 Thinking 渲染过的内容（防止重复显示）
+        const filteredItems = items.filter(seg => {
+            if (seg.type === 'text' && seg.content) {
+                // 如果这个片段就是 thinkingText，或者它的一部分，则过滤
+                if (thinkingText && (thinkingText.includes(seg.content) || seg.content.includes(thinkingText))) {
+                    return false;
+                }
+                // 过滤掉思考标记
+                if (seg.content.trim().startsWith('_(') && seg.content.trim().endsWith(')_')) {
+                    return false;
+                }
+            }
+            return true;
+        });
 
-        for (const segment of sortedSegments) {
-            if (segment.type === 'text') {
-                const lastMerged = merged[merged.length - 1];
+        // D. 集成所有未被段落追踪的"原生"工具调用
+        const trackedIds = new Set(filteredItems.filter(s => s.type === 'tool').map(s => s.toolCallId));
+        const untrackedToolCalls = message.toolCalls?.filter(tc => !trackedIds.has(tc.id)) || [];
+        
+        const untrackedSegments = untrackedToolCalls.map(tc => ({
+            type: 'tool' as const,
+            order: 999, 
+            timestamp: (tc as any).timestamp || Date.now(),
+            toolCallId: tc.id
+        }));
+        
+        // E. 统一排序 (Priority: order -> timestamp)
+        // ⚡️ 工业级优化：在生成结束后，如果内容和工具是在极短时间内产生的，优先排工具
+        const sorted = [...filteredItems, ...untrackedSegments].sort((a, b) => {
+            // 如果都有有效的顺序
+            if (a.order !== undefined && b.order !== undefined && a.order < 999 && b.order < 999) {
+                return a.order - b.order;
+            }
+            
+            // 非流式状态下的权重微调
+            if (!effectivelyStreaming) {
+                const timeDiff = Math.abs(a.timestamp - b.timestamp);
+                if (timeDiff < 5000) { // 5秒内的视为同一批次
+                    if (a.type === 'tool' && b.type === 'text') return -1;
+                    if (a.type === 'text' && b.type === 'tool') return 1;
+                }
+            }
 
-                if (lastMerged && lastMerged.type === 'text') {
-                    // Merge adjacent text segments
-                    lastMerged.content += segment.content;
-                    lastMerged.timestamp = segment.timestamp; // Update timestamp to latest
+            return a.timestamp - b.timestamp;
+        });
+
+        // F. 归并相邻文本片段
+        const result: ContentSegment[] = [];
+        for (const seg of sorted) {
+            if (seg.type === 'text') {
+                const last = result[result.length - 1];
+                if (last && last.type === 'text') {
+                    last.content = (last.content || '') + (seg.content || '');
+                    last.timestamp = seg.timestamp;
                 } else {
-                    // Create new text segment
-                    merged.push({ ...segment });
+                    result.push({ ...seg });
                 }
             } else {
-                // Non-text segments (tool, etc.) are added as-is
-                merged.push(segment);
+                result.push(seg);
             }
         }
-
-        return merged;
-    }, [sortedSegments]);
-
+        return result;
+    }, [message.contentSegments, contentWithoutThinking, message.toolCalls, effectivelyStreaming, thinkingText]);
     let toolCallIndex = 0;
-
     // Helper to render Markdown WITHOUT syntax highlighting (for streaming mode)
     // 使用统一的 SimpleMarkdownRenderer（无语法高亮，性能优化）
     const renderMarkdownWithoutHighlight = useCallback((text: string, key: any) => {
@@ -551,7 +525,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         const processedText = processScanResult(text);
         return <SimpleMarkdownRenderer key={key} content={processedText} />;
     }, [processScanResult]);
-
     // 使用统一的 MarkdownRenderer（带语法高亮和代码折叠）
     // NOTE: Streaming detection is now handled at the CALL SITE, not inside this function
     // This function ALWAYS applies formatting (Markdown + syntax highlighting) when called
@@ -559,7 +532,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         if (part.type === 'text' && part.text) {
             // Process scan result i18n before rendering
             const processedText = processScanResult(part.text);
-
             // 使用统一的 MarkdownRenderer
             return (
                 <MarkdownRenderer
@@ -581,8 +553,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         }
         return null;
     }, [toggleBlock, processScanResult]);
-
-
     // 🔥 当应该隐藏气泡时（只有 toolCalls 但没有内容），直接渲染 ToolApproval
     if (shouldHideBubble) {
         return (
@@ -600,7 +570,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                             </div>
                         )}
                     </div>
-
                     {/* 直接渲染 ToolApproval 组件，不使用气泡容器 */}
                     <div className="flex-1 min-w-0">
                         {isAgent && (
@@ -625,7 +594,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             </div>
         );
     }
-
         return (
             <div className={`${styles.messageContainer} ${isUser ? styles.user : styles.assistant} group`} data-testid={`message-${message.id}`}>
                 <div className={`${styles.bubble} ${isUser ? styles.user : styles.assistant} ${styles.industrial}`}>
@@ -640,7 +608,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                             </button>
                         </div>
                     )}
-    
                     <div className="flex items-start gap-3">
                         {/* 精致头像 */}
                         <div className="shrink-0 mt-0.5">
@@ -658,134 +625,38 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 </div>
                             )}
                         </div>
-    
                                                                 <div className="flex-1 min-w-0 text-inherit">
-    
                                                                     {isAgent && (
-    
                                                                         <div className="flex items-center gap-1.5 mb-2">
-    
                                                                             <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-    
                                                                                 Agent Live
-    
                                                                             </span>
-    
                                                                         </div>
-    
                                                                     )}
-    
-                                            
-    
                                                                                             {/* 🔥 FIX v0.4.0: 智能思考折叠区 (Thinking Accordion) */}
-    
-                                            
-    
                                                                                             {thinkingText && (
-    
-                                            
-    
                                                                                                 <div className="mb-3">
-    
-                                            
-    
                                                                                                     <button 
-    
-                                            
-    
                                                                                                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
-    
-                                            
-    
                                                                                                         className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-blue-400 transition-colors uppercase tracking-widest group/think"
-    
-                                            
-    
                                                                                                     >
-    
-                                            
-    
                                                                                                         <div className={`transition-transform duration-200 ${isThinkingExpanded ? 'rotate-180' : ''}`}>
-    
-                                            
-    
                                                                                                             <ChevronDown size={10} />
-    
-                                            
-    
                                                                                                         </div>
-    
-                                            
-    
                                                                                                         <span>Thinking: {thinkingText.substring(0, 30)}{thinkingText.length > 30 ? '...' : ''}</span>
-    
-                                            
-    
                                                                                                         {effectivelyStreaming && !isThinkingExpanded && (
-    
-                                            
-    
                                                                                                             <div className="w-1 h-1 bg-blue-500 rounded-full animate-ping" />
-    
-                                            
-    
                                                                                                         )}
-    
-                                            
-    
                                                                                                     </button>
-    
-                                            
-    
-                                                                                                    
-    
-                                            
-    
                                                                                                     {isThinkingExpanded && (
-    
-                                            
-    
                                                                                                         <div className="mt-2 p-3 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-gray-400 leading-relaxed italic animate-in fade-in slide-in-from-top-1 duration-200">
-    
-                                            
-    
                                                                                                             {thinkingText}
-    
-                                            
-    
                                                                                                         </div>
-    
-                                            
-    
                                                                                                     )}
-    
-                                            
-    
                                                                                                 </div>
-    
-                                            
-    
                                                                                             )}
-    
-                                            
-    
-                                                                    
-    
-                                            
-    
                                                                                             {/* 如果内容为空且正在流式传输，显示骨架屏 */}
-    
-                                            
-    
                                                                                             {effectivelyStreaming && !contentWithoutThinking && !hasToolCalls && renderSkeleton()}
-    
-                                            
-    
-                                                                    
-    
-                                            
-    
-                        
                             {/* Batch Review Panel */}
                         {pendingCount > 1 && (
                             <div className="mb-3 p-2 bg-blue-900/20 rounded border border-blue-700/50 flex items-center justify-between">
@@ -810,7 +681,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 </div>
                             </div>
                         )}
-
                         {/* 🔥 撤销所有按钮 - 显示在有可回滚文件时 */}
                         {hasRollbackableFiles && (
                             <div className="mb-3 p-3 bg-amber-900/20 rounded border border-amber-700/50 flex items-center justify-between">
@@ -829,7 +699,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 </button>
                             </div>
                         )}
-
                         {/* References */}
                         {message.references && message.references.length > 0 && (
                             <div className="mb-3 p-2 bg-gray-800 rounded border border-gray-600">
@@ -851,7 +720,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 </div>
                             </div>
                         )}
-
                         {/* v0.2.6: 任务拆解结果展示（工业级渲染） */}
                         {taskBreakdown ? (
                             <TaskBreakdownViewer
@@ -910,23 +778,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                                     }
                                                     return null;
                                                 })}
-
-                                                {/* 🔥 FIX v0.3.9.3: 渲染未在 contentSegments 中追踪的"原生"工具调用（如 Agent 调用的工具） */}
-                                                {(() => {
-                                                    const trackedIds = new Set(mergedSegments.filter(s => s.type === 'tool').map(s => s.toolCallId));
-                                                    const untrackedToolCalls = message.toolCalls?.filter(tc => !trackedIds.has(tc.id)) || [];
-                                                    
-                                                    return untrackedToolCalls.map(toolCall => (
-                                                        <ToolApproval
-                                                            key={`untracked-streaming-tool-${toolCall.id}`}
-                                                            toolCall={toolCall}
-                                                            onApprove={() => onApprove(message.id, toolCall.id)}
-                                                            onReject={() => onReject(message.id, toolCall.id)}
-                                                            isLatestBashTool={isLatestBashTool(toolCall.id)}
-                                                            message={message}
-                                                        />
-                                                    ));
-                                                })()}
                                             </>
                                         );
                                     } else {
@@ -958,23 +809,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                                     }
                                                     return null;
                                                 })}
-
-                                                {/* 🔥 FIX v0.3.9.3: 非流式状态下也需要渲染未追踪的工具调用 */}
-                                                {(() => {
-                                                    const trackedIds = new Set(mergedSegments.filter(s => s.type === 'tool').map(s => s.toolCallId));
-                                                    const untrackedToolCalls = message.toolCalls?.filter(tc => !trackedIds.has(tc.id)) || [];
-                                                    
-                                                    return untrackedToolCalls.map(toolCall => (
-                                                        <ToolApproval
-                                                            key={`untracked-tool-${toolCall.id}`}
-                                                            toolCall={toolCall}
-                                                            onApprove={() => onApprove(message.id, toolCall.id)}
-                                                            onReject={() => onReject(message.id, toolCall.id)}
-                                                            isLatestBashTool={isLatestBashTool(toolCall.id)}
-                                                            message={message}
-                                                        />
-                                                    ));
-                                                })()}
                                             </>
                                         );
                                     }
@@ -984,12 +818,27 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 (() => {
                                     // 1. Pre-calculate tool indexing to support both interleaved and native tools
                                     let currentToolIndex = 0;
-
                                     // 2. Determine which tool calls are "native" (not interleaved in text)
                                     // If parseToolCalls found tool segments, we interleave.
-                                    // Otherwise, we treat them as native and show them at the top.
+                                    // Otherwise, we treat them as native and show them in order.
                                     const hasInterleavedTools = stringSegments.some(s => s.type === 'tool');
-
+                                    // 🔥 FIX v0.4.0: Fallback 模式下的全局排序
+                                    const fallbackOrderedSegments = React.useMemo(() => {
+                                        let items: any[] = stringSegments.map((s, idx) => ({ 
+                                            ...s, 
+                                            order: idx, 
+                                            timestamp: Date.now() - (stringSegments.length - idx) * 10 // Mock timestamp
+                                        }));
+                                        if (!hasInterleavedTools && message.toolCalls) {
+                                            const nativeTools = message.toolCalls.map(tc => ({
+                                                type: 'tool' as const,
+                                                toolCall: tc,
+                                                timestamp: (tc as any).timestamp || (Date.now() - 5) // Tools usually before summary
+                                            }));
+                                            items = [...items, ...nativeTools].sort((a, b) => a.timestamp - b.timestamp);
+                                        }
+                                        return items;
+                                    }, [stringSegments, message.toolCalls, hasInterleavedTools]);
                                     // 3. 如果是简单的文本消息（无工具），直接渲染完整内容
                                     if (!hasInterleavedTools && (!message.toolCalls || message.toolCalls.length === 0)) {
                                         if (effectivelyStreaming) {
@@ -999,15 +848,18 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                         }
                                         return renderContentPart({ type: 'text', text: contentWithoutThinking }, 0, false);
                                     }
-
                                     return (
                                         <>
-                                            {/* Render Segments (Text and potentially interleaved tools) FIRST */}
-                                            {stringSegments.map((segment, index) => {
+                                            {/* Render globally ordered fallback items */}
+                                            {fallbackOrderedSegments.map((segment, index) => {
                                                 if (segment.type === 'tool') {
-                                                    const storedToolCall = message.toolCalls && message.toolCalls[currentToolIndex];
-                                                    currentToolIndex++;
-                                                    const displayToolCall = storedToolCall || segment.toolCall;
+                                                    const storedToolCall = message.toolCalls && (segment.toolCall || message.toolCalls[currentToolIndex]);
+                                                    if (!hasInterleavedTools) {
+                                                        // Native tool
+                                                    } else {
+                                                        currentToolIndex++;
+                                                    }
+                                                    const displayToolCall = storedToolCall;
                                                     if (!displayToolCall) return null;
                                                     return (
                                                         <ToolApproval
@@ -1032,42 +884,15 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                                     return renderContentPart({ type: 'text', text: content }, index, effectivelyStreaming);
                                                 }
                                             })}
-
-                                            {/* Render remaining Native Tool Calls (if any were missed in interleaved mode) */}
-                                            {hasInterleavedTools && message.toolCalls && message.toolCalls.slice(currentToolIndex).map(toolCall => (
-                                                <ToolApproval
-                                                    key={toolCall.id}
-                                                    toolCall={toolCall}
-                                                    onApprove={() => onApprove(message.id, toolCall.id)}
-                                                    onReject={() => onReject(message.id, toolCall.id)}
-                                                    isLatestBashTool={isLatestBashTool(toolCall.id)}
-                                                    message={message}
-                                                />
-                                            ))}
-
-                                            {/* Render Native Tool Calls AFTER text (at the bottom)
-                                                This puts tools BELOW the text content */}
-                                            {!hasInterleavedTools && message.toolCalls && message.toolCalls.map(toolCall => (
-                                                <ToolApproval
-                                                    key={toolCall.id}
-                                                    toolCall={toolCall}
-                                                    onApprove={() => onApprove(message.id, toolCall.id)}
-                                                    onReject={() => onReject(message.id, toolCall.id)}
-                                                    isLatestBashTool={isLatestBashTool(toolCall.id)}
-                                                    message={message}
-                                                />
-                                            ))}
                                         </>
                                     );
                                 })()
                             )
                         )}
-
                         {/* Explore Agent Progress */}
                         {(message as any).exploreProgress && (
                             <ExploreProgressNew progress={(message as any).exploreProgress} mode="minimal" />
                         )}
-
                         {/* ✅ Task Completion Banner - 任务完成横幅，显示在消息末尾 */}
                         {/* ⚡️ FIX: 添加占位包装器，避免横幅突然出现导致的布局跳动 */}
                         <div className="min-h-[24px] transition-opacity duration-300">
@@ -1087,7 +912,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 <div className="h-4" aria-hidden="true" />  // 占位高度
                             )}
                         </div>
-
                         {/* ✅ Task Summary - 显示生成完成后的总结信息 */}
                         {/* ⚡️ FIX: 添加占位包装器，避免组件突然出现导致的布局跳动 */}
                         <div className="min-h-[60px] transition-opacity duration-300">
@@ -1097,7 +921,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 <div className="h-12" aria-hidden="true" />  // 占位高度
                             )}
                         </div>
-
                         {/* v0.2.8: Composer 2.0 - 查看 Diff 按钮 */}
                         {hasFileChanges && onOpenComposer && !effectivelyStreaming && (
                             <div className="mt-3 flex items-center gap-2">
@@ -1115,7 +938,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 </button>
                             </div>
                         )}
-
                         {/* v0.2.9: Actions rendering - Apply Fix buttons for patch actions */}
                         {(message as any).actions && Array.isArray((message as any).actions) && (message as any).actions.length > 0 && !effectivelyStreaming && (
                             <div className="mt-3 space-y-2">
@@ -1169,7 +991,6 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                                                         try {
                                                                             const currentContent = mockFS.get(action.filePath) || '';
                                                                             let newContent = currentContent;
-
                                                                             // Parse the unified diff format: <<<<<<< SEARCH ======= >>>>>>> REPLACE
                                                                             const searchMatch = action.patch.match(/<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/);
                                                                             if (searchMatch) {
