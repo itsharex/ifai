@@ -11,6 +11,7 @@ import { useSettingsStore } from './settingsStore';
 import { useAgentStore } from './agentStore';
 
 import { useThreadStore } from './threadStore';
+import { useSkillStore } from './skillStore';
 
 import { invoke } from '@tauri-apps/api/core';
 
@@ -2357,17 +2358,12 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     try {
 
         await invoke('ai_chat', {
-
             providerConfig,
-
             messages: msgHistory,
-
             eventId: assistantMsgId,
-
             projectRoot: useFileStore.getState().rootPath,
-
-            enableTools: true
-
+            enableTools: true,
+            active_skill_ids: useSkillStore.getState().activeSkillIds
         });
 
     } catch (e) {
@@ -2765,11 +2761,27 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
     });
 
-    try {
+        try {
 
-        await invoke('ai_chat', { providerConfig: backendConfig, messages: msgHistory, eventId: assistantMsgId, projectRoot: useFileStore.getState().rootPath, enableTools: true });
+            await invoke('ai_chat', { 
 
-    } catch (e) {
+                providerConfig: backendConfig, 
+
+                messages: msgHistory, 
+
+                eventId: assistantMsgId, 
+
+                projectRoot: useFileStore.getState().rootPath, 
+
+                enableTools: true,
+
+                active_skill_ids: useSkillStore.getState().activeSkillIds
+
+            });
+
+        } catch (e) {
+
+    
 
         coreUseChatStore.setState(s => ({ messages: s.messages.map(m => m.id === assistantMsgId ? { ...m, content: `❌ Error: ${e}` } : m), isLoading: false }));
 

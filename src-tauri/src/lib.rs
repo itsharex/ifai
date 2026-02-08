@@ -172,8 +172,23 @@ async fn ai_chat(
     event_id: String,
     enable_tools: Option<bool>,
     project_root: Option<String>,
+    active_skill_ids: Option<Vec<String>>,
 ) -> Result<(), String> {
-    println!("[AI Chat] Entry - project_root: {:?}, event_id: {}", project_root, event_id);
+    println!("[AI Chat] Entry - project_root: {:?}, event_id: {}, active_skills: {:?}", project_root, event_id, active_skill_ids);
+    
+    // Apply Skills if available
+    #[cfg(feature = "commercial")]
+    if let (Some(ref root), Some(ref skill_ids)) = (&project_root, &active_skill_ids) {
+        let mut skills_path = std::path::PathBuf::from(root);
+        skills_path.push(".ifai");
+        skills_path.push("skills");
+        
+        messages = ifainew_core::ai::apply_skills_to_messages(
+            messages,
+            skill_ids,
+            &skills_path
+        );
+    }
     println!("[AI Chat] Received {} messages", messages.len());
 
     // Ensure all messages have unique IDs
@@ -1001,7 +1016,17 @@ pub fn run() {
             multimodal::read_file_as_base64,
             // v0.3.3 新增：工具分类系统
             tool_classification::tool_classify,
-            tool_classification::tool_batch_classify
+            tool_classification::tool_batch_classify,
+            // v0.5.0 新增：技能系统
+            commands::skill_commands::get_available_skills,
+            // v0.2.8 新增：原子文件操作
+            commands::atomic_commands::atomic_write_start,
+            commands::atomic_commands::atomic_write_add_operation,
+            commands::atomic_commands::atomic_write_detect_conflicts,
+            commands::atomic_commands::atomic_write_commit,
+            commands::atomic_commands::atomic_write_rollback,
+            commands::atomic_commands::atomic_file_hash,
+            commands::atomic_commands::atomic_check_conflict,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
