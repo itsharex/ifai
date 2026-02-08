@@ -56,6 +56,7 @@ import { errorFixService, type ParsedError, type AIFixSuggestion, isFixableError
 import { ImageInput } from '../Multimodal';
 import type { ImageAttachment } from '../../types/multimodal';
 import { ToolClassificationIndicator } from '../ToolClassification';
+import { MessageSkeleton } from '../UI/Skeleton';
 
 interface AIChatProps {
   width?: number;

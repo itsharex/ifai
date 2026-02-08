@@ -1,24 +1,44 @@
-import React, { useEffect, Fragment, useState } from 'react';
+import React, { useEffect, Fragment, useState, Suspense } from 'react';
+import { ModalSkeleton, MessageSkeleton } from './components/UI/Skeleton';
+const CommandPalette = React.lazy(() => import('./components/CommandPalette/CommandPalette').then(m => ({ default: m.CommandPalette })));
+const CommandBar = React.lazy(() => import('./components/CommandBar').then(m => ({ default: m.CommandBar })));
+const SettingsModal = React.lazy(() => import('./components/Settings/SettingsModal').then(m => ({ default: m.SettingsModal })));
+const KeyboardShortcutsModal = React.lazy(() => import('./components/Help/KeyboardShortcutsModal').then(m => ({ default: m.KeyboardShortcutsModal })));
+const GlobalAgentMonitor = React.lazy(() => import('./components/AIChat/GlobalAgentMonitor').then(m => ({ default: m.GlobalAgentMonitor })));
+const PerformancePanel = React.lazy(() => import('./components/DevTools/PerformancePanel').then(m => ({ default: m.PerformancePanel })));
+const CacheStatsPanel = React.lazy(() => import('./components/PerformanceMonitor/CacheStatsPanel').then(m => ({ default: m.CacheStatsPanel })));
+const WelcomeDialog = React.lazy(() => import('./components/Onboarding').then(m => ({ default: m.WelcomeDialog })));
+const LocalModelDownload = React.lazy(() => import('./components/Onboarding').then(m => ({ default: m.LocalModelDownload })));
+const APIKeyGuideDialog = React.lazy(() => import('./components/Onboarding').then(m => ({ default: m.APIKeyGuideDialog })));
+const OnboardingTour = React.lazy(() => import('./components/Onboarding/OnboardingTour').then(m => ({ default: m.OnboardingTour })));
+const CodeReviewModal = React.lazy(() => import('./components/CodeReview').then(m => ({ default: m.CodeReviewModal })));
+const ReviewHistoryPanel = React.lazy(() => import('./components/CodeReview').then(m => ({ default: m.ReviewHistoryPanel })));
+const InlineEditWidget = React.lazy(() => import('./components/InlineEdit').then(m => ({ default: m.InlineEditWidget })));
+const DiffEditorModal = React.lazy(() => import('./components/InlineEdit').then(m => ({ default: m.DiffEditorModal })));
+const ToolClassificationTestPage = React.lazy(() => import('./components/Debug/ToolClassificationTestPage').then(m => ({ default: m.ToolClassificationTestPage })));
+const CodeSmellPanel = React.lazy(() => import('./components/CodeAnalysis/CodeSmellPanel').then(m => ({ default: m.CodeSmellPanel })));
+const RefactoringPreviewPanel = React.lazy(() => import('./components/Refactoring/RefactoringPreviewPanel').then(m => ({ default: m.RefactoringPreviewPanel })));
+
 import { Titlebar } from './components/Layout/Titlebar';
 import { Sidebar } from './components/Layout/Sidebar';
 import { Statusbar } from './components/Layout/Statusbar';
 import { SplitPaneContainer } from './components/Layout/SplitPaneContainer';
 import { TabBar } from './components/Editor/TabBar';
 import { AIChat } from './components/AIChat/AIChat';
-import { CommandPalette } from './components/CommandPalette/CommandPalette';
-import { CommandBar } from './components/CommandBar';
+
+
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
 import { PromptManager } from './components/PromptManager/PromptManager';
-import { SettingsModal } from './components/Settings/SettingsModal';
-import { GlobalAgentMonitor } from './components/AIChat/GlobalAgentMonitor';
-import { PerformancePanel } from './components/DevTools/PerformancePanel';
-import { CacheStatsPanel } from './components/PerformanceMonitor/CacheStatsPanel';
-import { WelcomeDialog, LocalModelDownload, APIKeyGuideDialog } from './components/Onboarding';
-import { OnboardingTour } from './components/Onboarding/OnboardingTour';
-import { ToolClassificationTestPage } from './components/Debug/ToolClassificationTestPage';
-import { CodeReviewModal, ReviewHistoryPanel } from './components/CodeReview';
-import { InlineEditWidget, DiffEditorModal } from './components/InlineEdit';
-import { KeyboardShortcutsModal } from './components/Help/KeyboardShortcutsModal';
+
+
+
+
+
+
+
+
+
+
 
 // 🔥 E2E 检测：使用构建时环境变量，避免影响生产环境
 const isE2EEnvironment = import.meta.env.VITE_TEST_ENV === 'e2e';
@@ -31,10 +51,10 @@ import { useInlineEditStore } from './stores/inlineEditStore';
 import { useHelpStore } from './stores/helpStore';
 // v0.3.0: Code Analysis Panel
 import { useCodeSmellStore } from './stores/codeSmellStore';
-import { CodeSmellPanel } from './components/CodeAnalysis/CodeSmellPanel';
+
 // v0.3.0: Refactoring Panel
 import { useRefactoringStore } from './stores/refactoringStore';
-import { RefactoringPreviewPanel } from './components/Refactoring/RefactoringPreviewPanel';
+
 import { shallow } from 'zustand/shallow';
 // v0.3.3: Debug panels
 import { useDebugStore } from './stores/debugStore';
@@ -773,9 +793,9 @@ function App() {
       </div>
       
       <Fragment>
-        <CommandPalette onSelect={handleSelectFileFromPalette} />
-        <CommandBar />
-        <SettingsModal />
+        <Suspense fallback={null}><CommandPalette onSelect={handleSelectFileFromPalette} /></Suspense>
+        <Suspense fallback={null}><CommandBar /></Suspense>
+        <Suspense fallback={<ModalSkeleton />}><SettingsModal /></Suspense>
         <KeyboardShortcutsModal
           isOpen={isKeyboardShortcutsOpen}
           onClose={closeKeyboardShortcuts}

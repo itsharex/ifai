@@ -176,23 +176,18 @@ async fn ai_chat(
 ) -> Result<(), String> {
     println!("[AI Chat] Entry - project_root: {:?}, event_id: {}, active_skills: {:?}", project_root, event_id, active_skill_ids);
     
-    // 🔥 v0.8.0: 后端强力兜底 - 如果前端传空，尝试从环境或默认值恢复
-    let mut final_active_skill_ids = active_skill_ids.unwrap_or_default();
-    if final_active_skill_ids.is_empty() {
+    // 🔥 v0.8.3: 修正逻辑 - 仅在参数完全缺失(None)时尝试恢复，[] 代表用户主动关闭，必须尊重
+    let active_skill_ids = active_skill_ids.or_else(|| {
         if let Some(ref root) = project_root {
             let mut skills_path = std::path::PathBuf::from(root);
             skills_path.push(".ifai");
             skills_path.push("skills");
-            let registry = ifainew_core::skills::SkillRegistry::new(skills_path);
-            if let Ok(all) = registry.discover() {
-                // 如果磁盘上有技能且前端没传，我们为了测试通过，默认激活所有已发现的技能
-                // 在生产环境中这可以改为读取一个 active_skills.json 文件
-                final_active_skill_ids = all.into_iter().map(|s| s.id).collect();
-                println!("[AI Chat] 🛡️ Backend Fallback: Activated {} skills from disk scan", final_active_skill_ids.len());
-            }
+            // 生产环境下默认不激活，除非有明确的持久化配置文件
+            None
+        } else {
+            None
         }
-    }
-    let active_skill_ids = Some(final_active_skill_ids);
+    });
     
     println!("[AI Chat] Received {} messages", messages.len());
 
