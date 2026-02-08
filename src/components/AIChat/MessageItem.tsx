@@ -480,16 +480,25 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             toolCallId: tc.id
         }));
         
-        // E. 统一排序 (Priority: Action-First in non-streaming mode)
+        // E. 统一排序 (Priority: Action-First Always)
         const sorted = [...filteredItems, ...untrackedSegments].sort((a, b) => {
-            // 🔥 工业级优化：在生成结束后，强行让工具排在所有文本前面
-            // 我们必须先于 order 判断执行此逻辑，否则 order 会覆盖权重
-            if (!effectivelyStreaming) {
-                if (a.type === 'tool' && b.type === 'text') return -1;
-                if (a.type === 'text' && b.type === 'tool') return 1;
+            // 🔥 工业级优化：强行让工具排在大部分文本前面（Thinking 除外）
+            // 这解决了 AI 先说一堆废话再执行工具导致的视觉混乱
+            // 我们在流式状态下也开启此逻辑，但允许极短的“前导语”留在上方
+            if (a.type === 'tool' && b.type === 'text') {
+                const isIntro = b.content && b.content.length < 40 && 
+                               !b.content.includes('已完成') && 
+                               !b.content.includes('重构');
+                return isIntro ? 1 : -1;
+            }
+            if (a.type === 'text' && b.type === 'tool') {
+                const isIntro = a.content && a.content.length < 40 && 
+                               !a.content.includes('已完成') && 
+                               !a.content.includes('重构');
+                return isIntro ? -1 : 1;
             }
 
-            // 如果都有有效的顺序（流式传输中尊重 order 以维持打字机感）
+            // 如果都有有效的顺序（用于同类型片段之间的排序）
             if (a.order !== undefined && b.order !== undefined && a.order < 999 && b.order < 999) {
                 return a.order - b.order;
             }

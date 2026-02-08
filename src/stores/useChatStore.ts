@@ -1039,14 +1039,14 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     if (textChunk) {
                         const safeTextChunk = typeof textChunk === 'string' ? textChunk : JSON.stringify(textChunk);
                         newMsg.content = (newMsg.content || '') + safeTextChunk;
-                        // @ts-ignore
-                        const order = newMsg.contentSegments.length;
+                        // 🔥 FIX: 不可变更新 contentSegments，防止黑屏
+                        const order = (newMsg.contentSegments || []).length;
                         const startPos = (newMsg.content || '').length - textChunk.length;
                         // @ts-ignore
-                        newMsg.contentSegments.push({
+                        newMsg.contentSegments = [...(newMsg.contentSegments || []), {
                             type: 'text' as const, order, timestamp: Date.now(),
                             content: textChunk, startPos, endPos: newMsg.content.length
-                        });
+                        }];
                     }
 
                     if (toolCallUpdate) {
@@ -1102,10 +1102,10 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                                 };
                                 // @ts-ignore
                                 newMsg.toolCalls = [...existingCalls, newToolCall];
+                                // 🔥 FIX: 不可变更新 contentSegments
+                                const order = (newMsg.contentSegments || []).length;
                                 // @ts-ignore
-                                const order = newMsg.contentSegments.length;
-                                // @ts-ignore
-                                newMsg.contentSegments.push({ type: 'tool' as const, order, timestamp: Date.now(), toolCallId: newToolCallId });
+                                newMsg.contentSegments = [...(newMsg.contentSegments || []), { type: 'tool' as const, order, timestamp: Date.now(), toolCallId: newToolCallId }];
                             }
                         }
                     }
@@ -1547,9 +1547,11 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
         };
     });
 
-    // 4. Setup Listeners (Duplicate logic from patchedSendMessage - refactoring would be better but keeping it self-contained for patch)
-    // const { listen } = await import('@tauri-apps/api/event');
-    
+    // 4. Setup Listeners
+    // 🔥 FIX v0.4.0: 引入高性能缓冲渲染机制
+    let renderRequested = false;
+    let localMessagesBuffer: Message[] = [...coreUseChatStore.getState().messages];
+
     const unlistenStatus = await listen<string>(`${assistantMsgId}_status`, (event) => {
         const { messages } = coreUseChatStore.getState();
         const lastAssistantMsg = messages.find(m => m.id === assistantMsgId);
@@ -1564,7 +1566,6 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
     });
 
     const unlistenStream = await listen<string>(assistantMsgId, (event) => {
-        const { messages } = coreUseChatStore.getState();
         let textChunk = '';
         let toolCallUpdate: any = null;
 
@@ -1576,18 +1577,12 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
             if (typeof rawPayload === 'object') {
                 if (rawPayload.type === 'content' && rawPayload.content) {
                     const content = String(rawPayload.content);
-
-                    // 🔥 FIX: 过滤掉本地模型工具执行摘要
                     const isLocalModelToolSummary =
                         content.includes('[Local Model] Completed in') ||
                         (content.includes('[OK] ') && content.includes('ms)\n{')) ||
                         (rawPayload.metadata?.source === 'local_model' && content.includes('[OK]'));
 
-                    if (isLocalModelToolSummary) {
-                        console.log('[Chat] 🚫 过滤掉本地模型工具执行摘要，避免重复显示');
-                        return;
-                    }
-
+                    if (isLocalModelToolSummary) return;
                     textChunk = content;
                 } else if (rawPayload.type === 'tool_call' && rawPayload.toolCall) {
                     toolCallUpdate = rawPayload.toolCall;
@@ -1597,18 +1592,12 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
                     const parsed = JSON.parse(rawPayload);
                     if (parsed && parsed.type === 'content' && parsed.content) {
                         const content = String(parsed.content);
-
-                        // 🔥 FIX: 过滤掉本地模型工具执行摘要
                         const isLocalModelToolSummary =
                             content.includes('[Local Model] Completed in') ||
                             (content.includes('[OK] ') && content.includes('ms)\n{')) ||
                             (parsed.metadata?.source === 'local_model' && content.includes('[OK]'));
 
-                        if (isLocalModelToolSummary) {
-                            console.log('[Chat] 🚫 过滤掉本地模型工具执行摘要（字符串解析）');
-                            return;
-                        }
-
+                        if (isLocalModelToolSummary) return;
                         textChunk = content;
                     } else if (parsed && parsed.type === 'tool_call' && parsed.toolCall) {
                         toolCallUpdate = parsed.toolCall;
@@ -1622,18 +1611,12 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
                                     const obj = JSON.parse(objects[i]);
                                     if (obj && obj.type === 'content' && obj.content) {
                                         const content = String(obj.content);
-
-                                        // 🔥 FIX: 过滤掉本地模型工具执行摘要（拼接 JSON 模式）
                                         const isLocalModelToolSummary =
                                             content.includes('[Local Model] Completed in') ||
                                             (content.includes('[OK] ') && content.includes('ms)\n{')) ||
                                             (obj.metadata?.source === 'local_model' && content.includes('[OK]'));
 
-                                        if (isLocalModelToolSummary) {
-                                            console.log('[Chat/GenerateResponse] 🚫 过滤掉本地模型工具执行摘要（拼接 JSON）');
-                                            continue;  // 跳过这个对象，继续尝试下一个
-                                        }
-
+                                        if (isLocalModelToolSummary) continue;
                                         textChunk = content;
                                         break;
                                     }
@@ -1648,131 +1631,95 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
         }
 
         if (textChunk || toolCallUpdate) {
-            const updatedMessages = messages.map(m => {
+            localMessagesBuffer = localMessagesBuffer.map(m => {
                 if (m.id === assistantMsgId) {
                     const newMsg = { ...m };
+                    
+                    // 🔥 FIX: 彻底消除 Mutation，不可变更新 contentSegments
+                    newMsg.contentSegments = m.contentSegments ? [...m.contentSegments] : [];
+
                     if (textChunk) {
-                        // Ensure textChunk is a string (prevent [object Object])
                         const safeTextChunk = typeof textChunk === 'string' ? textChunk : JSON.stringify(textChunk);
                         newMsg.content = (newMsg.content || '') + safeTextChunk;
+                        
+                        // 🔥 FIX: 不可变更新，并赋予顺序
+                        const order = newMsg.contentSegments.length;
+                        const startPos = (newMsg.content || '').length - textChunk.length;
+                        newMsg.contentSegments = [...newMsg.contentSegments, {
+                            type: 'text' as const, order, timestamp: Date.now(),
+                            content: textChunk, startPos, endPos: newMsg.content.length
+                        }];
                     }
-                    if (toolCallUpdate) {
-                        console.log('[Chat/GenerateResponse] Received tool_call event:', toolCallUpdate);
-                        const toolName = toolCallUpdate.function?.name || toolCallUpdate.tool;
-                        console.log('[Chat/GenerateResponse] Tool name:', toolName);
-                        const newArgsChunk = toolCallUpdate.function?.arguments || '';
 
+                    if (toolCallUpdate) {
+                        const toolName = toolCallUpdate.function?.name || toolCallUpdate.tool;
+                        const newArgsChunk = toolCallUpdate.function?.arguments || '';
                         const existingCalls = newMsg.toolCalls || [];
-                        // 🔥 FIX: DeepSeek sends subsequent chunks with id=null, so we need to match by index as well
-                        const existingIndex = existingCalls.findIndex(tc => {
-                            // First try to match by id
-                            if (toolCallUpdate.id && tc.id === toolCallUpdate.id) {
-                                return true;
-                            }
-                            // Fallback: match by index when id is null (DeepSeek API behavior)
-                            if (toolCallUpdate.id === null && toolCallUpdate.index !== null) {
-                                // Find call with matching index
-                                return (tc as any).index === toolCallUpdate.index;
-                            }
-                            return false;
-                        });
+                        const existingIndex = existingCalls.findIndex(tc => (toolCallUpdate.id && tc.id === toolCallUpdate.id) || (toolCallUpdate.id === null && (tc as any).index === toolCallUpdate.index));
 
                         if (existingIndex !== -1) {
                             const existingCall = existingCalls[existingIndex];
                             const prevArgsString = (existingCall as any).function?.arguments || '';
                             const updatedArgsString = prevArgsString + newArgsChunk;
-
                             let parsedArgs: any;
                             try {
                                 parsedArgs = JSON.parse(updatedArgsString);
                             } catch (e) {
                                 parsedArgs = { ...existingCall.args };
-
-                                // Safety check: Ensure updatedArgsString is a string before calling match
                                 const safeArgsString = String(updatedArgsString);
                                 const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
                                 if (contentMatch) {
-                                    let content = contentMatch[1];
-                                    content = content
-                                        .replace(/\\n/g, '\n')
-                                        .replace(/\\r/g, '\r')
-                                        .replace(/\\t/g, '\t')
-                                        .replace(/\\"/g, '"')
-                                        .replace(/\\\\/g, '\\');
+                                    let content = contentMatch[1].replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
                                     parsedArgs.content = content;
                                 }
-
                                 const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"/);
-                                if (relPathMatch) {
-                                    parsedArgs.rel_path = relPathMatch[1];
-                                }
+                                if (relPathMatch) parsedArgs.rel_path = relPathMatch[1];
                             }
-
-                                                        const updatedCalls = [...existingCalls] as any[];
-
-                                                        updatedCalls[existingIndex] = {
-
-                                                            ...existingCall,
-
-                                                            id: toolCallUpdate.id || existingCall.id,
-
-                                                            tool: toolName || (existingCall as any).tool,
-
-                                                            args: parsedArgs,
-
-                                                            function: {
-
-                                                                name: toolName || (existingCall as any).function?.name,
-
-                                                                arguments: updatedArgsString
-
-                                                            },
-
-                                                            isPartial: true
-
-                                                        };
+                            const updatedCalls = [...existingCalls] as any[];
+                            updatedCalls[existingIndex] = {
+                                ...existingCall,
+                                id: toolCallUpdate.id || existingCall.id,
+                                tool: toolName || (existingCall as any).tool,
+                                args: parsedArgs,
+                                function: { name: toolName || (existingCall as any).function?.name, arguments: updatedArgsString },
+                                isPartial: true
+                            };
                             newMsg.toolCalls = updatedCalls;
                         } else {
-                            // New tool call
-                            // FILTER: Skip invalid tool names (empty, "unknown", whitespace)
-                            // This prevents "unknown" tool calls from cluttering the UI
-                            const isValidToolName = toolName &&
-                                toolName !== 'unknown' &&
-                                toolName.trim().length > 0;
-
-                            if (!isValidToolName) {
-                                console.warn(`[useChatStore] Skipping invalid tool call: tool="${toolName}", chunk="${newArgsChunk?.substring(0, 50)}"`);
-                                // Skip this tool call, don't add it to the message
-                                return newMsg;
+                            const isValidToolName = toolName && toolName !== 'unknown' && toolName.trim().length > 0;
+                            if (isValidToolName) {
+                                let initialArgs: any;
+                                try { initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {}; } catch { initialArgs = {}; }
+                                const newToolCallId = toolCallUpdate.id || crypto.randomUUID();
+                                const newToolCall = {
+                                    id: newToolCallId, type: 'function' as const, tool: toolName, args: initialArgs,
+                                    function: { name: toolName, arguments: newArgsChunk },
+                                    status: 'pending' as const, isPartial: true, index: toolCallUpdate.index
+                                };
+                                // @ts-ignore
+                                newMsg.toolCalls = [...existingCalls, newToolCall];
+                                
+                                // 🔥 FIX: 追踪工具顺序，开启排序
+                                const order = newMsg.contentSegments.length;
+                                newMsg.contentSegments = [...newMsg.contentSegments, {
+                                    type: 'tool' as const, order, timestamp: Date.now(), toolCallId: newToolCallId
+                                }];
                             }
-
-                            let initialArgs: any;
-                            try {
-                                initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {};
-                            } catch (e) {
-                                initialArgs = {};
-                            }
-
-                            const newToolCall = {
-                                id: toolCallUpdate.id || crypto.randomUUID(),
-                                type: 'function' as const,
-                                tool: toolName,  // Use toolName directly, no default
-                                args: initialArgs,
-                                function: { name: toolName, arguments: newArgsChunk },  // Use toolName directly, no default
-                                status: 'pending' as const,
-                                isPartial: true,
-                                // 🔥 FIX: Store index for matching subsequent chunks (DeepSeek API sends id=null)
-                                index: toolCallUpdate.index
-                            };
-                            // @ts-ignore
-                            newMsg.toolCalls = [...existingCalls, newToolCall];
                         }
                     }
                     return newMsg;
                 }
                 return m;
             });
-            coreUseChatStore.setState({ messages: updatedMessages });
+
+            // 🔥 v0.4.0 节流渲染
+            if (!renderRequested) {
+                renderRequested = true;
+                requestAnimationFrame(() => {
+                    coreUseChatStore.setState({ messages: [...localMessagesBuffer] });
+                    renderRequested = false;
+                });
+            }
         }
     });
 
