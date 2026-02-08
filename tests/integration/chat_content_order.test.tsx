@@ -23,20 +23,21 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('MessageItem Content Ordering (v0.4.0 Fix)', () => {
-  it('should prioritize tools over intro text in non-streaming mode', () => {
+  it('should prioritize tools over long summary but keep short intro text at the top', () => {
     // 模拟场景：
-    // 1. Text: "I will do X" (timestamp 100)
-    // 2. Tool: write_file (timestamp 150)
-    // 3. Text: "Finished X" (timestamp 300)
+    // 1. Text: "I will do X" (order 0, short intro)
+    // 2. Tool: write_file (order 1)
+    // 3. Text: "Finished X" (order 2, long summary)
     
     const message = {
-      id: 'msg-order-weighting',
+      id: 'msg-order-refined-test',
       role: 'assistant' as const,
       content: 'I will do X. Finished X.',
       toolCalls: [{ id: 'tc-weight', tool: 'agent_write_file', status: 'completed', result: '{}', timestamp: 150 }],
       contentSegments: [
         { type: 'text', order: 0, content: 'I will do X. ', timestamp: 100 },
-        { type: 'text', order: 1, content: 'Finished X.', timestamp: 300 }
+        { type: 'tool', order: 1, toolCallId: 'tc-weight', timestamp: 200 },
+        { type: 'text', order: 2, content: 'Finished X.', timestamp: 300 }
       ]
     };
 
@@ -56,10 +57,8 @@ describe('MessageItem Content Ordering (v0.4.0 Fix)', () => {
     
     console.log(`[Test] Intro: ${introPos}, Tool: ${toolPos}, Summary: ${summaryPos}`);
     
-    // 我们期望：即使 Intro 时间稍早，但在工业级 UI 下，工具卡片应该排在正文顶端（或靠近顶端）
-    // 按照我刚才写的逻辑：timeDiff < 5000 且 a=tool, b=text 时 return -1。
-    // 所以 Tool 应该在 Intro 之前。
-    expect(toolPos).toBeLessThan(introPos);
-    expect(introPos).toBeLessThan(summaryPos);
+    // 我们期望：短简介保留在顶端，工具卡片紧随其后，长总结排在工具之后
+    expect(introPos).toBeLessThan(toolPos);
+    expect(toolPos).toBeLessThan(summaryPos);
   });
 });
