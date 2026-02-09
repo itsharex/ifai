@@ -5,7 +5,7 @@
 import { useChatStore as coreUseChatStore, registerStores, type Message } from 'ifainew-core';
 
 import { useFileStore } from './fileStore';
-
+import { readFileContent } from '../utils/fileSystem';
 import { useSettingsStore } from './settingsStore';
 
 import { useAgentStore } from './agentStore';
@@ -628,8 +628,28 @@ async function selectMessagesForContext(
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string) => {
 
     const callId = crypto.randomUUID().slice(0, 8);
-
     console.log(`>>> [${callId}] patchedSendMessage called:`, typeof content === 'string' ? content.slice(0, 50) : 'array');
+
+    // 🚀 v0.3.5: 引用物理化 - 符号级精准注入
+    let enrichedContent = typeof content === 'string' ? content : '';
+    if (typeof content === 'string' && content.includes('[#')) {
+        const refMatches = [...content.matchAll(/\[#(.*?)\]\((.*?)(?::(\d+)-(\d+))?\)/g)];
+        if (refMatches.length > 0) {
+            console.log('[Chat] 🧠 GodMode: Loading ' + refMatches.length + ' references');
+            const contents = await Promise.all(refMatches.map(async (m) => {
+                const [name, path, start, end] = [m[1], m[2], m[3], m[4]];
+                try {
+                    const text = await readFileContent(path);
+                    if (start && end) {
+                        const snippet = text.split('\n').slice(parseInt(start) - 1, parseInt(end)).join('\n');
+                        return `\n\n--- SYMBOL: ${name} IN ${path} (Lines ${start}-${end}) ---\n${snippet}\n--- END ---`;
+                    }
+                    return `\n\n--- FILE: ${path} ---\n${text}\n--- END ---`;
+                } catch { return `\n[Error reading ${path}]`; }
+            }));
+            enrichedContent += contents.join('');
+        }
+    }
 
     // 追踪用户消息是否已添加，防止双气泡问题
 
@@ -1663,10 +1683,14 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     textChunk = content;
 
                 } else if (rawPayload.type === 'tool_call' && rawPayload.toolCall) {
-                    // 🔥 v0.9.25: 前端渲染断路器 - Vibe 模式禁止渲染工具卡片
+                    // 🔥 v0.5.0: 双模引擎渲染策略 - 只读工具允许在 Vibe 模式下穿透，以支持自动化背景探索
                     const editorMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
-                    if (editorMode === "vibe") {
-                        return;
+                    const toolName = rawPayload.toolCall.function?.name || rawPayload.toolCall.tool || '';
+                    const safeTools = ['agent_read_file', 'read_file', 'agent_list_directory', 'list_directory', 'agent_list_functions', 'list_functions', 'grep_search', 'search', 'List Directory', 'Read File'];
+                    const isSafe = safeTools.includes(toolName);
+
+                    if (editorMode === "vibe" && !isSafe) {
+                        return; // Vibe 模式依然拦截非安全工具
                     }
                     toolCallUpdate = rawPayload.toolCall;
 
@@ -2165,7 +2189,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
             (approvalMode === 'always') ||
 
-            (approvalMode === 'session-once' && isSessionTrusted) || (window.__IFAI_EDITOR_MODE__ === 'spec');
+            (approvalMode === 'session-once' && isSessionTrusted) || ((window as any).__IFAI_EDITOR_MODE__ === 'spec' || (window as any).__IFAI_EDITOR_MODE__ === 'vibe');
 
         console.log(`[Chat] 🔥 v0.3.4 Auto-approve check:`, {
 
@@ -2189,7 +2213,12 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
             if (message && message.toolCalls) {
 
-                const pendingToolCalls = message.toolCalls.filter(tc => tc.status === 'pending' && !tc.isPartial);
+                const pendingToolCalls = message.toolCalls.filter(tc => {
+                    const isPending = tc.status === 'pending';
+                    const isComplete = !tc.isPartial;
+                    const isAdvancedMode = (window as any).__IFAI_EDITOR_MODE__ === 'spec' || (window as any).__IFAI_EDITOR_MODE__ === 'vibe';
+                    return isPending && (isComplete || isAdvancedMode);
+                });
 
                 if (pendingToolCalls.length > 0) {
 
@@ -2361,7 +2390,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         await invoke('ai_chat', {
             providerConfig,
-            messages: msgHistory,
+            messages: msgHistory.map((m, i) => (i === msgHistory.length - 1 && m.role === 'user') ? { ...m, content: enrichedContent } : { role: m.role, content: m.content }),
             eventId: assistantMsgId,
             projectRoot: useFileStore.getState().rootPath,
             enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe"),
@@ -2700,7 +2729,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
         const isSessionTrusted = sessionTrust ? Date.now() < sessionTrust.expiresAt : false;
 
-        const shouldAutoApprove = settings.agentAutoApprove || userMessageHasAutoApprove || (approvalMode === 'always') || (approvalMode === 'session-once' && isSessionTrusted) || (window.__IFAI_EDITOR_MODE__ === 'spec');
+        const shouldAutoApprove = settings.agentAutoApprove || userMessageHasAutoApprove || (approvalMode === 'always') || (approvalMode === 'session-once' && isSessionTrusted) || ((window as any).__IFAI_EDITOR_MODE__ === 'spec' || (window as any).__IFAI_EDITOR_MODE__ === 'vibe');
 
         if (shouldAutoApprove) {
 
@@ -2708,7 +2737,12 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
             if (message && message.toolCalls) {
 
-                const pendingToolCalls = message.toolCalls.filter(tc => tc.status === 'pending' && !tc.isPartial);
+                const pendingToolCalls = message.toolCalls.filter(tc => {
+                    const isPending = tc.status === 'pending';
+                    const isComplete = !tc.isPartial;
+                    const isAdvancedMode = (window as any).__IFAI_EDITOR_MODE__ === 'spec' || (window as any).__IFAI_EDITOR_MODE__ === 'vibe';
+                    return isPending && (isComplete || isAdvancedMode);
+                });
 
                 if (pendingToolCalls.length > 0) {
 

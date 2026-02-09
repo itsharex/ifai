@@ -32,6 +32,7 @@ mod tool_classification; // v0.3.3 新增：工具分类系统
 // Phase 1: placeholder module, Phase 2: actual implementation
 #[cfg(feature = "llm-inference")]
 pub mod llm_inference;
+pub mod symbol_scanner;
 
 #[cfg(feature = "commercial")]
 mod commercial;
@@ -753,10 +754,18 @@ async fn ai_chat(
         &event_id,
         Some(final_tools),
         Box::new(move |chunk| {
-             // 🔥 v0.9.24: Vibe 模式强力熔断 - 物理丢弃所有工具流
+             // 🔥 v0.9.63: Vibe 模式智能熔断 - 允许安全工具（只读）放行以支持自动化
              if is_vibe_mode && chunk.contains("\"tool_calls\"") {
-                 println!("[AI Chat] Vibe Mode active: Dropping tool_calls chunk to prevent UI pollution");
-                 return;
+                 let is_safe = chunk.contains("agent_read_file") || 
+                              chunk.contains("agent_list_directory") || 
+                              chunk.contains("agent_list_functions") ||
+                              chunk.contains("grep_search");
+                 
+                 if !is_safe {
+                     println!("[AI Chat] Vibe Mode active: Dropping unsafe tool_calls chunk");
+                     return;
+                 }
+                 println!("[AI Chat] Vibe Mode: Allowing safe tool_call for automation");
              }
              // 调试：打印 chunk 内容
              // println!("[AI Chat] Streaming chunk: {}", chunk);
@@ -1009,6 +1018,7 @@ pub fn run() {
             commands::agent_commands::launch_agent,
             commands::agent_commands::list_running_agents,
             commands::agent_commands::approve_agent_action,
+            symbol_scanner::get_file_symbols,
             commands::bash_commands::execute_bash_command,
             performance::detect_gpu_info,
             performance::is_on_battery,
