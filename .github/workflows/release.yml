@@ -91,20 +91,40 @@ jobs:
           echo "NODE_OPTIONS=--max-old-space-size=8192" >> $GITHUB_ENV
           echo "APP_EDITION=commercial" >> $GITHUB_ENV
 
-      - name: Verify Tauri CLI
-        run: |
-          npx tauri --version || npm install @tauri-apps/cli@latest --force
+            - name: Verify Tauri CLI
 
-      - name: Build the app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_OPTIONS: '--max-old-space-size=8192'
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'IfAI v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }} --features commercial-local-llm
-          beforeBuildCommand: 'npm run build:commercial'
+              run: npx tauri --version
+
+      
+
+            - name: Build Frontend
+
+              run: npm run build:commercial
+
+      
+
+            - name: Build the app
+
+              uses: tauri-apps/tauri-action@v0
+
+              env:
+
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+                NODE_OPTIONS: '--max-old-space-size=8192'
+
+              with:
+
+                tagName: ${{ github.ref_name }}
+
+                releaseName: 'IfAI v__VERSION__'
+
+                releaseBody: 'See the assets to download this version and install.'
+
+                releaseDraft: true
+
+                prerelease: false
+
+                args: ${{ matrix.args }} --features commercial-local-llm
+
+      
