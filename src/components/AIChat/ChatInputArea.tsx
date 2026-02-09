@@ -8,6 +8,7 @@ import { FuzzyFileSearch } from './FuzzyFileSearch';
 import { SymbolSearch } from './SymbolSearch';
 import { SlashCommandList } from './SlashCommandList';
 import { ContextHUD } from './ContextHUD';
+import { ToolClassificationIndicator } from '../ToolClassification';
 import type { ImageAttachment } from '../../types/multimodal';
 import clsx from 'clsx';
 
@@ -124,7 +125,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
       {showSymbol && <SymbolSearch filter={symbolFilter} onSelect={handleSelectSymbol} onClose={() => setShowSymbol(false)} />}
       {showCommands && <SlashCommandList filter={input} onSelect={handleSelectCommand} onClose={() => setShowCommands(false)} />}
 
-      <div className={clsx(
+      <div 
+        data-testid="chat-input-container"
+        className={clsx(
         "relative flex flex-col w-full transition-all duration-500 rounded-2xl border bg-[#1e1e1e]/60 backdrop-blur-xl border-gray-700/50 shadow-lg group-focus-within:border-blue-500/50",
         isLoading && "opacity-80"
       )}>
@@ -149,6 +152,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
         <div className="flex items-end gap-2 p-2">
           <textarea
             ref={textareaRef}
+            data-testid="chat-input"
             rows={1}
             value={input}
             onChange={handleInputChange}
@@ -159,6 +163,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
           />
 
           <div className="flex flex-col items-end gap-2">
+            <ToolClassificationIndicator input={input} />
             <ContextHUD text={input} />
             <div className="flex items-center gap-1.5 pb-1 pr-1">
               <ImageInput 
@@ -169,7 +174,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
               />
               <button onClick={() => setShowMention(!showMention)} className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all" title="引用文件"><AtSign size={18} /></button>
               <button onClick={() => setShowSymbol(!showSymbol)} className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all" title="引用符号"><Hash size={18} /></button>
-              <button onClick={handleSend} data-testid="send-button" disabled={(!input.trim() && imageAttachments.length === 0) || isLoading} className={clsx("p-2 rounded-xl transition-all", input.trim() ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(59,130,246,0.4)] scale-105 active:scale-95" : "bg-gray-800 text-gray-600")}>
+              <button onClick={handleSend} data-testid="chat-send-button" disabled={(!input.trim() && imageAttachments.length === 0) || isLoading} className={clsx("p-2 rounded-xl transition-all", input.trim() ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(59,130,246,0.4)] scale-105 active:scale-95" : "bg-gray-800 text-gray-600")}>
                 <Send size={18} />
               </button>
             </div>

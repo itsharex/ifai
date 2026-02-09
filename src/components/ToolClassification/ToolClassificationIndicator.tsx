@@ -90,6 +90,7 @@ const FeedbackButtons: React.FC<FeedbackButtonsProps> = ({ onPositive, onNegativ
     <div className="flex items-center gap-1 ml-2 border-l border-gray-700 pl-2">
       <button
         onClick={handlePositive}
+        data-testid="feedback-correct"
         disabled={disabled || feedbackGiven === 'positive'}
         className={`p-1 rounded transition-colors ${
           feedbackGiven === 'positive'
@@ -102,6 +103,7 @@ const FeedbackButtons: React.FC<FeedbackButtonsProps> = ({ onPositive, onNegativ
       </button>
       <button
         onClick={handleNegative}
+        data-testid="feedback-incorrect"
         disabled={disabled || feedbackGiven === 'negative'}
         className={`p-1 rounded transition-colors ${
           feedbackGiven === 'negative'
@@ -195,7 +197,10 @@ export const ToolClassificationIndicator: React.FC<ToolClassificationIndicatorPr
   const layerIcon = result ? getLayerIcon(result.layer) : null;
 
   return (
-    <div className={`flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#1e1e1e] border border-gray-700/50 ${className}`}>
+    <div 
+      data-testid="tool-classification-indicator"
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#1e1e1e] border border-gray-700/50 ${className}`}
+    >
       {/* 加载状态 */}
       {isLoading && (
         <div className="flex items-center gap-1.5 text-xs text-gray-400">
