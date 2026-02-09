@@ -2,7 +2,7 @@
 
 <div align="center">
   <img src="imgs/ifai.png" alt="IfAI Logo" width="120" />
-  <p><strong>🤖不只是编辑器，更是你的自主编程伙伴</strong></p>
+  <p><strong>不只是编辑器，更是你的自主编程伙伴</strong></p>
   <p>基于 Tauri 2.0 + React 19 构建的高性能、本地优先的混合智能编辑器</p>
 
   [简体中文](README.md) | [English](README_EN.md) | [📖 完整文档](https://docs.ifai.today/) | [🎯 下载发布页](https://github.com/peterfei/ifai/releases)
@@ -44,6 +44,7 @@
 
 | 版本 | 主题 | 核心突破 |
 | :--- | :--- | :--- |
+| **v0.3.4** | **双模引擎与交互革命** | **Vibe/Spec 双模驱动、静默审批自动化、112ms 零阻塞启动、CLS 抖动消除** |
 | **v0.3.3** | **工具分类与 Agent 系统重构** | **智能工具分类系统、Agent 服务模块化、自定义提供商增强（NVIDIA 404 修复）** |
 | **v0.3.2** | **性能与渲染引擎升级** | **Windows CPU 占用修复、App 渲染逻辑重构、智能防抖策略、性能回归测试体系** |
 | **v0.3.1** | **稳定性与智谱集成** | **智谱 AI 原生支持、Agent 核心架构重构、Bash 工具集成、资源限制系统、UI 时间线风格** |
