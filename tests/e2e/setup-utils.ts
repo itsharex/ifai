@@ -232,6 +232,20 @@ export async function setupE2ETestEnvironment(
 
   // 2. 注入核心拦截与锁定脚本
   await page.addInitScript((realAIConfigParam) => {
+    // 🔥 新增：等待监听器就绪的辅助函数
+    const waitForListeners = async (id: string, maxWaitMs = 2000): Promise<Function[]> => {
+      const start = Date.now();
+      while (Date.now() - start < maxWaitMs) {
+        const listeners = (window as any).__TAURI_EVENT_LISTENERS__[id] || [];
+        if (listeners.length > 0) return listeners;
+        // 在浏览器环境下等待
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      console.warn(`[E2E Mock] ⚠️ Timed out waiting for listeners for ${id}`);
+      return [];
+    };
+    (window as any).waitForListeners = waitForListeners;
+
     // 🔥 跳过 E2E 稳定器以避免无限循环
     (window as any).__E2E_SKIP_STABILIZER__ = true;
 
@@ -1089,7 +1103,8 @@ Always use the appropriate tool when the user asks to perform file operations.`
 
                         // 🔥 FIX: 在使用之前先定义 streamListeners 和 finishListeners
                         // 避免在错误检查中访问未初始化的变量
-                        const streamListeners = (window as any).__TAURI_EVENT_LISTENERS__[eventId] || [];
+                        // 同时使用 waitForListeners 确保前端监听器已就绪
+                        const streamListeners = await (window as any).waitForListeners(eventId);
                         const finishListeners = (window as any).__TAURI_EVENT_LISTENERS__[`${eventId}_finish`] || [];
 
                         // 🔥 检查 API 是否返回了错误
@@ -1673,8 +1688,9 @@ Always use the appropriate tool when the user asks to perform file operations.`
             let responseContent = 'Mock AI response: Task completed successfully.';
 
             // Simulate async streaming
-            setTimeout(() => {
-                const streamListeners = (window as any).__TAURI_EVENT_LISTENERS__[eventId] || [];
+            (async () => {
+                // 等待前端监听器注册完成
+                const streamListeners = await (window as any).waitForListeners(eventId);
                 console.log('[E2E Mock] Stream listeners count:', streamListeners.length);
 
                 if (isComposerTest) {

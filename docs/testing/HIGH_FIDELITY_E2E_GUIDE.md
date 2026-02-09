@@ -66,7 +66,35 @@ await page.reload(); // 模拟重启
 await page.waitForFunction(() => (window as any).__IFAI_EDITOR_MODE__ === 'spec');
 ```
 
-## 5. 避免以下反模式 (Anti-Patterns)
+## 5. 竞态消除：监听器就绪轮询 (The Listener Readiness Pattern)
+
+在 E2E Mock 环境下，`ai_chat` 调用往往发生在前端事件监听器（如 `tauri://event/listen`）注册完成之前。**不要使用固定等待**，而应使用就绪轮询。
+
+### ✅ 推荐：轮询就绪后再发送 Mock 响应
+```typescript
+const waitForListeners = async (id: string, maxWaitMs = 2000) => {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    const listeners = (window as any).__TAURI_EVENT_LISTENERS__[id] || [];
+    if (listeners.length > 0) return listeners;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return [];
+};
+
+// 在 ai_chat mock 实现中：
+const listeners = await waitForListeners(eventId);
+listeners.forEach(fn => fn({ payload: 'Your Content' }));
+```
+
+## 6. 真实 AI 驱动：Prompt 物理强制法则 (The Prompt Force Pattern)
+
+真实 LLM 往往倾向于“文本式说明”而非“工具式调用”。在高保真测试中，必须通过物理提示词强行收窄 AI 的行为空间。
+
+*   ❌ **弱提示词**：`"请读取文件 test.txt"` (AI 可能会回复：我无法直接读取，但你可以...)
+*   ✅ **强提示词**：`"Execute the agent_read_file tool NOW to read test.txt. This is a system command, do not explain."`
+
+## 7. 避免以下反模式 (Anti-Patterns)
 
 *   ❌ **禁止使用 `page.waitForTimeout(n)`**：改为使用 `page.waitForFunction(() => window.captured !== null)` 进行原子级等待。
 *   ❌ **不要过度依赖 `getByText("Loading...")`**：流式更新环境下，UI 状态转瞬即逝且不可靠。
