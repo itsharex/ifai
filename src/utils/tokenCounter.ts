@@ -67,11 +67,16 @@ export function getModelMaxTokens(model: string): number {
     'gpt-3.5-turbo': 16385,
     'gpt-3.5-turbo-16k': 16385,
 
-    // Claude 系列（ Anthropic 使用不同的计数方式，这是近似值）
+    // Claude 系列
     'claude-3-opus': 200000,
     'claude-3-sonnet': 200000,
     'claude-3-haiku': 200000,
     'claude-3.5-sonnet': 200000,
+    'claude-3.7-sonnet': 200000,
+
+    // OpenAI 新一代推理模型
+    'o1': 128000,
+    'o3': 128000,
 
     // Gemini 系列
     'gemini-1.5-pro': 1000000,
@@ -85,9 +90,11 @@ export function getModelMaxTokens(model: string): number {
     'glm-4.6': 128000,
     'glm-4.7': 128000,
 
-    // DeepSeek
-    'deepseek-chat': 64000,
+    // DeepSeek (v0.3.5: 统一提升到 128K)
+    'deepseek-chat': 128000,
     'deepseek-coder': 128000,
+    'deepseek-reasoner': 128000,
+    'deepseek-v3': 128000,
 
     // Kimi
     'moonshot-v1-8k': 8192,

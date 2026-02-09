@@ -102,25 +102,40 @@ export const TokenUsageIndicator: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center space-x-2 text-xs px-2 py-1 bg-[#1e1e1e] border-t border-gray-700">
+    <div 
+      data-testid="token-usage-indicator"
+      className="flex items-center space-x-2 text-xs px-2 py-1 bg-[#1e1e1e] border-t border-gray-700"
+    >
       {/* 图标 */}
       {getIcon()}
 
       {/* 进度条 */}
       <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
         <div
+          data-testid="token-progress-bar"
           className={clsx('h-full transition-all duration-300', getColorClass())}
           style={{ width: `${Math.min(100, percentage)}%` }}
         />
       </div>
 
       {/* 文字信息 */}
-      <span className={clsx('font-mono whitespace-nowrap', getTextColorClass())}>
+      <span 
+        data-testid="token-current-count"
+        className={clsx('font-mono whitespace-nowrap', getTextColorClass())}
+      >
         {isLoading ? '...' : formatTokenCount(tokenCount)}
       </span>
       <span className="text-gray-500">/</span>
-      <span className="text-gray-500 font-mono">{formatTokenCount(maxTokens)}</span>
-      <span className={clsx('font-medium', getTextColorClass())}>
+      <span 
+        data-testid="token-max-count"
+        className="text-gray-500 font-mono"
+      >
+        {formatTokenCount(maxTokens)}
+      </span>
+      <span 
+        data-testid="token-percentage"
+        className={clsx('font-medium', getTextColorClass())}
+      >
         {percentage}%
       </span>
     </div>

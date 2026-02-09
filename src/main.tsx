@@ -60,17 +60,24 @@ const exposeDebugStores = () => {
         import('./stores/fileStore'),
         import('./stores/useChatStore'),
         import('./stores/settingsStore'),
-        import('./stores/layoutStore')
-      ]).then(([skill, file, chat, settings, layout]) => {
+        import('./stores/layoutStore'),
+        import('./stores/editorStore'),
+        import('./utils/tokenCounter')
+      ]).then(([skill, file, chat, settings, layout, editor, tokens]) => {
         (window as any).__DEBUG__ = {
           ...(window as any).__DEBUG__,
           skillStore: skill.useSkillStore,
           fileStore: file.useFileStore,
           chatStore: chat.useChatStore,
           settingsStore: settings.useSettingsStore,
-          layoutStore: layout.useLayoutStore
+          layoutStore: layout.useLayoutStore,
+          editorStore: editor.useEditorStore,
+          utils: {
+            ...((window as any).__DEBUG__?.utils || {}),
+            tokenCounter: tokens
+          }
         };
-        console.log('[Main] 🛠️  Core Stores exposed to window.__DEBUG__ (Idle)');
+        console.log('[Main] 🛠️  Core Stores and Utils exposed to window.__DEBUG__ (Idle)');
       });
     };
 

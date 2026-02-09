@@ -66,7 +66,10 @@ export const Statusbar = () => {
       <div className="flex items-center space-x-4">
         <span>UTF-8</span>
         <span>{activeFile?.language || 'Plain Text'}</span>
-        <span className="bg-blue-700/50 px-2 py-0.5 rounded border border-blue-400/20 tabular-nums">
+        <span 
+          data-testid="statusbar-token-count"
+          className="bg-blue-700/50 px-2 py-0.5 rounded border border-blue-400/20 tabular-nums"
+        >
           Tokens: {formatTokenCount(activeFileTokenCount)}
         </span>
       </div>
