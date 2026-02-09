@@ -2625,17 +2625,11 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
                             }
 
                             const updated = [...existingCalls];
-
-                            updated[idx] = { ...tc, args: parsed, function: { name: toolName, arguments: argsStr }, isPartial: true };
-
+                            updated[idx] = { ...tc, args: parsed, function: { name: toolName, arguments: argsStr }, isPartial: true } as any;
                             newMsg.toolCalls = updated;
-
                         } else {
-
                             const tid = toolCallUpdate.id || crypto.randomUUID();
-
-                            const tc = { id: tid, type: 'function' as const, tool: toolName, args: {}, function: { name: toolName, arguments: newArgs }, status: 'pending' as const, isPartial: true, index: toolCallUpdate.index };
-
+                            const tc = { id: tid, type: 'function' as const, tool: toolName, args: {}, function: { name: toolName, arguments: newArgs }, status: 'pending' as const, isPartial: true, index: toolCallUpdate.index } as any;
                             newMsg.toolCalls = [...existingCalls, tc];
 
                             const order = newMsg.contentSegments.length;

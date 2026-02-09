@@ -391,7 +391,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         }
         if (Array.isArray(message.content)) {
             // 检查数组中是否有任何文本片段非空
-            return message.content.some(part => 
+            return (message.content as any[]).some(part => 
                 (part.type === 'text' && part.text?.trim().length > 0) || 
                 part.type === 'image_url'
             );
