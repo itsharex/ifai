@@ -32,6 +32,7 @@ import { SlashCommandList, SlashCommandListHandle } from './SlashCommandList';
 import { ThreadTabs, useThreadKeyboardShortcuts } from './ThreadTabs';
 import { TokenUsageIndicator } from './TokenUsageIndicator';
 import { VirtualMessageList } from './VirtualMessageList';
+import { ChatInputArea } from './ChatInputArea';
 // v0.3.1: 时间线视图
 import { MessageTimeline } from './MessageTimeline';
 import ifaiLogo from '../../../imgs/ifai.png'; // Import the IfAI logo
@@ -2269,205 +2270,13 @@ ${suggestion.fixContext.code_context}
       )}
 
       {/* v0.2.6 新增：Token 使用量指示器 */}
+      
       <TokenUsageIndicator />
-
-      {/* v0.3.0 多模态图片输入区域 */}
-      {imageAttachments.length > 0 && (
-        <div className="border-t border-gray-700 p-2 bg-[#1e1e1e]">
-          <ImageInput
-            attachments={imageAttachments}
-            onAddAttachment={handleAddImageAttachment}
-            onRemoveAttachment={handleRemoveImageAttachment}
-            disabled={isLoading}
-            maxImages={3}
-            maxFileSize={5}
-          />
-        </div>
-      )}
-
-      <div className="border-t border-gray-700 p-3 bg-[#252526]">
-        {/* v0.3.0: 图片输入 + 文本输入容器 */}
-        <div className="flex flex-col gap-2">
-          {/* 图片输入工具栏（无图片时显示提示） */}
-          {imageAttachments.length === 0 && (
-            <ImageInput
-              attachments={imageAttachments}
-              onAddAttachment={handleAddImageAttachment}
-              onRemoveAttachment={handleRemoveImageAttachment}
-              disabled={isLoading}
-              maxImages={3}
-              maxFileSize={5}
-            />
-          )}
-
-          {/* v0.3.3: 工具分类指示器 */}
-          {input.length >= 2 && !showCommands && (
-            <ToolClassificationIndicator
-              input={input}
-              disabled={isLoading}
-              minLength={2}
-              debounceMs={300}
-            />
-          )}
-
-          {/* 🔥 v0.3.0: 加载状态提示 */}
-          {/* 只有在 isLoading 且最后一条消息没有内容时才显示 */}
-          {isLoading && (!rawMessages.length || !rawMessages[rawMessages.length - 1]?.content) && (
-            <div className="flex items-center gap-2 text-sm text-gray-400 animate-pulse px-1">
-              <div className="flex items-center gap-1">
-                {/* 简洁的 spinner 动画 */}
-                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                <span>IFAI 正在思考...</span>
-              </div>
-            </div>
-          )}
-
-          {/* 文本输入 + 发送按钮 */}
-          <div
-            ref={chatInputAreaRef}
-            className="flex items-center relative"
-            onPaste={async (e) => {
-              // 🔥 v0.3.0: 处理聊天输入框中的图片粘贴
-              if (isLoading) return;
-              const items = e.clipboardData?.items;
-              if (!items) return;
-
-              const files: File[] = [];
-              for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                if (item.kind === 'file' && item.type.startsWith('image/')) {
-                  const file = item.getAsFile();
-                  if (file) files.push(file);
-                }
-              }
-
-              if (files.length > 0) {
-                e.preventDefault();
-                for (const file of files) {
-                  await handleAddImageAttachment(file);
-                }
-              }
-            }}
-            onDragOver={(e) => {
-              // 🔥 v0.3.0: 处理图片拖拽
-              if (isLoading) return;
-              const hasImage = Array.from(e.dataTransfer?.items || []).some(
-                item => item.kind === 'file' && item.type.startsWith('image/')
-              );
-              if (hasImage) {
-                e.preventDefault();
-              }
-            }}
-            onDrop={async (e) => {
-              // 🔥 v0.3.0: 处理图片拖拽放下（浏览器内拖拽）
-              if (isLoading) return;
-              const files = Array.from(e.dataTransfer?.files || []).filter(
-                file => file.type.startsWith('image/')
-              );
-
-              if (files.length > 0) {
-                e.preventDefault();
-                e.stopPropagation();
-                for (const file of files) {
-                  await handleAddImageAttachment(file);
-                }
-              }
-            }}
-          >
-            {showCommands && (
-              <SlashCommandList
-                ref={commandListRef}
-                filter={input}
-                onSelect={handleSelectCommand}
-                onClose={() => setShowCommands(false)}
-              />
-            )}
-            <input
-              data-testid="chat-input"
-              ref={inputRef}
-              type="text"
-              className="flex-1 bg-transparent outline-none text-white text-sm placeholder-gray-500 mr-2"
-              placeholder={t('chat.placeholder')}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              disabled={isLoading}
-            />
-            <button
-              data-testid="send-button"
-              onClick={handleSend}
-              className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full transition-colors disabled:opacity-50"
-              disabled={(!input.trim() && imageAttachments.length === 0) || isLoading}
-            >
-              <Send size={16} />
-            </button>
-          </div>
-        </div>
+      
+      <div className="p-4 bg-[#1e1e1e]/30">
+        <ChatInputArea isLoading={isLoading} />
       </div>
 
-      {/* v0.2.6: 提案审核弹窗 */}
-      {isReviewModalOpen && (
-        <ProposalReviewModal
-          proposalId={pendingReviewProposalId}
-          onClose={closeReviewModal}
-        />
-      )}
-
-      {/* v0.2.6: 任务拆解面板 */}
-      {isPanelOpen && currentBreakdown && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-[#252526] w-[90vw] max-w-4xl h-[80vh] rounded-lg shadow-xl border border-gray-700 flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-700">
-              <h2 className="text-lg font-semibold text-white">任务拆解</h2>
-              <button
-                onClick={() => setPanelOpen(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-auto p-4">
-              <TaskBreakdownViewer
-                breakdown={currentBreakdown}
-                mode="modal"
-                allowModeSwitch={true}
-              />
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-gray-700 bg-[#1e1e1e] rounded-b-lg flex justify-between items-center">
-              <div className="text-sm text-gray-400">
-                {currentBreakdown.taskTree.title}
-              </div>
-              <button
-                onClick={() => setPanelOpen(false)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition-colors"
-              >
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* v0.2.8: Composer 2.0 多文件 Diff 预览 */}
-      {composerOpen && composerChanges.length > 0 && (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black bg-opacity-60">
-          <div className="w-[95vw] h-[90vh] bg-[#252526] rounded-lg shadow-2xl border border-gray-700 flex flex-col">
-            <ComposerDiffView
-              changes={composerChanges}
-              onAcceptAll={handleComposerAcceptAll}
-              onRejectAll={handleComposerRejectAll}
-              onAcceptFile={handleComposerAcceptFile}
-              onRejectFile={handleComposerRejectFile}
-              onClose={handleComposerClose}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 };

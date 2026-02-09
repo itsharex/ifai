@@ -1,0 +1,86 @@
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ChatInputArea } from '../../src/components/AIChat/ChatInputArea';
+
+// 1. Mock 物理环境
+if (typeof window === 'undefined') {
+  (global as any).window = {};
+}
+
+// 模拟文件列表
+(window as any).__IFAI_ALL_FILES__ = [
+  'src/main.tsx',
+  'src/App.tsx',
+  'src/stores/useChatStore.ts',
+  'package.json'
+];
+
+// 2. Mock Stores
+vi.mock('../../src/stores/useChatStore', () => ({
+  useChatStore: () => ({
+    sendMessage: vi.fn(),
+  }),
+}));
+
+vi.mock('../../src/stores/settingsStore', () => ({
+  useSettingsStore: () => ({
+    currentProviderId: 'openai',
+    currentModel: 'gpt-4o',
+  }),
+}));
+
+describe('ChatInputArea High-Fidelity Integration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('SHOULD trigger fuzzy search when user types @', async () => {
+    render(<ChatInputArea isLoading={false} />);
+    
+    const textarea = screen.getByPlaceholderText(/问问 IfAI/i);
+    
+    // 模拟用户输入 @
+    fireEvent.change(textarea, { target: { value: '@' } });
+    
+    // 预期：弹出搜索面板
+    const searchPanel = await screen.findByText(/引用文件/i);
+    expect(searchPanel).toBeDefined();
+    
+    // 预期：显示匹配的文件
+    expect(screen.getByText('main.tsx')).toBeDefined();
+    expect(screen.getByText('App.tsx')).toBeDefined();
+  });
+
+  it('SHOULD insert file reference when a result is selected', async () => {
+    render(<ChatInputArea isLoading={false} />);
+    const textarea = screen.getByPlaceholderText(/问问 IfAI/i) as HTMLTextAreaElement;
+    
+    fireEvent.change(textarea, { target: { value: '请帮我解释下 @ma' } });
+    
+    const resultItem = await screen.findByText('main.tsx');
+    fireEvent.click(resultItem);
+    
+    // 预期：文本框内容被替换为带引用的格式
+    expect(textarea.value).toContain('[#main.tsx](src/main.tsx)');
+    
+    // 预期：搜索面板关闭
+    expect(screen.queryByText(/引用文件/i)).toBeNull();
+  });
+
+  it('SHOULD maintain high-tech button states (Send Button Glow)', async () => {
+    render(<ChatInputArea isLoading={false} />);
+    const sendButton = screen.getByTestId('send-button');
+    const textarea = screen.getByPlaceholderText(/问问 IfAI/i);
+    
+    // 初始状态：按钮应该是灰色的
+    expect(sendButton.className).toContain('bg-gray-800');
+    
+    // 输入内容
+    fireEvent.change(textarea, { target: { value: 'Hello' } });
+    
+    // 预期：按钮变为蓝色并带有辉光
+    expect(sendButton.className).toContain('bg-blue-600');
+    expect(sendButton.className).toContain('shadow-');
+  });
+});

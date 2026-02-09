@@ -24,6 +24,9 @@ interface FileState {
   // v0.2.6 新增：Markdown 预览模式
   previewMode: 'editor' | 'preview' | 'split';
 
+  // v0.3.5 新增：全量文件路径索引 (用于 @ 引用)
+  allFilePaths: string[];
+
   // v0.3.0: 多工作区操作
   addWorkspaceRoot: (path: string) => Promise<WorkspaceRoot>;
   removeWorkspaceRoot: (rootId: string) => void;
@@ -64,6 +67,19 @@ interface FileState {
 
 // Helper to recursively update git status in file tree
 // NOTE: This is now optimized - we don't traverse the tree since UI uses Map-based O(1) lookup
+
+// v0.3.5: 递归展平文件树
+const flattenPaths = (node: any, acc: string[] = []): string[] => {
+  if (!node) return acc;
+  if (node.kind === 'file') {
+    acc.push(node.path);
+  }
+  if (node.children) {
+    node.children.forEach((child: any) => flattenPaths(child, acc));
+  }
+  return acc;
+};
+
 const updateGitStatusRecursive = (node: FileNode, statuses: Map<string, GitStatus>): FileNode => {
     // Simply return the node as-is - UI will use gitStatuses Map for O(1) lookup
     // This avoids O(n) tree traversal on every git status update
@@ -89,6 +105,7 @@ export const useFileStore = create<FileState>()(
       lastSelectedNodeId: null,
       // v0.2.6 新增：默认预览模式
       previewMode: 'editor',
+      allFilePaths: [],
 
       syncState: (newState) => set((state) => ({ ...state, ...newState })),
 
@@ -784,8 +801,10 @@ export const useFileStore = create<FileState>()(
                 };
                 restoreExpandedNodes(treeWithStatus);
 
-                // Update both fileTree and expandedNodes atomically
-                set({ fileTree: treeWithStatus, expandedNodes: newExpandedNodes });
+                // Update file tree and allFilePaths index atomically
+                const allPaths = flattenPaths(treeWithStatus);
+                if (typeof window !== "undefined") { (window as any).__IFAI_ALL_FILES__ = allPaths; }
+                set({ fileTree: treeWithStatus, expandedNodes: newExpandedNodes, allFilePaths: allPaths });
 
                 return expandedPaths;
             } catch (e) {
