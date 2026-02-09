@@ -31,6 +31,36 @@ IfAI 现在能感知您的思维状态。通过标题栏中央的震撼切换轨
 
 ---
 
+## 🏗️ 系统架构图 (Technical Architecture)
+
+以下展示了 v0.3.4 中双模引擎与技能系统的全链路协同逻辑：
+
+```mermaid
+graph TD
+    subgraph Frontend [前端交互层]
+        UI[Mode/Skill UI] --> Store[Zustand Store]
+        Store -->|物理同步| Win[window.__IFAI_GLOBAL__]
+        Chat[Chat Action] -->|读取物理状态| Payload[IPC Payload: Mode/Skills]
+    end
+
+    subgraph Backend [Tauri 后端层]
+        Payload --> Command[ai_chat Command]
+        Command --> Logic[Core Service Loader]
+    end
+
+    subgraph PrivateCore [ifainew-core 私有内核]
+        Logic --> ModeModule[Modes.rs: 指令分发]
+        Logic --> SkillModule[Skills.rs: 动态扫描]
+        ModeModule --> Merge[System Prompt 合并引擎]
+        SkillModule --> Merge
+        Merge -->|Head/Tail 注入| FinalPrompt[最终提示词]
+    end
+
+    FinalPrompt --> LLM[LLM Provider: OpenAI/NVIDIA/Local]
+```
+
+---
+
 ## 🛠️ 插件化技能系统 (Skills System) 技术架构
 
 v0.3.4 正式集成了具备工业级扩展性的 **AI 技能系统**，允许开发者通过简单的声明式配置扩展 AI 的专业领域能力。
@@ -76,5 +106,5 @@ v0.3.4 正式集成了具备工业级扩展性的 **AI 技能系统**，允许�
 
 感谢您对 IfAI 的支持。v0.3.4 的每一个细节都旨在为您提供更具“掌控感”的 AI 辅助编程体验。
 
-**IfAI 团队**
+**IfAI 团队Peterfei**
 *2026年2月8日*
