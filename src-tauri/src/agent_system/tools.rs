@@ -25,6 +25,14 @@ fn get_arg_str<'a>(args: &'a Value, snake_key: &str, default: &'a str) -> &'a st
     if let Some(s) = args[snake_key].as_str() {
         return s;
     }
+    
+    // 🔥 Special case for 'command' to handle AI hallucinations
+    if snake_key == "command" {
+        if let Some(s) = args["cmd"].as_str() { return s; }
+        if let Some(s) = args["args"].as_str() { return s; }
+        if let Some(s) = args["script"].as_str() { return s; }
+    }
+
     // Convert to camelCase (e.g., relPath) and try again
     let camel_key = to_camel_case(snake_key);
     args[camel_key].as_str().unwrap_or(default)
@@ -176,10 +184,16 @@ pub async fn execute_tool_internal(
                 max_files
             ).await
         },
-        "bash" | "agent_run_shell_command" | "agent_execute_command" => {
+        "agent_bash" | "bash" | "agent_run_shell_command" | "agent_execute_command" => {
             let command = get_arg_str(args, "command", "");
             let working_dir_arg = get_arg_opt_str(args, "working_dir");
             let timeout = get_arg_opt_u64(args, "timeout");
+
+            // 🔥 FIX v0.3.9: 严防将工具名误作为命令执行 ( Hallucination Prevention )
+            if command.trim() == "agent_bash" || command.trim() == "bash" {
+                println!("[AgentTools] ❌ Hallucination detected: AI tried to execute tool name as command.");
+                return Err(format!("Error: '{}' is a tool name, not a valid shell command. Please provide a real command (e.g., 'ls -la').", command));
+            }
 
             // Sanitize working directory to be relative to project root
             let final_working_dir = match working_dir_arg {

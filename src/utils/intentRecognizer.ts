@@ -23,9 +23,9 @@ const PATTERNS: IntentPattern[] = [
     },
     {
         type: '/bash',
-        keywords: ['执行', '运行', 'run', 'execute', '命令', 'command'],
-        // 匹配"执行 <command>"、"运行 <command>"、"帮我执行 <command>"等
-        regex: /^(?:帮我)?(?:执行|运行|run|execute)\s+(.+)$/i,
+        keywords: ['执行', '运行', 'run', 'execute', '命令', 'command', '指令'],
+        // 匹配"执行 <command>"、"运行命令 <command>"、"帮我运行指令 <command>"等
+        regex: /^(?:帮我)?(?:执行|运行|run|execute)(?:命令|指令|shell)?\s+(.+)$/i,
         minConfidence: 0.8
     },
     {

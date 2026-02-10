@@ -1,3 +1,10 @@
+// ============================================================================
+// 暴露工具函数给 E2E 环境
+// ============================================================================
+if (typeof window !== 'undefined') {
+    (window as any).recognizeIntent = recognizeIntent;
+}
+
 // Wrapper for core library useChatStore
 
 // Handles dependency injection of file and settings stores
@@ -18,7 +25,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 import { recognizeIntent, shouldTriggerAgent, formatAgentName } from '../utils/intentRecognizer';
-
+import { shouldAutoApprove as checkAutoApprove } from '../utils/approvalPolicy';
 import { autoSaveThread } from './persistence/threadPersistence';
 
 import { countMessagesTokens, getModelMaxTokens, calculateTokenUsagePercentage } from '../utils/tokenCounter';
@@ -2729,57 +2736,47 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
         const isSessionTrusted = sessionTrust ? Date.now() < sessionTrust.expiresAt : false;
 
-        const shouldAutoApprove = settings.agentAutoApprove || userMessageHasAutoApprove || (approvalMode === 'always') || (approvalMode === 'session-once' && isSessionTrusted) || ((window as any).__IFAI_EDITOR_MODE__ === 'spec' || (window as any).__IFAI_EDITOR_MODE__ === 'vibe');
+        const isVibeOrSpec = (window as any).__IFAI_EDITOR_MODE__ === 'spec' || (window as any).__IFAI_EDITOR_MODE__ === 'vibe';
+        const editorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
 
-        if (shouldAutoApprove) {
+        const message = finalizedMessages.find(m => m.id === assistantMsgId);
+        if (message && message.toolCalls) {
+            const pendingToolCalls = message.toolCalls.filter(tc => {
+                const isPending = tc.status === 'pending';
+                const isComplete = !tc.isPartial;
+                const isAdvancedMode = isVibeOrSpec;
+                
+                if (!isPending || (!isComplete && !isAdvancedMode)) return false;
 
-            const message = finalizedMessages.find(m => m.id === assistantMsgId);
-
-            if (message && message.toolCalls) {
-
-                const pendingToolCalls = message.toolCalls.filter(tc => {
-                    const isPending = tc.status === 'pending';
-                    const isComplete = !tc.isPartial;
-                    const isAdvancedMode = (window as any).__IFAI_EDITOR_MODE__ === 'spec' || (window as any).__IFAI_EDITOR_MODE__ === 'vibe';
-                    return isPending && (isComplete || isAdvancedMode);
+                // 使用统一策略判断当前工具是否应自动批准
+                return checkAutoApprove({
+                    settings,
+                    editorMode: editorMode as any,
+                    isSessionTrusted,
+                    toolName: tc.tool,
+                    isSandbox: true, // TODO: 后续接入真实沙箱检测
+                    userMessageHasAutoApprove
                 });
+            });
 
-                if (pendingToolCalls.length > 0) {
-
-                    for (const tc of pendingToolCalls) {
-
-                        // @ts-ignore
-
-                        await coreUseChatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
-
-                    }
-
-                    const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-
-                    if (providerConfig) {
-
-                        setTimeout(async () => {
-
-                            unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
-
-                            await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig, { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") });
-
-                        }, 500);
-
-                        return;
-
-                    }
-
+            if (pendingToolCalls.length > 0) {
+                for (const tc of pendingToolCalls) {
+                    // @ts-ignore
+                    await coreUseChatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
                 }
-
+                const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+                if (providerConfig) {
+                    setTimeout(async () => {
+                        unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
+                        await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig, { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") });
+                    }, 500);
+                    return;
+                }
             }
-
         }
 
         unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
-
         coreUseChatStore.setState({ isLoading: false });
-
     });
 
     const unlistenError = await listen<string>(`${assistantMsgId}_error`, (event) => {
@@ -3637,38 +3634,34 @@ const patchedApproveToolCall = async (
 
         let bashResult: any;
 
-        try {
-
-            bashResult = await invoke('agent_bash', {
-
-                messageId,
-
-                command: args.command,
-
-                cwd: workingDir,
-
-                env: args.env
-
-            });
-
-            console.log(`[useChatStore] Bash command executed, result type: ${typeof bashResult}`);
-
-        } catch (error) {
-
-            console.error(`[useChatStore] Bash execution error:`, error);
-
+        // 🔥 FIX v0.3.9: 严防将工具名误作为命令执行 (Command agent_bash not found)
+        const commandToExecute = args.command || args.cmd || args.script || args.args || '';
+        if (!commandToExecute || commandToExecute === 'agent_bash' || commandToExecute === 'bash') {
+            console.error(`[useChatStore] ❌ Invalid bash command: "${commandToExecute}". Refusing to execute.`);
             bashResult = {
-
                 success: false,
-
                 stdout: '',
-
-                stderr: error instanceof Error ? error.message : String(error),
-
+                stderr: `Error: Invalid command "${commandToExecute}". The AI failed to provide a valid shell command.`,
                 exitCode: -1
-
             };
-
+        } else {
+            try {
+                bashResult = await invoke('agent_bash', {
+                    messageId,
+                    command: commandToExecute,
+                    cwd: workingDir,
+                    env: args.env
+                });
+                console.log(`[useChatStore] Bash command executed, result type: ${typeof bashResult}`);
+            } catch (error) {
+                console.error(`[useChatStore] Bash execution error:`, error);
+                bashResult = {
+                    success: false,
+                    stdout: '',
+                    stderr: error instanceof Error ? error.message : String(error),
+                    exitCode: -1
+                };
+            }
         }
 
         // 解析结果

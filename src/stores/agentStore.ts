@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Agent, AgentEventPayload } from '../types/agent';
 import { useFileStore } from './fileStore';
 import { useSettingsStore } from './settingsStore';
+import { shouldAutoApprove as checkAutoApprove } from '../utils/approvalPolicy';
 import { useChatStore as coreUseChatStore } from 'ifainew-core';
 import { useThreadStore } from './threadStore';
 import { useProposalStore } from './proposalStore';
@@ -460,19 +461,25 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
                         // 🔥 v0.3.4: 确保 agentApprovalMode 有值（处理老用户升级情况）
                         const approvalMode = settings.agentApprovalMode || 'session-once';
+                        const editorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
 
-                        // 决定是否自动批准
-                        const shouldAutoApprove =
-                            approvalMode === 'always' ||
-                            (approvalMode === 'session-once' && isSessionTrusted) ||
-                            settings.agentAutoApprove; // 兼容旧设置
+                        // 决定是否自动批准 (P0: 统一策略)
+                        const shouldAutoApprove = checkAutoApprove({
+                            settings,
+                            editorMode: editorMode as any,
+                            isSessionTrusted,
+                            toolName: liveToolCall.tool,
+                            isSandbox: true, // TODO: 后续接入真实沙箱检测
+                            // Agent 触发的消息通常不带有显式的 @auto-approve 文本
+                            userMessageHasAutoApprove: false 
+                        });
 
-                        console.log(`[AgentStore] 🔥 v0.3.4 Approval decision:`, {
+                        console.log(`[AgentStore] 🔥 P0 Approval decision:`, {
+                            tool: liveToolCall.tool,
                             mode: approvalMode,
-                            originalMode: settings.agentApprovalMode,
+                            editorMode,
                             isSessionTrusted,
                             shouldAutoApprove,
-                            agentAutoApprove: settings.agentAutoApprove
                         });
 
                         if (shouldAutoApprove) {
