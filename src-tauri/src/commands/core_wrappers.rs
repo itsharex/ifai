@@ -74,6 +74,9 @@ pub async fn agent_write_file(root_path: String, rel_path: String, content: Stri
         // Write new content
         tokio::fs::write(&path, &content).await.map_err(|e| e.to_string())?;
 
+        // 🔥 FIX v0.3.9: 失效缓存
+        crate::file_cache::invalidate_cache(&path).await;
+
         // Get timestamp
         use std::time::{SystemTime, UNIX_EPOCH};
         let timestamp = SystemTime::now()
@@ -100,12 +103,12 @@ pub async fn agent_write_file(root_path: String, rel_path: String, content: Stri
 pub async fn agent_read_file(root_path: String, rel_path: String) -> Result<String, String> {
     #[cfg(feature = "commercial")]
     {
+        // 商业版：目前仍然调用 core，但如果 core 没有内部缓存，建议后续将 GLOBAL_CACHE 注入给 core
         return ifainew_core::agent::agent_read_file(root_path, rel_path).await;
     }
     #[cfg(not(feature = "commercial"))]
     {
-        let path = std::path::Path::new(&root_path).join(&rel_path);
-        tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())
+        crate::file_cache::cached_read_file(&root_path, &rel_path).await
     }
 }
 

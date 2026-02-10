@@ -894,7 +894,7 @@ pub async fn agent_stream_chat_with_root(
                         println!("[AgentStream] Hybrid: project_root={}, rel_path={}, full_path={}",
                             root, path, full_path.display());
 
-                        match file_cache::cached_read_file(&full_path) {
+                        match file_cache::cached_read_file(root, &path).await {
                             Ok(content) => {
                                 println!("[AgentStream] Hybrid: read file from cache: {} ({} bytes)", path, content.len());
                                 file_contents.push((path, content));

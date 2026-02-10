@@ -357,16 +357,17 @@ async fn ai_chat(
         // 🔥 v0.6.3: 双重注入策略 - 确保技能指令在 System Prompt 的头部和尾部各出现一次
         let mut system_content = String::new();
 
+        let mut skills_prompt: Option<String> = None;
         #[cfg(feature = "commercial")]
-        let skills_prompt = if let (Some(ref root), Some(ref skill_ids)) = (&project_root, &active_skill_ids) {
-            let mut skills_path = std::path::PathBuf::from(root);
-            skills_path.push(".ifai");
-            skills_path.push("skills");
-            let registry = ifainew_core::skills::SkillRegistry::new(skills_path);
-            registry.get_combined_prompt(skill_ids).ok()
-        } else {
-            None
-        };
+        {
+            if let (Some(ref root), Some(ref skill_ids)) = (&project_root, &active_skill_ids) {
+                let mut skills_path = std::path::PathBuf::from(root);
+                skills_path.push(".ifai");
+                skills_path.push("skills");
+                let registry = ifainew_core::skills::SkillRegistry::new(skills_path);
+                skills_prompt = registry.get_combined_prompt(skill_ids).ok();
+            }
+        }
 
         // 1. 首先注入基础 System Prompt 和 RAG 上下文
         system_content.push_str(&final_system_prompt);
