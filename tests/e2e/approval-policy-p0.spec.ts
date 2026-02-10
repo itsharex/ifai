@@ -1,131 +1,129 @@
 /**
- * P0 里程碑专项测试：统一审批策略与工具分类 (v2)
+ * P0 里程碑专项测试：统一审批策略与工具分类 (v4 - 高保真集成测试)
  */
 
 import { test, expect } from '@playwright/test';
 import { setupE2ETestEnvironment } from './setup';
 
-test.describe('P0 统一审批策略专项测试', () => {
-  test.setTimeout(60000);
-
+test.describe('P0 统一审批策略高保真验证', () => {
   test.beforeEach(async ({ page }) => {
     await setupE2ETestEnvironment(page);
     await page.goto('/');
     await page.waitForFunction(() => (window as any).__chatStore !== undefined, { timeout: 45000 });
   });
 
-  test('Vibe 模式下：安全工具应自动批准 (通过 AgentStore 触发)', async ({ page }) => {
-    // Given: 设置为 Vibe 模式
+  test('Vibe 模式：安全读取工具应全自动批准', async ({ page }) => {
+    // 1. 设置为 Vibe 模式并初始化
     await page.evaluate(() => {
       (window as any).__IFAI_EDITOR_MODE__ = 'vibe';
-      const settingsStore = (window as any).__settingsStore;
-      settingsStore.getState().updateSettings({
-        agentApprovalMode: 'session-never',
+      (window as any).__settingsStore.getState().updateSettings({
+        agentApprovalMode: 'session-once',
         agentAutoApprove: false
       });
-      
-      // 清空旧的自动审批记录
-      (window as any).__agentStore.getState().autoApprovedToolCalls.clear();
     });
 
-    // When: 模拟 Agent 事件触发安全工具调用
-    const toolCallId = 'tc-' + Date.now();
-    const assistantMsgId = await page.evaluate((tcId) => {
+    const assistantMsgId = 'msg-vibe-safe-' + Date.now();
+    const toolCallId = 'tc-vibe-safe-' + Date.now();
+
+    // 2. 模拟自然语言触发链路：直接调用暴露在 window 的意图处理函数模拟流程
+    await page.evaluate(({msgId, tcId}) => {
       const chatStore = (window as any).__chatStore;
-      const agentStore = (window as any).__agentStore;
       
-      // 1. 创建一条助手消息作为容器
-      const msgId = crypto.randomUUID();
+      // 模拟意图识别成功后注入一条带自动授权标志的消息
       chatStore.getState().addMessage({
         id: msgId,
         role: 'assistant',
-        content: '',
-        toolCalls: []
-      });
-      
-      // 2. 将消息映射到 Agent (模拟运行中的 Agent)
-      const agentId = 'test-agent';
-      agentStore.setState({
-        agentToMessageMap: { [agentId]: msgId }
+        content: '_[自动识别意图: Explore]_',
+        autoApproveTools: true,
+        isAgentLive: true
       });
 
-      // 3. 构造并发送一个模拟的工具调用事件 (非 partial)
-      // 这将触发 agentStore.ts 430 行左右的逻辑
-      const toolCall = {
-        id: tcId,
-        tool: 'agent_read_file',
-        args: { rel_path: 'test.txt' },
-        status: 'pending',
-        isPartial: false
-      };
+      // 模拟接收到 tool_call 事件
+      const emitEvent = (window as any).__E2E_EMIT_EVENT__ || ((id: string, payload: any) => {
+          const listeners = (globalThis as any).__TAURI_EVENT_LISTENERS__?.[id] || [];
+          listeners.forEach((fn: any) => fn({ payload }));
+      });
 
-      // 注入工具调用并等待审批逻辑执行
-      // 我们模拟 handleToolCall 的内部行为
-      // 注意：agentStore 目前并没有直接暴露处理函数，但我们可以通过监听器注入
-      
-      // 简化方案：直接使用我们重构的逻辑入口
-      // 实际上 agentStore 内部会调用 coreUseChatStore.setState 并触发 checkAutoApprove
-      
-      return msgId;
-    }, toolCallId);
+      emitEvent(msgId, {
+        type: 'tool_call',
+        toolCall: {
+          id: tcId,
+          tool: 'agent_read_file',
+          args: { relPath: 'README.md' },
+          isPartial: false
+        }
+      });
 
-    // 显式在浏览器端运行一次审批检查逻辑（模拟触发过程）
-    await page.evaluate(async ({msgId, tcId}) => {
-       const settings = (window as any).__settingsStore.getState();
-       const checkAutoApprove = (window as any).shouldAutoApprove || (await import('../src/utils/approvalPolicy')).shouldAutoApprove;
-       
-       // 既然 E2E 环境中很难完美触发异步监听，我们直接验证 Policy 函数本身在浏览器环境下的行为
-       // 这也是一种有效的 Unit-in-E2E 测试
-       const result = (window as any).checkAutoApprove({
-           settings,
-           editorMode: 'vibe',
-           isSessionTrusted: false,
-           toolName: 'agent_read_file',
-           isSandbox: true,
-           userMessageHasAutoApprove: false
-       });
-       
-       if (result) {
-          (window as any).__chatStore.getState().approveToolCall(msgId, tcId);
-       }
+      // 模拟流结束，触发审批决策
+      emitEvent(msgId + '_finish', 'DONE');
     }, {msgId: assistantMsgId, tcId: toolCallId});
 
-    await page.waitForTimeout(500);
+    // 3. 轮询断言：状态应自动变更为 approved
+    await page.waitForFunction(({msgId, tcId}) => {
+      const messages = (window as any).__chatStore.getState().messages;
+      const tc = messages.flatMap((m: any) => m.toolCalls || []).find((t: any) => t.id === tcId);
+      return tc && (tc.status === 'approved' || tc.status === 'completed');
+    }, {msgId: assistantMsgId, tcId: toolCallId}, { timeout: 10000 });
 
-    // Then: 验证状态
-    const status = await page.evaluate(({msgId, tcId}) => {
-      const msg = (window as any).__chatStore.getState().messages.find((m: any) => m.id === msgId);
-      const tc = msg?.toolCalls?.find((t: any) => t.id === tcId);
+    const finalStatus = await page.evaluate(({msgId, tcId}) => {
+      const messages = (window as any).__chatStore.getState().messages;
+      const tc = messages.flatMap((m: any) => m.toolCalls || []).find((t: any) => t.id === tcId);
       return tc?.status;
     }, {msgId: assistantMsgId, tcId: toolCallId});
 
-    expect(status).toBe('approved');
+    console.log('[Vibe_P0_Test] Final status:', finalStatus);
+    expect(['approved', 'completed']).toContain(finalStatus);
   });
 
-  test('Vibe 模式下：破坏性工具应被拒绝自动审批 (Policy 验证)', async ({ page }) => {
-    // 这个测试验证 Policy 函数在浏览器上下文中的逻辑是否正确
-    const result = await page.evaluate(async () => {
-       const settings = (window as any).__settingsStore.getState();
-       
-       // 我们直接调用注入到 window 的函数（为了测试方便，我将在 store 里把它挂载到 window）
-       // 如果没有挂载，我们模拟其逻辑
-       const isSandbox = false; 
-       const toolName = 'agent_bash';
-       const editorMode = 'vibe';
-       
-       // 模拟 categorization
-       const isDestructive = (name: string) => name === 'agent_bash' || name === 'agent_delete_file';
-       
-       // 模拟 shouldAutoApprove 逻辑
-       const shouldAutoApproveLocal = (name: string, mode: string, sandbox: boolean) => {
-           if (!sandbox && isDestructive(name)) return false;
-           if (mode === 'vibe' && !isDestructive(name)) return true;
-           return false;
-       };
-
-       return shouldAutoApproveLocal(toolName, editorMode, isSandbox);
+  test('安全边界：即使是 Vibe 模式，破坏性操作也严禁自动批准', async ({ page }) => {
+    // 1. 设置为 Vibe 模式
+    await page.evaluate(() => {
+      (window as any).__IFAI_EDITOR_MODE__ = 'vibe';
     });
 
-    expect(result).toBe(false);
+    const assistantMsgId = 'msg-vibe-bash-' + Date.now();
+    const toolCallId = 'tc-vibe-bash-' + Date.now();
+
+    await page.evaluate(({msgId, tcId}) => {
+      const chatStore = (window as any).__chatStore;
+      
+      chatStore.getState().addMessage({
+        id: msgId,
+        role: 'assistant',
+        content: '_[自动识别意图: Bash]_',
+        autoApproveTools: true,
+        isAgentLive: true
+      });
+
+      const emitEvent = (window as any).__E2E_EMIT_EVENT__ || ((id: string, payload: any) => {
+          const listeners = (globalThis as any).__TAURI_EVENT_LISTENERS__?.[id] || [];
+          listeners.forEach((fn: any) => fn({ payload }));
+      });
+
+      // 注入破坏性工具
+      emitEvent(msgId, {
+        type: 'tool_call',
+        toolCall: {
+          id: tcId,
+          tool: 'agent_bash',
+          args: { command: 'rm -rf .' },
+          isPartial: false
+        }
+      });
+
+      emitEvent(msgId + '_finish', 'DONE');
+    }, {msgId: assistantMsgId, tcId: toolCallId});
+
+    // 等待一段时间，确认它保持 pending 状态
+    await page.waitForTimeout(3000);
+
+    const finalStatus = await page.evaluate(({msgId, tcId}) => {
+      const messages = (window as any).__chatStore.getState().messages;
+      const tc = messages.flatMap((m: any) => m.toolCalls || []).find((t: any) => t.id === tcId);
+      return tc?.status;
+    }, {msgId: assistantMsgId, tcId: toolCallId});
+
+    console.log('[Vibe_P0_Test] Bash status (should be pending):', finalStatus);
+    expect(finalStatus).toBe('pending');
   });
 });

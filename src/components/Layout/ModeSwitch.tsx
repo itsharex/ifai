@@ -10,7 +10,8 @@ export const ModeSwitch: React.FC = () => {
     // 1. 物理层立即同步 (防止 React 闭包延迟)
     if (typeof window !== 'undefined') {
       (window as any).__IFAI_EDITOR_MODE__ = mode;
-      (window as any).__IFAI_DISABLE_INTENT__ = (mode === 'vibe');
+      // 🔥 FIX v0.3.9: Vibe 模式下也允许意图识别，以便自然语言触发 Agent
+      (window as any).__IFAI_DISABLE_INTENT__ = false; 
       console.log('[ModeSwitch] 🚀 PHYSICAL SYNC:', mode);
     }
     // 2. React 状态更新

@@ -3,6 +3,7 @@
 // ============================================================================
 if (typeof window !== 'undefined') {
     (window as any).recognizeIntent = recognizeIntent;
+    (window as any).checkAutoApprove = checkAutoApprove;
 }
 
 // Wrapper for core library useChatStore
@@ -2147,21 +2148,20 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         // 🔥 修复：确保返回布尔值而不是 undefined
 
         const isSessionTrusted = sessionTrust ? Date.now() < sessionTrust.expiresAt : false;
-        const editorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
+        const latestEditorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
 
-        const message = coreUseChatStore.getState().messages.find(m => m.id === assistantMsgId);
-        if (message && message.toolCalls) {
-            const pendingToolCalls = message.toolCalls.filter(tc => {
+        const currentAssistantMsg = currentMessages.find(m => m.id === assistantMsgId);
+        
+        if (currentAssistantMsg && currentAssistantMsg.toolCalls) {
+            const pendingToolCalls = currentAssistantMsg.toolCalls.filter(tc => {
                 const isPending = tc.status === 'pending';
-                const isComplete = !tc.isPartial;
-                const isAdvancedMode = (window as any).__IFAI_EDITOR_MODE__ === 'spec' || (window as any).__IFAI_EDITOR_MODE__ === 'vibe';
+                const isAdvancedMode = latestEditorMode === 'spec' || latestEditorMode === 'vibe';
                 
-                if (!isPending || (!isComplete && !isAdvancedMode)) return false;
+                if (!isPending || (tc.isPartial && !isAdvancedMode)) return false;
 
-                // 🔥 使用统一策略
                 return checkAutoApprove({
                     settings,
-                    editorMode: editorMode as any,
+                    editorMode: latestEditorMode as any,
                     isSessionTrusted,
                     toolName: tc.tool,
                     isSandbox: true,
@@ -2170,7 +2170,16 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             });
 
             if (pendingToolCalls.length > 0) {
-                console.log(`[Chat] Auto-approving ${pendingToolCalls.length} tool calls from patchedSendMessage`);
+                console.log(`[Chat] 🚀 Strong Auto-approve triggered for ${pendingToolCalls.length} tools`);
+                
+                for (const tc of pendingToolCalls) {
+                    try {
+                        // 使用当前挂载的封装版 approveToolCall
+                        await (window as any).__chatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
+                    } catch (err) {
+                        console.error(`[Chat] Auto-approval failed for ${tc.id}:`, err);
+                    }
+                }
 
                 // 检查是否在自动工具调用循环中
                 const { messages } = coreUseChatStore.getState();
@@ -2596,31 +2605,29 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
         const approvalMode = settings.agentApprovalMode || 'session-once';
 
-        const sessionId = useThreadStore.getState().activeThreadId || 'default';
-
-        const sessionTrust = settings.trustedSessions?.[sessionId];
-
+        const currentThreadId = useThreadStore.getState().activeThreadId || 'default';
+        const sessionTrust = settings.trustedSessions?.[currentThreadId];
         const isSessionTrusted = sessionTrust ? Date.now() < sessionTrust.expiresAt : false;
-
-        const isVibeOrSpec = (window as any).__IFAI_EDITOR_MODE__ === 'spec' || (window as any).__IFAI_EDITOR_MODE__ === 'vibe';
-        const editorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
 
         const message = finalizedMessages.find(m => m.id === assistantMsgId);
         if (message && message.toolCalls) {
+            // 🔥 FIX: 重新从 window 获取最新模式
+            const latestEditorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
+
             const pendingToolCalls = message.toolCalls.filter(tc => {
                 const isPending = tc.status === 'pending';
                 const isComplete = !tc.isPartial;
-                const isAdvancedMode = isVibeOrSpec;
+                const isAdvancedMode = latestEditorMode === 'spec' || latestEditorMode === 'vibe';
                 
                 if (!isPending || (!isComplete && !isAdvancedMode)) return false;
 
                 // 使用统一策略判断当前工具是否应自动批准
                 return checkAutoApprove({
                     settings,
-                    editorMode: editorMode as any,
+                    editorMode: latestEditorMode as any,
                     isSessionTrusted,
                     toolName: tc.tool,
-                    isSandbox: true, // TODO: 后续接入真实沙箱检测
+                    isSandbox: true,
                     userMessageHasAutoApprove
                 });
             });

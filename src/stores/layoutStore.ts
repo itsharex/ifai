@@ -87,7 +87,8 @@ const MIN_PANE_SIZE = 20; // 最小窗格大小 (百分比)
 const syncModeToGlobal = (mode: 'vibe' | 'spec') => {
   if (typeof window !== 'undefined') {
     (window as any).__IFAI_EDITOR_MODE__ = mode;
-    (window as any).__IFAI_DISABLE_INTENT__ = (mode === 'vibe');
+    // 🔥 FIX v0.3.9: Vibe 模式必须启用意图识别才能实现“自然语言触发”
+    (window as any).__IFAI_DISABLE_INTENT__ = false; 
     console.log('[LayoutStore] Persistent Mode Synced:', mode);
   }
 };

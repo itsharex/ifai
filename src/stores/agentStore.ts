@@ -441,47 +441,26 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                     console.log(`[AgentStore] Auto-approve check: isNewlyCompleted=${isNewlyCompleted}, wasAlreadyAutoApproved=${wasAlreadyAutoApproved}`);
 
                     if (isNewlyCompleted && !wasAlreadyAutoApproved) {
-                        const settings = useSettingsStore.getState();
-                        console.log(`[AgentStore] Auto-approve setting: ${settings.agentAutoApprove}`);
-
-                        // 🔥 v0.3.4: 检查会话信任状态
-                        const sessionId = useThreadStore.getState().activeThreadId || 'default';
-                        const sessionTrust = settings.trustedSessions[sessionId];
+                        // 重新获取最新的 settings，防止闭包捕获旧值
+                        const latestSettings = useSettingsStore.getState();
+                        const currentThreadId = useThreadStore.getState().activeThreadId || 'default';
+                        const sessionTrust = latestSettings.trustedSessions[currentThreadId];
                         const isSessionTrusted = sessionTrust && Date.now() < sessionTrust.expiresAt;
-
-                        // 🔥 详细调试：输出所有会话信任信息
-                        console.log(`[AgentStore] 🔥 v0.3.4 Debug trustedSessions:`, {
-                            sessionId,
-                            allSessions: Object.keys(settings.trustedSessions),
-                            currentSession: sessionTrust,
-                            isSessionTrusted,
-                            now: Date.now(),
-                            expiresAt: sessionTrust?.expiresAt
-                        });
-
-                        // 🔥 v0.3.4: 确保 agentApprovalMode 有值（处理老用户升级情况）
-                        const approvalMode = settings.agentApprovalMode || 'session-once';
+                        
                         const editorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
 
                         // 决定是否自动批准 (P0: 统一策略)
                         const agent = get().runningAgents.find(a => a.id === id);
                         const shouldAutoApprove = checkAutoApprove({
-                            settings,
+                            settings: latestSettings,
                             editorMode: editorMode as any,
                             isSessionTrusted,
                             toolName: liveToolCall.tool,
-                            isSandbox: true, // TODO: 后续接入真实沙箱检测
-                            // 🔥 继承 Agent 的授权标志
+                            isSandbox: true, 
                             userMessageHasAutoApprove: agent?.autoApproveTools === true 
                         });
 
-                        console.log(`[AgentStore] 🔥 P0 Approval decision:`, {
-                            tool: liveToolCall.tool,
-                            mode: approvalMode,
-                            editorMode,
-                            isSessionTrusted,
-                            shouldAutoApprove,
-                        });
+                        console.log(`[AgentStore] Auto-approval decision for ${liveToolCall.tool}: ${shouldAutoApprove}`);
 
                         if (shouldAutoApprove) {
                             // Mark as auto-approved BEFORE calling to prevent race condition
@@ -491,9 +470,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                             set({ autoApprovedToolCalls: newSet });
 
                             setTimeout(async () => {
-                                const approveToolCall = coreUseChatStore.getState().approveToolCall;
+                                // 🔥 FIX v0.3.9: 增强动态 Store 获取能力
+                                const chatStore = (window as any).__chatStore || coreUseChatStore;
+                                const currentChatState = chatStore.getState();
+                                const approveToolCall = currentChatState.approveToolCall;
+                                
                                 if (approveToolCall) {
                                     try {
+                                        console.log(`[AgentStore] 🚀 Executing AUTO-APPROVE for ${toolCall.tool} (msgId: ${msgId})`);
                                         await approveToolCall(msgId, toolCall.id);
                                         // 🔥 v0.3.4: 记录会话信任（首次批准后）
                                         if (settings.agentApprovalMode === 'session-once' && !isSessionTrusted) {
