@@ -782,7 +782,45 @@ export async function setupE2ETestEnvironment(
                     }
                 }));
 
-                // Emit log: starting task
+                // 🔥 改进版：确保事件发送的时序更符合前端预期
+                if (agentType === 'Explore' || agentType === 'Explore Agent') {
+                    // 1. 发送正在运行状态
+                    statusListeners.forEach((fn: Function) => fn({
+                        payload: { type: 'status', status: 'running', progress: 0.1 }
+                    }));
+
+                    // 2. 延迟发送工具调用
+                    setTimeout(() => {
+                        console.log(`[E2E Mock] 📡 Emitting agent_list_dir tool_call for ${id}`);
+                        statusListeners.forEach((fn: Function) => fn({
+                            payload: {
+                                type: 'tool_call',
+                                toolCall: {
+                                    id: `call_${Date.now()}`,
+                                    tool: 'agent_list_dir',
+                                    args: { rootPath: '/Users/mac/mock-project', relPath: '.' },
+                                    isPartial: false
+                                }
+                            }
+                        }));
+                    }, 800); // 增加一点延迟，确保前端 Listener 已经完全就绪
+
+                    // 3. 模拟工具执行成功
+                    setTimeout(() => {
+                        statusListeners.forEach((fn: Function) => fn({
+                            payload: { type: 'status', status: 'completed', progress: 1.0 }
+                        }));
+                        statusListeners.forEach((fn: Function) => fn({
+                            payload: {
+                                type: 'result',
+                                result: '✅ **项目扫描完成**'
+                            }
+                        }));
+                    }, 2500);
+                    return;
+                }
+
+                // Default: Emit log: starting task (原有逻辑)
                 setTimeout(() => {
                     statusListeners.forEach((fn: Function) => fn({
                         payload: {

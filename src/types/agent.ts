@@ -28,6 +28,7 @@ export interface Agent {
     content: string;
   };
   currentStep?: string;
+  autoApproveTools?: boolean;
 
   // Explore agent specific data
   exploreProgress?: {

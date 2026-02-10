@@ -42,7 +42,7 @@ interface AgentState {
   deduplicator: IToolCallDeduplicator;
   // 🔥 资源限制器
   resourceLimiter: IAgentResourceLimiter;
-  launchAgent: (agentType: string, task: string, chatMsgId?: string, threadId?: string) => Promise<string>;
+  launchAgent: (agentType: string, task: string, chatMsgId?: string, threadId?: string, autoApproveTools?: boolean) => Promise<string>;
   removeAgent: (id: string) => void;
   initEventListeners: () => Promise<() => void>;
   approveAction: (id: string, approved: boolean) => Promise<void>;
@@ -72,7 +72,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   // 🔥 从服务模块导入
   syncAgentActionToTaskMonitor,
 
-  launchAgent: async (agentType: string, task: string, chatMsgId?: string, threadId?: string) => {
+  launchAgent: async (agentType: string, task: string, chatMsgId?: string, threadId?: string, autoApproveTools?: boolean) => {
     // 1. 生成 ID
     const id = generateAgentId();
     const eventId = generateEventId(id);
@@ -464,14 +464,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                         const editorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
 
                         // 决定是否自动批准 (P0: 统一策略)
+                        const agent = get().runningAgents.find(a => a.id === id);
                         const shouldAutoApprove = checkAutoApprove({
                             settings,
                             editorMode: editorMode as any,
                             isSessionTrusted,
                             toolName: liveToolCall.tool,
                             isSandbox: true, // TODO: 后续接入真实沙箱检测
-                            // Agent 触发的消息通常不带有显式的 @auto-approve 文本
-                            userMessageHasAutoApprove: false 
+                            // 🔥 继承 Agent 的授权标志
+                            userMessageHasAutoApprove: agent?.autoApproveTools === true 
                         });
 
                         console.log(`[AgentStore] 🔥 P0 Approval decision:`, {
@@ -1254,6 +1255,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         content: "",
         startTime: Date.now(),
         threadId: currentThreadId, // Associate with thread
+        autoApproveTools: autoApproveTools,
     };
     set(state => ({ runningAgents: [newAgent, ...state.runningAgents] }));
 
