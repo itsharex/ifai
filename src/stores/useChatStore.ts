@@ -3607,9 +3607,20 @@ const patchedApproveToolCall = async (
 
         let bashResult: any;
 
-        // 🔥 FIX v0.3.9: 严防将工具名误作为命令执行 (Command agent_bash not found)
-        const commandToExecute = args.command || args.cmd || args.script || args.args || '';
-        if (!commandToExecute || commandToExecute === 'agent_bash' || commandToExecute === 'bash') {
+        // 🔥 FIX v0.5.0: 增强型命令清洗 - 严防 AI 带入中文引导词 (如 "运行 npm run dev")
+        let cleanedCommand = (args.command || args.cmd || args.script || args.args || '').trim();
+        
+        // 自动剔除引导词前缀
+        const prefixPattern = /^(运行|执行|使用|请运行|请执行|run|execute)\s+/i;
+        if (prefixPattern.test(cleanedCommand)) {
+            const original = cleanedCommand;
+            cleanedCommand = cleanedCommand.replace(prefixPattern, '').trim();
+            console.log(`[useChatStore] 🧹 Cleaned command: "${original}" -> "${cleanedCommand}"`);
+        }
+
+        const commandToExecute = cleanedCommand;
+        
+        if (!commandToExecute || commandToExecute === 'execute_bash_command' || commandToExecute === 'bash') {
             console.error(`[useChatStore] ❌ Invalid bash command: "${commandToExecute}". Refusing to execute.`);
             bashResult = {
                 success: false,
@@ -3619,12 +3630,11 @@ const patchedApproveToolCall = async (
             };
         } else {
             try {
-                // 🚀 v0.5.0: 修正后端命令名映射，不再带 agent_ 前缀
-                bashResult = await invoke('bash', {
-                    messageId,
+                // 🚀 v0.5.0: 修正后端命令名映射及参数名对齐 (Rust: working_dir -> workingDir)
+                bashResult = await invoke('execute_bash_command', {
                     command: commandToExecute,
-                    cwd: workingDir,
-                    env: args.env
+                    workingDir: workingDir,
+                    envVars: args.env || args.envVars
                 });
                 console.log(`[useChatStore] Bash command executed, result type: ${typeof bashResult}`);
             } catch (error) {

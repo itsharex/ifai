@@ -1,4 +1,3 @@
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChatStore } from '../../src/stores/useChatStore';
 import { useFileStore } from '../../src/stores/fileStore';
@@ -14,33 +13,39 @@ if (typeof window === 'undefined') {
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (cmd, args) => {
-    console.log('[Mock Invoke] Command:', cmd, 'Args:', args);
-    if (cmd === 'bash' || cmd === 'run_shell_command' || cmd === 'execute_command') {
-        return { status: 'success', stdout: 'Output', exit_code: 0 };
+    console.log('[Mock Invoke] Command:', cmd, 'Args:', JSON.stringify(args));
+    
+    // 正确的后端命令名
+    if (cmd === 'execute_bash_command') {
+        // 验证参数名是否对齐后端 Rust 定义 (working_dir, command)
+        if (args.command && args.workingDir !== undefined) {
+            return { success: true, stdout: 'OK', exit_code: 0 };
+        }
     }
-    // 如果收到了错误的命令名，抛出错误
-    if (cmd === 'agent_bash') {
-        throw new Error('Command agent_bash not found');
+    
+    // 如果收到了错误的命令名，抛出错误（模拟截图中的现象）
+    if (cmd === 'bash' || cmd === 'agent_bash') {
+        throw new Error(`Command ${cmd} not found`);
     }
     return {};
   }),
 }));
 
-describe('Bash Tool Routing Regression (v0.5.0)', () => {
+describe('Bash Tool Routing & Cleaning Regression (v0.5.0)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useFileStore.setState({ rootPath: '/test-project' });
   });
 
-  it('SHOULD NOT prefix bash command with agent_ when invoking backend', async () => {
+  it('SHOULD route to execute_bash_command and clean command prefix', async () => {
     const chatStore = useChatStore.getState() as any;
     const messageId = 'msg-bash-test';
     
-    // 1. 模拟收到一个 bash 工具调用
+    // 模拟 AI 带入中文引导词的错误调用
     const toolCall = {
         id: 'call-bash-1',
         tool: 'bash',
-        function: { name: 'bash', arguments: JSON.stringify({ command: 'npm run dev' }) },
+        function: { name: 'bash', arguments: JSON.stringify({ command: '运行 npm run dev' }) },
         status: 'pending'
     };
 
@@ -53,20 +58,16 @@ describe('Bash Tool Routing Regression (v0.5.0)', () => {
       }]
     });
 
-    // 2. 触发审批执行
-    try {
-        await chatStore.approveToolCall(messageId, 'call-bash-1');
-    } catch (e) {
-        // 如果逻辑错误，这里会捕获到 "Command agent_bash not found"
-    }
+    await chatStore.approveToolCall(messageId, 'call-bash-1');
 
-    // 3. 验证调用记录
-    const callNames = (invoke as any).mock.calls.map((c: any) => c[0]);
-    console.log('INVOKE CALLS:', callNames);
+    const lastCall = (invoke as any).mock.calls.find((c: any) => c[0] === 'execute_bash_command');
+    expect(lastCall).toBeDefined();
     
-    // 预期：不应该包含 agent_bash
-    expect(callNames).not.toContain('agent_bash');
-    // 应该包含正确的后端命令名（通常是 bash）
-    expect(callNames.some((n: string) => n === 'bash' || n === 'run_shell_command')).toBe(true);
+    const args = lastCall[1];
+    // 预期 1: 字段名映射正确 (workingDir 而非 cwd)
+    expect(args.workingDir).toBe('/test-project');
+    
+    // 预期 2: 命令已被清洗，去掉了 "运行 " 前缀
+    expect(args.command).toBe('npm run dev');
   });
 });
