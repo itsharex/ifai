@@ -710,10 +710,21 @@ async function selectMessagesForContext(
 
 }
 
+// 🔥 v0.3.6: 工业级多模态数据缓存 - 解决 localStorage QuotaExceededError
+// 将大体积 Base64 图片保留在内存中，不存入受限的持久化存储
+const multimodalCache = new Map<string, any[]>();
+
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string) => {
 
     const callId = crypto.randomUUID().slice(0, 8);
     console.log(`>>> [${callId}] patchedSendMessage called:`, typeof content === 'string' ? content.slice(0, 50) : 'array');
+
+    // 🔥 v0.3.6: 预生成消息 ID 并缓存多模态数据
+    const msgId = crypto.randomUUID();
+    if (Array.isArray(content)) {
+        multimodalCache.set(msgId, content);
+        console.log(`[Multimodal] Data cached for message ${msgId}, parts: ${content.length}`);
+    }
 
     // 🚀 v0.3.5: 引用物理化 - 符号级精准注入
     let enrichedContent = typeof content === 'string' ? content : '';
@@ -1404,13 +1415,31 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         const autoApproveTools = typeof content === 'string' && content.includes('[TASK-EXECUTION]');
 
+        // 🔥 v0.3.6: 消息脱敏持久化
+        // 如果是数组（多模态），生成一个不含巨大 Base64 的显示版内容用于存入 Store (localStorage)
+        let storageContent = displayContent;
+        if (Array.isArray(displayContent)) {
+            storageContent = displayContent.map(part => {
+                if (part.type === 'image_url' && part.image_url?.url) {
+                    return { 
+                        ...part, 
+                        image_url: { 
+                            ...part.image_url, 
+                            url: part.image_url.url.length > 1000 ? 'PREVIEW_DATA_HIDDEN' : part.image_url.url 
+                        } 
+                    };
+                }
+                return part;
+            });
+        }
+
         const userMsg = {
 
-            id: crypto.randomUUID(),
+            id: msgId, // 使用 v0.3.6 预生成的 ID
 
             role: 'user' as const,
 
-            content: displayContent,  // 使用清理后的内容显示
+            content: storageContent,  // 使用脱敏后的内容持久化
 
             // @ts-ignore - 添加自动审批标志
 
@@ -2188,6 +2217,9 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         flushUpdates();
 
+        // 🔥 v0.3.6: 清理多模态数据缓存
+        multimodalCache.delete(msgId);
+
         // Finalize all partial tool calls
 
         coreUseChatStore.setState((state) => {
@@ -2357,16 +2389,21 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         coreUseChatStore.setState({
 
-            messages: messages.map(m =>
+                        messages: messages.map(m =>
 
-                m.id === assistantMsgId ? { ...m, content: `❌ Error: ${safePayload}` } : m
+                            m.id === assistantMsgId ? { ...m, content: `❌ Error: ${safePayload}` } : m
 
-            )
+                        )
 
-        });
+                    });
 
-        // Error: cleanup listeners
-        if (typeof unlistenStatus === 'function') unlistenStatus();
+            
+
+                    // Error: cleanup listeners
+
+                    multimodalCache.delete(msgId);
+
+                    if (typeof unlistenStatus === 'function') unlistenStatus();
         if (typeof unlistenStream === 'function') unlistenStream();
         if (typeof unlistenRefs === 'function') unlistenRefs();
         if (typeof unlistenCompacted === 'function') unlistenCompacted();
@@ -2385,14 +2422,23 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         const currentMode = (window as any).__IFAI_EDITOR_MODE__;
         const shouldEnableTools = (currentMode !== "vibe");
 
+        // 🔥 v0.3.6: 从缓存中获取完整的多模态内容（如果存在）
+        const cachedContent = multimodalCache.get(msgId);
+
         await invoke('ai_chat', {
             providerConfig,
             messages: msgHistory.map((m, i) => {
                 const isLastUserMsg = i === msgHistory.length - 1 && m.role === 'user';
-                // 🔥 v0.3.6 FIX: 如果是最后一条用户消息，且内容是字符串，才应用 enrichedContent (注入后的引用)
-                // 如果是多模态数组，则保持原始 content，避免被空字符串覆盖
-                if (isLastUserMsg && typeof content === 'string') {
-                    return { ...m, content: enrichedContent };
+                // 🔥 v0.3.6 FIX: 如果是最后一条用户消息
+                if (isLastUserMsg) {
+                    // 如果内容是字符串，应用 enrichedContent (注入后的引用)
+                    if (typeof content === 'string') {
+                        return { ...m, content: enrichedContent };
+                    } 
+                    // 如果是多模态数组，则从缓存中还原完整内容，避免被空字符串或脱敏内容覆盖
+                    else if (cachedContent) {
+                        return { ...m, content: cachedContent };
+                    }
                 }
                 return { role: m.role, content: m.content };
             }),
