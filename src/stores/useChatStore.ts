@@ -2387,7 +2387,15 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         await invoke('ai_chat', {
             providerConfig,
-            messages: msgHistory.map((m, i) => (i === msgHistory.length - 1 && m.role === 'user') ? { ...m, content: enrichedContent } : { role: m.role, content: m.content }),
+            messages: msgHistory.map((m, i) => {
+                const isLastUserMsg = i === msgHistory.length - 1 && m.role === 'user';
+                // 🔥 v0.3.6 FIX: 如果是最后一条用户消息，且内容是字符串，才应用 enrichedContent (注入后的引用)
+                // 如果是多模态数组，则保持原始 content，避免被空字符串覆盖
+                if (isLastUserMsg && typeof content === 'string') {
+                    return { ...m, content: enrichedContent };
+                }
+                return { role: m.role, content: m.content };
+            }),
             eventId: assistantMsgId,
             projectRoot: useFileStore.getState().rootPath,
             enableTools: shouldEnableTools,
