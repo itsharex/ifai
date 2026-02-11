@@ -2367,18 +2367,12 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         });
 
         // Error: cleanup listeners
-
-        unlistenStatus();
-
-        unlistenStream();
-
-        unlistenRefs();
-
-        unlistenCompacted();
-
-        unlistenFinish();
-
-        unlistenError();
+        if (typeof unlistenStatus === 'function') unlistenStatus();
+        if (typeof unlistenStream === 'function') unlistenStream();
+        if (typeof unlistenRefs === 'function') unlistenRefs();
+        if (typeof unlistenCompacted === 'function') unlistenCompacted();
+        if (typeof unlistenFinish === 'function') unlistenFinish();
+        if (typeof unlistenError === 'function') unlistenError();
 
         coreUseChatStore.setState({ isLoading: false });
 
@@ -2387,15 +2381,19 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     // 6. Invoke Backend
 
     try {
+        // 🔥 v0.5.0: 增强型模式判定 (SendMessage 路径)
+        // 仅在模式明确为 "spec" 时才启用工具（防御性白名单）
+        const currentMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
+        const shouldEnableTools = (currentMode === "spec");
 
         await invoke('ai_chat', {
             providerConfig,
             messages: msgHistory.map((m, i) => (i === msgHistory.length - 1 && m.role === 'user') ? { ...m, content: enrichedContent } : { role: m.role, content: m.content }),
             eventId: assistantMsgId,
             projectRoot: useFileStore.getState().rootPath,
-            enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe"),
+            enableTools: shouldEnableTools,
             activeSkillIds: (window as any).__IFAI_ACTIVE_SKILLS__ || [],
-            mode: (window as any).__IFAI_EDITOR_MODE__ || "vibe"
+            mode: currentMode
         });
 
     } catch (e) {
@@ -2419,18 +2417,12 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         });
 
         // Error: cleanup listeners
-
-        unlistenStatus();
-
-        unlistenStream();
-
-        unlistenRefs();
-
-        unlistenCompacted();
-
-        unlistenFinish();
-
-        unlistenError();
+        if (typeof unlistenStatus === 'function') unlistenStatus();
+        if (typeof unlistenStream === 'function') unlistenStream();
+        if (typeof unlistenRefs === 'function') unlistenRefs();
+        if (typeof unlistenCompacted === 'function') unlistenCompacted();
+        if (typeof unlistenFinish === 'function') unlistenFinish();
+        if (typeof unlistenError === 'function') unlistenError();
 
         coreUseChatStore.setState({ isLoading: false });
 
@@ -2778,24 +2770,21 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
     });
 
         try {
+            // 🔥 v0.5.0: 增强型模式判定
+            const currentMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
+            const shouldEnableTools = options?.enableTools !== undefined 
+                ? options.enableTools 
+                : (currentMode === "spec");
 
             await invoke('ai_chat', { 
-
                 providerConfig: backendConfig, 
-
                 messages: msgHistory, 
-
                 eventId: assistantMsgId, 
-
                 projectRoot: useFileStore.getState().rootPath, 
-
-                enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe"),
-
-                                activeSkillIds: (window as any).__IFAI_ACTIVE_SKILLS__ || [],
-
-                                mode: (window as any).__IFAI_EDITOR_MODE__ || "vibe"
-
-                            });
+                enableTools: shouldEnableTools,
+                activeSkillIds: (window as any).__IFAI_ACTIVE_SKILLS__ || [],
+                mode: currentMode
+            });
 
                 
 
