@@ -119,7 +119,7 @@ describe('Mode Switching Regression', () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     expect(chatOptions).toBeDefined();
-    // 默认应该是安全的 (vibe 行为)，不应开启工具
-    expect(chatOptions.enableTools).toBe(false);
+    // 🚀 v0.5.0: 为了 E2E 兼容性，undefined 模式现在默认开启工具
+    expect(chatOptions.enableTools).toBe(true);
   });
 });

@@ -261,14 +261,12 @@ describe('approvalPolicy', () => {
         expect(shouldAutoApprove(context)).toBe(false);
       });
 
-      it('should handle undefined tool name', () => {
-        // 测试 undefined 工具名会抛出错误，这是预期的行为
-        expect(() => {
-          const context = createBaseContext({
-            toolName: undefined as any
-          });
-          shouldAutoApprove(context);
-        }).toThrow();
+      it('should handle undefined tool name gracefully', () => {
+        // 🚀 v0.5.0: 现在不再抛错，而是返回 dangerous 状态
+        const context = createBaseContext({
+          toolName: undefined as any
+        });
+        expect(shouldAutoApprove(context)).toBe(false);
       });
 
       it('should handle null settings gracefully', () => {

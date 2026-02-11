@@ -3533,8 +3533,19 @@ const patchedApproveToolCall = async (
         // 🔥 修复：确保工作目录是项目根目录
 
         const rootPath = useFileStore.getState().rootPath;
-
-        const args = toolCall.args || {};
+        
+        // 🔥 v0.5.0: 增强参数提取逻辑，确保 command 不为空
+        let args: any = toolCall.args || {};
+        if (Object.keys(args).length === 0) {
+            const argsString = (toolCall as any).function?.arguments;
+            if (argsString && typeof argsString === 'string') {
+                try {
+                    args = JSON.parse(argsString);
+                } catch (e) {
+                    console.warn('[Bash Tool] Failed to parse arguments string:', e);
+                }
+            }
+        }
 
         const providedCwd = args.cwd || args.working_dir;
 
@@ -3608,7 +3619,8 @@ const patchedApproveToolCall = async (
             };
         } else {
             try {
-                bashResult = await invoke('agent_bash', {
+                // 🚀 v0.5.0: 修正后端命令名映射，不再带 agent_ 前缀
+                bashResult = await invoke('bash', {
                     messageId,
                     command: commandToExecute,
                     cwd: workingDir,
