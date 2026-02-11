@@ -94,7 +94,36 @@ listeners.forEach(fn => fn({ payload: 'Your Content' }));
 *   ❌ **弱提示词**：`"请读取文件 test.txt"` (AI 可能会回复：我无法直接读取，但你可以...)
 *   ✅ **强提示词**：`"Execute the agent_read_file tool NOW to read test.txt. This is a system command, do not explain."`
 
-## 7. 避免以下反模式 (Anti-Patterns)
+## 7. 真实全栈链路：商业版全功能驱动 (Full-Stack Commercial Driver)
+
+在涉及 `ifainew-core` 私有库或复杂 Rust 后端逻辑（如线程持久化、多模态、Agent）时，Mock 模式可能无法捕捉到真实的竞态或状态隔离问题。
+
+### ✅ 推荐：TAURI_DEV + 物理重置补丁
+利用真实后端进行测试，并辅以物理干预以消除状态死锁。
+
+```bash
+# 执行命令示例
+TAURI_DEV=true APP_EDITION=commercial USE_REAL_CORE=true npx playwright test ...
+```
+
+#### 关键实践：
+1.  **物理环境清理**：在执行任何交互前，物理移除 Joyride 等干扰 UI 的元素（使用 `MutationObserver` 永久清理）。
+2.  **状态强力重置**：由于真实链路下 store 同步可能存在滞后，在切换线程等关键动作后，显式执行物理补丁。
+    ```typescript
+    await page.evaluate(() => {
+      const store = (window as any).__chatStore;
+      store.setState({ isLoading: false, messages: [] }); // 强力重置，防止输入框被禁用
+    });
+    ```
+3.  **商业版环境自适应**：测试用例应具备感知能力，在缺失私有库环境时优雅跳过。
+    ```typescript
+    test.beforeEach(async ({ page }) => {
+      const isCommercial = process.env.APP_EDITION === 'commercial' || process.env.TAURI_DEV === 'true';
+      test.skip(!isCommercial, '此测试需要商业版环境');
+    });
+    ```
+
+## 8. 避免以下反模式 (Anti-Patterns)
 
 *   ❌ **禁止使用 `page.waitForTimeout(n)`**：改为使用 `page.waitForFunction(() => window.captured !== null)` 进行原子级等待。
 *   ❌ **不要过度依赖 `getByText("Loading...")`**：流式更新环境下，UI 状态转瞬即逝且不可靠。

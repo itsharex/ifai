@@ -42,7 +42,8 @@ export default defineConfig(async ({ mode }) => {
   });
 
   // 🔥 E2E 测试环境强制使用社区模式（私有库不存在）
-  const shouldUsePrivateCore = isCommercial && !isE2E;
+  // 或者用户通过环境变量 USE_REAL_CORE=true 强制使用真实核心
+  const shouldUsePrivateCore = (isCommercial && !isE2E) || process.env.USE_REAL_CORE === 'true';
   const appEdition = process.env.APP_EDITION || mode;
 
   return {
