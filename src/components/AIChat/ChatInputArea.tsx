@@ -29,9 +29,21 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { sendMessage } = useChatStore();
+  const { sendMessage, messages } = useChatStore();
   const { currentProviderId, currentModel } = useSettingsStore();
   const { allFilePaths, refreshFileTree } = useFileStore();
+
+  // v0.3.5: 历史记录索引
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [originalInput, setOriginalInput] = useState('');
+
+  // 提取用户历史消息
+  const userHistory = React.useMemo(() => {
+    return messages
+      .filter(m => m.role === 'user' && typeof m.content === 'string')
+      .map(m => m.content as string)
+      .reverse(); // 最新的在前
+  }, [messages]);
 
   // v0.3.5: 索引自愈
   useEffect(() => {
@@ -104,13 +116,37 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
     await sendMessage(input, currentProviderId, currentModel);
     setInput('');
     setImageAttachments([]);
+    setHistoryIndex(-1); // 重置历史索引
+    setOriginalInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey && !showMention && !showSymbol && !showCommands) {
+    // 只有在没有弹出面板且不在输入多行内容时才触发历史
+    const isPanelOpen = showMention || showSymbol || showCommands;
+
+    if (e.key === 'Enter' && !e.shiftKey && !isPanelOpen) {
       e.preventDefault();
       handleSend();
+    } else if (e.key === 'ArrowUp' && !isPanelOpen && (input === '' || historyIndex !== -1)) {
+      // 向上翻历史 (只有在输入框为空，或者已经在翻历史时才触发，避免干扰正常行内移动)
+      if (userHistory.length > 0 && historyIndex < userHistory.length - 1) {
+        e.preventDefault();
+        const newIndex = historyIndex + 1;
+        if (historyIndex === -1) setOriginalInput(input);
+        setHistoryIndex(newIndex);
+        setInput(userHistory[newIndex]);
+      }
+    } else if (e.key === 'ArrowDown' && !isPanelOpen && historyIndex !== -1) {
+      // 向下翻历史
+      e.preventDefault();
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      if (newIndex === -1) {
+        setInput(originalInput);
+      } else {
+        setInput(userHistory[newIndex]);
+      }
     }
   };
 
