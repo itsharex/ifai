@@ -199,68 +199,56 @@ export const ToolClassificationIndicator: React.FC<ToolClassificationIndicatorPr
   return (
     <div 
       data-testid="tool-classification-indicator"
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#1e1e1e] border border-gray-700/50 ${className}`}
+      className={`flex items-center gap-2 px-1 py-0.5 ${className}`}
     >
       {/* 加载状态 */}
       {isLoading && (
-        <div className="flex items-center gap-1.5 text-xs text-gray-400">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          <span>分类中...</span>
+        <div className="flex items-center gap-1.5 text-[10px] text-gray-500 italic">
+          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+          <span>Thinking...</span>
         </div>
       )}
 
       {/* 分类结果 */}
       {!isLoading && result && (
         <>
-          {/* 层级指示器 + 图标 */}
+          {/* 层级指示器 */}
           <div
-            className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tight"
             style={{
-              backgroundColor: layerInfo?.color + '20',
+              backgroundColor: layerInfo?.color + '15',
               color: layerInfo?.color,
             }}
             title={layerInfo?.description}
           >
-            <span className="text-sm">{layerIcon}</span>
-            <span className="ml-1">{layerInfo?.label}</span>
+            <span>{layerIcon}</span>
+            <span>{layerInfo?.label}</span>
           </div>
 
           {/* 分类标签 */}
           <ClassificationBadge result={result} compact showConfidence={false} />
 
-          {/* 置信度 */}
-          <div className="text-xs text-gray-500">
-            {(result.confidence * 100).toFixed(0)}%
+          {/* 性能指标：合并显示 */}
+          <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500/80">
+            <span>{(result.confidence * 100).toFixed(0)}%</span>
+            {latency > 0 && (
+              <span className={latency > 100 ? 'text-red-500/60' : 'text-gray-500/60'}>
+                {latency.toFixed(0)}ms
+              </span>
+            )}
           </div>
 
-          {/* 延迟 */}
-          {latency > 0 && (
-            <div
-              className={`text-xs font-mono ${
-                latency > 100 ? 'text-red-400' : latency > 20 ? 'text-yellow-400' : 'text-green-400'
-              }`}
-            >
-              {latency.toFixed(1)}ms
+          {/* 用户反馈按钮 - 更加隐蔽 */}
+          {showFeedback && (
+            <div className="scale-90 opacity-40 hover:opacity-100 transition-opacity">
+              <FeedbackButtons
+                onPositive={() => handleFeedback(true)}
+                onNegative={() => handleFeedback(false)}
+                disabled={isLoading}
+              />
             </div>
           )}
-
-          {/* 用户反馈按钮 */}
-          {showFeedback && (
-            <FeedbackButtons
-              onPositive={() => handleFeedback(true)}
-              onNegative={() => handleFeedback(false)}
-              disabled={isLoading}
-            />
-          )}
         </>
-      )}
-
-      {/* 无结果 */}
-      {!isLoading && !result && input.length >= minLength && (
-        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-          <Zap className="w-3 h-3" />
-          <span>等待输入...</span>
-        </div>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Hash, Image, AtSign, X, Code, Terminal, ChevronRight } from 'lucide-react';
+import { Send, Hash, Image, AtSign, X, Code, Terminal, ChevronRight, Activity } from 'lucide-react';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useFileStore } from '../../stores/fileStore';
@@ -18,7 +18,8 @@ interface ChatInputAreaProps {
 }
 
 /**
- * v0.3.6: 顶级重构 - 沉浸式多模态输入框 (完全修复引用版)
+ * v0.3.6: 顶级重构 - 沉浸式多模态输入框 (仪表盘布局版)
+ * 优化重点：释放输入宽度，引入底部集成状态栏
  */
 export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
   const [input, setInput] = useState('');
@@ -58,19 +59,13 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
   }, [input]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
+    e.preventDefault(); e.stopPropagation(); setIsDragging(true);
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    if (
-      e.clientX <= rect.left || e.clientX >= rect.right ||
-      e.clientY <= rect.top || e.clientY >= rect.bottom
-    ) {
+    if (e.clientX <= rect.left || e.clientX >= rect.right || e.clientY <= rect.top || e.clientY >= rect.bottom) {
       setIsDragging(false);
     }
   }, []);
@@ -94,9 +89,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
   }, []);
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
+    e.preventDefault(); e.stopPropagation(); setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       await processFiles(Array.from(e.dataTransfer.files));
     }
@@ -113,10 +106,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
         if (file) files.push(file);
       }
     }
-    if (files.length > 0) {
-      e.preventDefault();
-      await processFiles(files);
-    }
+    if (files.length > 0) { e.preventDefault(); await processFiles(files); }
   }, [processFiles]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -168,10 +158,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
     } else {
       await sendMessage(input, currentProviderId, currentModel);
     }
-    setInput('');
-    setImageAttachments([]);
-    setHistoryIndex(-1);
-    setOriginalInput('');
+    setInput(''); setImageAttachments([]); setHistoryIndex(-1); setOriginalInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
@@ -180,18 +167,13 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
     if (e.key === 'Enter' && !e.shiftKey && !isPanelOpen) { e.preventDefault(); handleSend(); }
     else if (e.key === 'ArrowUp' && !isPanelOpen && (input === '' || historyIndex !== -1)) {
       if (userHistory.length > 0 && historyIndex < userHistory.length - 1) {
-        e.preventDefault();
-        const newIndex = historyIndex + 1;
+        e.preventDefault(); const newIndex = historyIndex + 1;
         if (historyIndex === -1) setOriginalInput(input);
-        setHistoryIndex(newIndex);
-        setInput(userHistory[newIndex]);
+        setHistoryIndex(newIndex); setInput(userHistory[newIndex]);
       }
     } else if (e.key === 'ArrowDown' && !isPanelOpen && historyIndex !== -1) {
-      e.preventDefault();
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      if (newIndex === -1) setInput(originalInput);
-      else setInput(userHistory[newIndex]);
+      e.preventDefault(); const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex); if (newIndex === -1) setInput(originalInput); else setInput(userHistory[newIndex]);
     }
   };
 
@@ -216,6 +198,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
       </AnimatePresence>
 
       <div data-testid="chat-input-container" className={clsx("relative flex flex-col w-full transition-all duration-500 rounded-2xl border bg-[#1e1e1e]/90 backdrop-blur-3xl border-white/5 shadow-2xl group-focus-within:border-blue-500/40 overflow-hidden", isLoading && "opacity-80")}>
+        {/* 1. 顶部预览流 (附件与图片) */}
         <AnimatePresence mode="popLayout">
           {(imageAttachments.length > 0 || activeReferences.length > 0) && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="flex flex-wrap items-center gap-3 p-3 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent overflow-x-auto scrollbar-none">
@@ -235,20 +218,56 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
           )}
         </AnimatePresence>
 
-        <div className="flex items-end gap-2 p-2">
-          <textarea ref={textareaRef} data-testid="chat-input" rows={1} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown} disabled={isLoading} placeholder="问问 IfAI..." className="flex-1 max-h-48 min-h-[44px] py-2.5 px-3 bg-transparent outline-none text-gray-100 text-[13px] placeholder-gray-500 resize-none leading-relaxed font-semibold" />
-          <div className="flex flex-col items-end gap-2 pb-1 pr-1">
-            <div className="flex items-center gap-1.5"><ToolClassificationIndicator input={input} /><ContextHUD text={input} /></div>
-            <div className="flex items-center gap-1">
-              <ImageInput attachments={imageAttachments} onAddAttachment={(a) => setImageAttachments(prev => [...prev, a])} onRemoveAttachment={(id) => setImageAttachments(prev => prev.filter(i => i.id !== id))} disabled={isLoading} />
-              <button onClick={() => setShowMention(!showMention)} className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all" title="引用文件"><AtSign size={18} /></button>
-              <button onClick={() => setShowSymbol(!showSymbol)} className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all" title="引用符号"><Hash size={18} /></button>
-              <div className="w-px h-4 bg-white/5 mx-1" />
-              <button onClick={handleSend} data-testid="chat-send-button" disabled={(!input.trim() && imageAttachments.length === 0) || isLoading} className={clsx("p-2 rounded-xl transition-all duration-300 relative overflow-hidden group/send", (input.trim() || imageAttachments.length > 0) ? "bg-blue-600 text-white shadow-[0_0_20px_rgba(59,130,246,0.5)] scale-105 active:scale-95" : "bg-gray-800 text-gray-600")}>
-                <motion.div animate={(input.trim() || imageAttachments.length > 0) ? { boxShadow: ["0 0 20px rgba(59,130,246,0.4)", "0 0 35px rgba(59,130,246,0.7)", "0 0 20px rgba(59,130,246,0.4)"] } : {}} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="absolute inset-0 rounded-xl" />
-                <Send size={18} className="relative z-10 group-hover/send:translate-x-0.5 group-hover/send:-translate-y-0.5 transition-transform" />
-              </button>
+        {/* 2. 中部输入区 (Textarea 占满宽度) */}
+        <div className="flex flex-col p-2">
+          <textarea ref={textareaRef} data-testid="chat-input" rows={1} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown} disabled={isLoading} placeholder="问问 IfAI..." className="w-full max-h-48 min-h-[44px] py-2.5 px-3 bg-transparent outline-none text-gray-100 text-[13px] placeholder-gray-500 resize-none leading-relaxed font-semibold transition-all" />
+        </div>
+
+        {/* 3. 底部集成状态栏 (Status Dashboard) */}
+        <div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-black/20 via-white/[0.02] to-black/20 border-t border-white/5 backdrop-blur-sm min-h-[40px]">
+          {/* 左侧：识别状态与性能指标 */}
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="scale-95 origin-left">
+              <ToolClassificationIndicator input={input} className="flex-shrink-0" />
             </div>
+            {input.length > 0 && (
+              <>
+                <div className="h-3 w-px bg-white/10 hidden sm:block" />
+                <div className="scale-95 origin-left opacity-60 hover:opacity-100 transition-opacity">
+                  <ContextHUD text={input} />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 右侧：操作按钮与发送 */}
+          <div className="flex items-center gap-0.5">
+            <div className="flex items-center">
+              <ImageInput attachments={imageAttachments} onAddAttachment={(a) => setImageAttachments(prev => [...prev, a])} onRemoveAttachment={(id) => setImageAttachments(prev => prev.filter(i => i.id !== id))} disabled={isLoading} />
+              <button onClick={() => setShowMention(!showMention)} className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all" title="引用文件"><AtSign size={16} /></button>
+              <button onClick={() => setShowSymbol(!showSymbol)} className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all" title="引用符号"><Hash size={16} /></button>
+            </div>
+            <div className="w-px h-4 bg-white/5 mx-1.5" />
+            <button 
+              onClick={handleSend} 
+              data-testid="chat-send-button" 
+              disabled={(!input.trim() && imageAttachments.length === 0) || isLoading} 
+              className={clsx(
+                "p-2 rounded-xl transition-all duration-300 relative overflow-hidden group/send",
+                (input.trim() || imageAttachments.length > 0) 
+                  ? "bg-blue-600 text-white shadow-[0_0_20px_rgba(59,130,246,0.5)] scale-105 active:scale-95" 
+                  : "bg-gray-800 text-gray-600"
+              )}
+            >
+              <motion.div
+                animate={(input.trim() || imageAttachments.length > 0) ? {
+                  boxShadow: ["0 0 20px rgba(59,130,246,0.4)", "0 0 35px rgba(59,130,246,0.7)", "0 0 20px rgba(59,130,246,0.4)"]
+                } : {}}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                className="absolute inset-0 rounded-xl"
+              />
+              <Send size={18} className="relative z-10 group-hover/send:translate-x-0.5 group-hover/send:-translate-y-0.5 transition-transform" />
+            </button>
           </div>
         </div>
       </div>
