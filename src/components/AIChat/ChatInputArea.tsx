@@ -18,7 +18,7 @@ interface ChatInputAreaProps {
 }
 
 /**
- * v0.3.6: 顶级重构 - 沉浸式多模态输入框 (已修复拖拽逻辑)
+ * v0.3.6: 顶级重构 - 沉浸式多模态输入框 (修复版)
  */
 export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
   const [input, setInput] = useState('');
@@ -57,7 +57,6 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
     }
   }, [input]);
 
-  // 💎 核心修复：必须阻止 dragover 默认行为
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -67,7 +66,6 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // 只有当离开整个输入区域时才重置
     const rect = e.currentTarget.getBoundingClientRect();
     if (
       e.clientX <= rect.left || e.clientX >= rect.right ||
@@ -221,12 +219,11 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
       {showSymbol && <SymbolSearch filter={symbolFilter} onSelect={handleSelectSymbol} onClose={() => setShowSymbol(false)} />}
       {showCommands && <SlashCommandList filter={input} onSelect={handleSelectCommand} onClose={() => setShowCommands(false)} />}
 
-      {/* 💎 拖拽蒙层 - 优化视觉体验 */}
       <AnimatePresence>
         {isDragging && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 bg-blue-600/30 backdrop-blur-md border-2 border-dashed border-blue-500 rounded-2xl flex flex-col items-center justify-center gap-3 text-white"
+            className="absolute inset-0 z-[100] bg-blue-600/30 backdrop-blur-md border-2 border-dashed border-blue-500 rounded-2xl flex flex-col items-center justify-center gap-3 text-white pointer-events-none"
           >
             <div className="bg-blue-500 p-4 rounded-full shadow-2xl animate-bounce">
               <ImageIcon size={32} />
@@ -242,8 +239,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
         "relative flex flex-col w-full transition-all duration-500 rounded-2xl border bg-[#1e1e1e]/90 backdrop-blur-3xl border-white/5 shadow-2xl group-focus-within:border-blue-500/40 overflow-hidden",
         isLoading && "opacity-80"
       )}>
-        {/* 🚀 沉浸式预览流 */}
-        <AnimatePresence>
+        <AnimatePresence mode="popLayout">
           {(imageAttachments.length > 0 || activeReferences.length > 0) && (
             <motion.div 
               initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
@@ -285,6 +281,13 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
               <ContextHUD text={input} />
             </div>
             <div className="flex items-center gap-1">
+              {/* 🚀 找回丢失的图片上传按钮 */}
+              <ImageInput 
+                attachments={imageAttachments}
+                onAddAttachment={(a) => setImageAttachments(prev => [...prev, a])}
+                onRemoveAttachment={(id) => setImageAttachments(prev => prev.filter(i => i.id !== id))}
+                disabled={isLoading}
+              />
               <button onClick={() => setShowMention(!showMention)} className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all" title="引用文件"><AtSign size={18} /></button>
               <button onClick={() => setShowSymbol(!showSymbol)} className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all" title="引用符号"><Hash size={18} /></button>
               <div className="w-px h-4 bg-white/5 mx-1" />
