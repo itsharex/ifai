@@ -18,6 +18,7 @@ import { useSettingsStore } from './settingsStore';
 
 import { useAgentStore } from './agentStore';
 
+import { globalConcurrencyManager } from '../utils/ConcurrencyManager';
 import { useThreadStore } from './threadStore';
 import { useSkillStore } from './skillStore';
 
@@ -2226,43 +2227,31 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         }
 
         // ✨ NEW: Auto-approve tool calls (same logic as in patchedSendMessage)
-
         const settings = useSettingsStore.getState();
-
         const assistantIndex = coreUseChatStore.getState().messages.findIndex(m => m.id === assistantMsgId);
-
+        
         // Find the user message that triggered this assistant message
-
         let userMessageHasAutoApprove = false;
-
         const currentMessages = coreUseChatStore.getState().messages;
+        
         if (assistantIndex > 0) {
             for (let i = assistantIndex - 1; i >= 0; i--) {
                 if (currentMessages[i].role === 'user') {
                     userMessageHasAutoApprove = (currentMessages[i] as any).autoApproveTools === true;
                     console.log(`[Chat] User message autoApproveTools: ${userMessageHasAutoApprove}`);
-
                     break;
-
                 }
-
             }
-
         }
 
-        // Check both global setting and message-level flag
-
         // 🔥 v0.3.4: 添加会话信任检查
-
         const approvalMode = settings.agentApprovalMode || 'session-once';
-
         const sessionId = useThreadStore.getState().activeThreadId || 'default';
-
         const sessionTrust = settings.trustedSessions?.[sessionId];
-
         // 🔥 修复：确保返回布尔值而不是 undefined
-
         const isSessionTrusted = sessionTrust ? Date.now() < sessionTrust.expiresAt : false;
+        
+        // 🔥 v0.5.0 Vibe Mode Silent Approval
         const latestEditorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
 
         const currentAssistantMsg = currentMessages.find(m => m.id === assistantMsgId);
@@ -2802,22 +2791,16 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
 const autoApprovedIds = new Set();
 const patchedApproveToolCall = async (
-
     messageId: string,
-
     toolCallId: string,
-
     options?: { skipContinue?: boolean }
-
 ) => {
-
-    console.log(`[useChatStore] patchedApproveToolCall called - messageId: ${messageId}, toolCallId: ${toolCallId}, options:`, options);
-
-    const state = coreUseChatStore.getState();
-
-    let message = state.messages.find(m => m.id === messageId);
-
-    let toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
+    // 🔥 v0.5.0 并发控制 - 提升到入口层，保护整个执行生命周期并防止 429
+    return await globalConcurrencyManager.run(async () => {
+        console.log(`[useChatStore] patchedApproveToolCall called - messageId: ${messageId}, toolCallId: ${toolCallId}, options:`, options);
+        const state = coreUseChatStore.getState();
+        let message = state.messages.find(m => m.id === messageId);
+        let toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
 
     // 🔥 FIX: 终端状态保护 - 防止覆盖已完成/失败/拒绝的工具调用
 
@@ -3174,19 +3157,12 @@ const patchedApproveToolCall = async (
             let originalContent = '';
 
             if (toolName === 'agent_write_file') {
-
                 try {
-
                     originalContent = await invoke('agent_read_file', {
-
                         rootPath,
-
                         relPath
-
                     });
-
                     console.log('[Rollback] Captured original content for:', relPath);
-
                 } catch (e) {
 
                     // 文件不存在，这是新建文件，originalContent 保持空字符串
@@ -3850,9 +3826,8 @@ const patchedApproveToolCall = async (
     console.log(`[useChatStore] Using original approval flow for: ${toolName}`);
 
     await originalApproveToolCall(messageId, toolCallId);
-
     useFileStore.getState().refreshFileTree();
-
+    });
 };
 
 const patchedRejectToolCall = async (messageId: string, toolCallId: string) => {
