@@ -128,12 +128,14 @@ export const StreamingToolArgsViewer: React.FC<StreamingToolArgsViewerProps> = (
             {/* 参数值 */}
             <div className="flex-1 flex items-center gap-1.5 min-w-0">
               <span className={color}>{icon}</span>
-              {isKeyStreaming ? (
-                <span className="text-gray-500 italic animate-pulse">生成中...</span>
-              ) : (
+              {hasValue ? (
                 <span className="text-gray-300 font-mono truncate" title={String(value)}>
                   {displayValue}
                 </span>
+              ) : isKeyStreaming ? (
+                <span className="text-gray-500 italic animate-pulse">生成中...</span>
+              ) : (
+                <span className="text-gray-600 italic">空</span>
               )}
             </div>
           </div>

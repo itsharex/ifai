@@ -1779,19 +1779,12 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                                     
 
                                     // 🔥 工业级鲁棒正则：匹配未闭合的 content，且妥善处理末尾的转义符
-
-                                    // 注意：这里使用 [^"]* 而不是复杂的递归，以确保即便在转义符截断时也能匹配到前半部分
-
-                                    const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*?)(?:\\|"?$)/);
-
+                                    // 使用贪婪匹配 (*) 确保在流式传输未闭合时捕获所有已到达字符
+                                    const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:\\|"?$)/s);
                                     if (contentMatch) {
-
                                         let content = contentMatch[1];
-
                                         content = content.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-
                                         parsedArgs.content = content;
-
                                     }
 
                                     const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"?/);
