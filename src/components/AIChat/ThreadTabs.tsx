@@ -400,7 +400,6 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
   if (filteredThreads.length === 0) {
     return (
       <>
-        <ThreadSearchBar />
         <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
           <span className="text-sm text-gray-500">{t('threads.noThreads', '暂无对话')}</span>
           <button
@@ -417,7 +416,6 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
 
   return (
     <>
-      <ThreadSearchBar />
       <div className="flex items-center bg-gray-900 border-b border-gray-800">
       {/* Scrollable tab list */}
       <div

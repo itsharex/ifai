@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Settings, X, ChevronDown } from 'lucide-react';
+import { Send, Settings, X, ChevronDown, Search } from 'lucide-react';
 import { useChatStore } from '../../stores/useChatStore';
 import { useChatUIStore } from '../../stores/chatUIStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -10,6 +10,7 @@ import { readFileContent } from '../../utils/fileSystem';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // v0.3.0: 根据文件扩展名获取 MIME 类型
 function getMimeType(filePath: string): string {
@@ -30,6 +31,8 @@ import { toast } from 'sonner';
 import { MessageItem } from './MessageItem';
 import { SlashCommandList, SlashCommandListHandle } from './SlashCommandList';
 import { ThreadTabs, useThreadKeyboardShortcuts } from './ThreadTabs';
+import { ThreadSearchBar } from './ThreadSearchBar';
+import { ModelCapsulePanel } from './ModelCapsulePanel';
 import { TokenUsageIndicator } from './TokenUsageIndicator';
 import { VirtualMessageList } from './VirtualMessageList';
 import { ChatInputArea } from './ChatInputArea';
@@ -139,6 +142,24 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   const [errorFixOpen, setErrorFixOpen] = useState(false);
   const [errorFixSuggestions, setErrorFixSuggestions] = useState<AIFixSuggestion[]>([]);
   const [selectedError, setSelectedError] = useState<ParsedError | null>(null);
+
+  // v0.3.6: UI Optimization state
+  const { isSearchVisible, toggleSearch } = useChatUIStore();
+  const [isModelPanelOpen, setIsModelPanelOpen] = useState(false);
+  const modelPanelRef = useRef<HTMLDivElement>(null);
+
+  // Close panel when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelPanelRef.current && !modelPanelRef.current.contains(event.target as Node)) {
+        setIsModelPanelOpen(false);
+      }
+    };
+    if (isModelPanelOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isModelPanelOpen]);
 
   // Track user manual scrolling to disable auto-scroll
   const isUserScrolling = useRef(false);
@@ -2084,26 +2105,92 @@ ${suggestion.fixContext.code_context}
     }
   }, [rawMessages, agentAutoApprove, approveToolCall]);
 
+  // Header Component for reuse
+  const renderHeader = () => (
+    <div className="flex flex-col border-b border-white/5 bg-[#1e1e1e]/60 backdrop-blur-md sticky top-0 z-[60]" data-testid="sidebar-header">
+      {/* Line 1: Brand & App Info */}
+      <div className="flex items-center justify-between px-4 py-2" data-testid="sidebar-header-brand">
+        <div className="flex items-center gap-2.5 group">
+          <div className="relative">
+            <img src={ifaiLogo} alt="IfAI Logo" className="w-5 h-5 opacity-90 transition-transform duration-300 group-hover:scale-110" />
+            <div className="absolute inset-0 bg-blue-500/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[11px] font-black text-gray-100 tracking-tight leading-none">IfAI Editor</span>
+            <span className="text-[9px] font-bold text-blue-500/80 tracking-widest uppercase mt-0.5">
+              V{appVersion}{IS_COMMERCIAL ? ' PRO' : ''}
+            </span>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-1 relative z-[70]">
+          <button
+            onClick={() => toggleSearch()}
+            data-testid="toggle-search-button"
+            className={`p-1.5 rounded-lg transition-all active:scale-95 ${isSearchVisible ? 'text-blue-400 bg-blue-500/10' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+            title="搜索对话 (Cmd+F)"
+          >
+            <Search size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Line 2: Model Control Capsule (Only show if configured) */}
+      {isProviderConfigured && (
+        <div className="px-4 pb-2.5 flex items-center relative" data-testid="sidebar-header-controls" ref={modelPanelRef}>
+          <div 
+            onClick={() => setIsModelPanelOpen(!isModelPanelOpen)}
+            className={`flex-1 flex items-center rounded-lg border transition-all cursor-pointer overflow-hidden group/capsule ${isModelPanelOpen ? 'bg-gray-800 border-blue-500/50 shadow-lg' : 'bg-gray-800/40 border-white/5 hover:border-blue-500/30'}`}
+            data-testid="model-capsule"
+          >
+            <div className="px-2.5 py-1.5 flex items-center gap-2 min-w-0 flex-1">
+              <span className="text-blue-400 flex-shrink-0">🧠</span>
+              <span className="text-[11px] font-bold text-gray-200 truncate">
+                {currentProvider?.name} <span className="text-gray-500 mx-1">/</span> {currentModel}
+              </span>
+            </div>
+            <div className={`pr-2 transition-colors ${isModelPanelOpen ? 'text-blue-400' : 'text-gray-500 group-hover/capsule:text-blue-400'}`}>
+              <ChevronDown size={12} className={`transition-transform duration-200 ${isModelPanelOpen ? 'rotate-180' : ''}`} />
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {isModelPanelOpen && (
+              <ModelCapsulePanel 
+                onClose={() => setIsModelPanelOpen(false)} 
+                setSettingsOpen={setSettingsOpen} 
+              />
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+
   if (!isProviderConfigured) {
     return (
       <div 
-        className="flex flex-col h-full bg-[#1e1e1e] border-l border-gray-700 p-4 items-center justify-center text-center flex-shrink-0 relative"
+        data-testid="chat-panel"
+        className="flex flex-col h-full bg-[#1e1e1e] border-l border-gray-700 flex-shrink-0 relative transition-colors"
         style={{ width: width ? `${width}px` : '384px' }}
       >
         {onResizeStart && (
-            <div 
-                className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-blue-500 transition-colors z-50"
-                onMouseDown={onResizeStart}
-            />
+          <div 
+              className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-blue-500 transition-colors z-50"
+              onMouseDown={onResizeStart}
+          />
         )}
-        <img src={ifaiLogo} alt="IfAI Logo" className="w-10 h-10 text-gray-500 mb-4 opacity-70" /> {/* Replaced Bot icon with IfAI logo */}
-        <p className="text-gray-400 mb-4">{t('chat.errorNoKey')} {currentProvider ? `(${currentProvider.name})` : ''}</p>
-        <button 
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition-colors"
-            onClick={() => setSettingsOpen(true)}
-        >
-            {t('chat.settings')}
-        </button>
+        {renderHeader()}
+        <div className="flex-1 flex flex-col items-center justify-center p-4 text-center">
+          <img src={ifaiLogo} alt="IfAI Logo" className="w-10 h-10 text-gray-500 mb-4 opacity-70" />
+          <p className="text-gray-400 mb-4">{t('chat.errorNoKey')} {currentProvider ? `(${currentProvider.name})` : ''}</p>
+          <button 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition-colors"
+              onClick={() => setSettingsOpen(true)}
+          >
+              {t('chat.settings')}
+          </button>
+        </div>
       </div>
     );
   }
@@ -2120,107 +2207,58 @@ ${suggestion.fixContext.code_context}
             onMouseDown={onResizeStart}
         />
       )}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-[#1e1e1e]/60 backdrop-blur-md sticky top-0 z-[60]">
-        <div className="flex items-center gap-2.5 group">
-          <div className="relative">
-            <img src={ifaiLogo} alt="IfAI Logo" className="w-5 h-5 opacity-90 transition-transform duration-300 group-hover:scale-110" />
-            <div className="absolute inset-0 bg-blue-500/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-black text-gray-100 tracking-tight leading-none">IfAI Editor</span>
-            <span className="text-[9px] font-bold text-blue-500/80 tracking-widest uppercase mt-0.5">
-              V{appVersion}{IS_COMMERCIAL ? ' PRO' : ''}
-            </span>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2">
-            {/* Custom Provider Selector */}
-            <div className="relative group/select">
-                <select
-                    className="appearance-none bg-gray-800/40 hover:bg-gray-800/80 text-[11px] font-semibold text-gray-300 pl-2 pr-6 py-1 rounded-lg border border-white/5 hover:border-blue-500/30 outline-none transition-all cursor-pointer"
-                    value={currentProviderId}
-                    onChange={(e) => setCurrentProviderAndModel(e.target.value, (providers.find(p => p.id === e.target.value)?.models[0] || ''))}
-                >
-                    {providers.map(p => (
-                        <option key={p.id} value={p.id} disabled={!p.enabled}>{p.name}</option>
-                    ))}
-                </select>
-                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500 group-hover/select:text-blue-400 transition-colors">
-                    <ChevronDown size={10} />
-                </div>
-            </div>
-
-            {/* Custom Model Selector */}
-            {currentProvider && (
-                <div className="relative group/select">
-                    <select
-                        className="appearance-none bg-gray-800/40 hover:bg-gray-800/80 text-[11px] font-semibold text-gray-300 pl-2 pr-6 py-1 rounded-lg border border-white/5 hover:border-blue-500/30 outline-none transition-all cursor-pointer"
-                        value={currentModel}
-                        onChange={(e) => setCurrentProviderAndModel(currentProviderId, e.target.value)}
-                    >
-                        {currentProvider.models.map(model => (
-                            <option key={model} value={model}>{model}</option>
-                        ))}
-                    </select>
-                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500 group-hover/select:text-blue-400 transition-colors">
-                        <ChevronDown size={10} />
-                    </div>
-                </div>
-            )}
-
-            <div className="w-px h-4 bg-white/5 mx-1" />
-
-            <button
-                onClick={() => setSettingsOpen(true)}
-                className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all active:scale-95"
-                title="AI Settings"
-                data-testid="settings-button"
-            >
-                <Settings size={14} />
-            </button>
-        </div>
-      </div>
+      
+      {renderHeader()}
 
       {/* Thread Tabs */}
       <ThreadTabs maxVisibleTabs={5} showMessageCount={true} showCloseButton={true} />
 
-      {/* v0.3.1: 视图切换按钮 */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700/50 bg-[#252526]">
-        <span className="text-xs text-gray-400">
-          {viewMode === 'normal' ? '💬 普通视图' : '🕐 时间线视图'}
-        </span>
-        <button
-          onClick={() => setViewMode(viewMode === 'normal' ? 'timeline' : 'normal')}
-          className="
-            px-3
-            py-1.5
-            bg-[#1e1e1e]
-            hover:bg-[#2d2d2d]
-            text-gray-300
-            text-xs
-            rounded-lg
-            transition-colors
-            border
-            border-gray-700/50
-            flex
-            items-center
-            gap-2
-          "
-          data-testid="timeline-view-toggle"
-        >
-          {viewMode === 'normal' ? (
-            <>
-              <span>🕐</span>
-              <span>切换到时间线</span>
-            </>
-          ) : (
-            <>
-              <span>💬</span>
-              <span>切换到普通视图</span>
-            </>
-          )}
-        </button>
+      {/* Thread Search Bar (Conditional) */}
+      <AnimatePresence>
+        {isSearchVisible && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
+            className="overflow-hidden border-b border-white/5 bg-[#1e1e1e]"
+            data-testid="thread-search-bar"
+          >
+            <ThreadSearchBar />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🚀 Phase 2: Segmented Control for View Switching */}
+      <div className="px-4 py-2 border-b border-white/5 bg-[#1e1e1e]/40 backdrop-blur-md">
+        <div className="flex p-0.5 bg-gray-900/50 rounded-lg relative border border-white/5">
+          <button
+            onClick={() => setViewMode('normal')}
+            className={`flex-1 flex items-center justify-center gap-2 py-1 text-[11px] font-bold transition-colors relative z-10 ${viewMode === 'normal' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            <span>对话</span>
+            {viewMode === 'normal' && (
+              <motion.div
+                layoutId="view-mode-active"
+                className="absolute inset-0 bg-gray-800 rounded-md -z-10 shadow-sm border border-white/5"
+                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+              />
+            )}
+          </button>
+          <button
+            onClick={() => setViewMode('timeline')}
+            className={`flex-1 flex items-center justify-center gap-2 py-1 text-[11px] font-bold transition-colors relative z-10 ${viewMode === 'timeline' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            <span>时间线</span>
+            {viewMode === 'timeline' && (
+              <motion.div
+                layoutId="view-mode-active"
+                className="absolute inset-0 bg-gray-800 rounded-md -z-10 shadow-sm border border-white/5"
+                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+              />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* v0.3.1: 根据视图模式显示不同的内容 */}

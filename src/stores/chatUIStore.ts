@@ -5,10 +5,19 @@ interface ChatUIState {
   inputHistory: string[];
   historyIndex: number;
   
+  // v0.3.6 UI Optimization
+  isSearchVisible: boolean;
+  densityMode: 'comfortable' | 'compact' | 'minimal';
+  
   addToHistory: (command: string) => void;
   setHistoryIndex: (index: number) => void;
   resetHistoryIndex: () => void;
   getHistoryItem: (index: number) => string | null;
+  
+  // UI Actions
+  setSearchVisible: (visible: boolean) => void;
+  toggleSearch: () => void;
+  setDensityMode: (mode: 'comfortable' | 'compact' | 'minimal') => void;
 }
 
 export const useChatUIStore = create<ChatUIState>()(
@@ -16,6 +25,8 @@ export const useChatUIStore = create<ChatUIState>()(
     (set, get) => ({
       inputHistory: [],
       historyIndex: -1,
+      isSearchVisible: false,
+      densityMode: 'comfortable',
 
       addToHistory: (command) => {
         if (!command.trim()) return;
@@ -42,7 +53,11 @@ export const useChatUIStore = create<ChatUIState>()(
           return inputHistory[index];
         }
         return null;
-      }
+      },
+
+      setSearchVisible: (visible) => set({ isSearchVisible: visible }),
+      toggleSearch: () => set((state) => ({ isSearchVisible: !state.isSearchVisible })),
+      setDensityMode: (mode) => set({ densityMode: mode }),
     }),
     {
       name: 'chat-ui-storage',
