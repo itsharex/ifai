@@ -1,18 +1,16 @@
-import React, { useRef, useMemo, useState, useCallback } from 'react';
-import { Eye, Code, Columns } from 'lucide-react';
+import React, { useRef, useMemo, useState } from 'react';
+import { Eye, Code, Columns, X } from 'lucide-react';
 import { useFileStore } from '../../stores/fileStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { TabContextMenu } from './TabContextMenu';
+import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
 export const TabBar = () => {
-  // 🔥 修复无限循环：避免在 selector 中创建新数组
-  // 直接订阅 openedFiles 数组，zustand 保证数组引用稳定
   const openedFiles = useFileStore(state => state.openedFiles);
   const activeFileId = useFileStore(state => state.activeFileId);
   const previewMode = useFileStore(state => state.previewMode);
 
-  // 订阅方法（这些引用是稳定的）
   const setActiveFile = useFileStore(state => state.setActiveFile);
   const closeFile = useFileStore(state => state.closeFile);
   const togglePreviewMode = useFileStore(state => state.togglePreviewMode);
@@ -21,8 +19,6 @@ export const TabBar = () => {
   const tabBarRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fileId: string } | null>(null);
 
-  // 🔥 使用 useMemo 创建稳定的元数据数组
-  // 只有当 openedFiles 数组引用变化时才重新计算
   const tabsMetadata = useMemo(() =>
     openedFiles.map(f => ({
       id: f.id,
@@ -34,13 +30,11 @@ export const TabBar = () => {
     [openedFiles]
   );
 
-  // 获取当前活动文件
   const activeFile = useMemo(() =>
     tabsMetadata.find(f => f.id === activeFileId) || null,
     [tabsMetadata, activeFileId]
   );
 
-  // 是否显示预览按钮（仅对 Markdown 文件显示）
   const showPreviewButton = useMemo(() =>
     activeFile?.language === 'markdown',
     [activeFile]
@@ -57,7 +51,6 @@ export const TabBar = () => {
 
   const handleWheel = (e: React.WheelEvent) => {
     if (tabBarRef.current && e.deltaY !== 0) {
-        // Convert vertical scroll (wheel) to horizontal scroll
         tabBarRef.current.scrollLeft += e.deltaY;
     }
   };
@@ -67,91 +60,101 @@ export const TabBar = () => {
     setContextMenu({ x: e.clientX, y: e.clientY, fileId });
   };
 
-  // 获取预览模式图标
   const getPreviewIcon = () => {
     switch (previewMode) {
-      case 'editor':
-        return <Code size={16} />;
-      case 'preview':
-        return <Eye size={16} />;
-      case 'split':
-        return <Columns size={16} />;
-    }
-  };
-
-  // 获取预览模式提示文本
-  const getPreviewTitle = () => {
-    switch (previewMode) {
-      case 'editor':
-        return '当前：编辑器模式 (点击切换到分屏)';
-      case 'preview':
-        return '当前：预览模式 (点击切换到编辑器)';
-      case 'split':
-        return '当前：分屏模式 (点击切换到预览)';
+      case 'editor': return <Code size={14} />;
+      case 'preview': return <Eye size={14} />;
+      case 'split': return <Columns size={14} />;
     }
   };
 
   return (
     <div
+        data-testid="tab-bar-container"
         ref={tabBarRef}
         onWheel={handleWheel}
-        className="flex bg-[#252526] h-9 items-center border-b border-[#1e1e1e]"
+        className="flex bg-[#1e1e1e] h-11 items-center px-4 gap-2 relative overflow-hidden border-b border-white/5"
     >
+      {/* Precision Blur Background */}
+      <div className="absolute inset-0 bg-[#1e1e1e]/40 backdrop-blur-xl -z-10" />
+
       {/* 标签栏 - 可滚动区域 */}
       <div
-        className="flex items-center flex-1 overflow-x-auto min-w-0 horizontal-scrollbar"
+        className="flex items-center flex-1 gap-1.5 overflow-x-auto min-w-0 scrollbar-hide py-1"
       >
-        {tabsMetadata.map((file, index) => (
-          <div
-            key={`${file.path}-${index}`}
-            className={clsx(
-              "flex items-center px-3 h-full cursor-pointer select-none group border-r border-[#1e1e1e] transition-colors flex-shrink-0 max-w-[180px]",
-              file.id === activeFileId
-                ? "bg-[#1e1e1e] text-white border-b-2 border-blue-500" // Active tab styling
-                : "bg-[#212121] text-gray-300 hover:bg-[#252526]"
-            )}
-            onClick={() => handleTabClick(file.id)}
-            onContextMenu={(e) => handleContextMenu(e, file.id)}
-            title={file.path}
-          >
-            <span className="flex-1 truncate mr-1 text-xs">{file.name}</span>
-            {file.isDirty && (
-              <div className="w-2 h-2 rounded-full bg-blue-400 mr-2 flex-shrink-0" title="Unsaved Changes" />
-            )}
-            <div
-              className="p-0.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeFile(file.id);
-              }}
-            >
-              {/* Close Icon */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </div>
-          </div>
-        ))}
+        <AnimatePresence mode="popLayout">
+          {tabsMetadata.map((file) => {
+            const isActive = file.id === activeFileId;
+            return (
+              <motion.div
+                layout
+                key={file.id}
+                data-testid="editor-tab"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.2 }}
+                className={clsx(
+                  "relative flex items-center px-3.5 py-1.5 cursor-pointer select-none group rounded-full transition-all duration-300 flex-shrink-0 max-w-[200px] border border-transparent",
+                  isActive 
+                    ? "text-white" 
+                    : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                )}
+                onClick={() => handleTabClick(file.id)}
+                onContextMenu={(e) => handleContextMenu(e, file.id)}
+                title={file.path}
+              >
+                {/* 选中态物理指示器 (Active Pill) */}
+                {isActive && (
+                  <motion.div
+                    layoutId="tab-active-pill"
+                    data-testid="tab-active-pill"
+                    className="absolute inset-0 bg-blue-600/10 rounded-full border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]"
+                    transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                  />
+                )}
+
+                <span className="relative z-10 truncate text-[11px] font-bold tracking-tight">
+                  {file.name}
+                </span>
+
+                {file.isDirty && (
+                  <span className="relative z-10 ml-2 w-1.5 h-1.5 rounded-full bg-blue-400/80 shadow-[0_0_8px_rgba(96,165,250,0.5)]" />
+                )}
+
+                <button
+                  className="relative z-10 ml-2.5 p-0.5 rounded-full hover:bg-white/10 text-gray-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeFile(file.id);
+                  }}
+                >
+                  <X size={10} strokeWidth={3} />
+                </button>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
-      {/* v0.2.6 新增：Markdown 预览切换按钮 - 固定在右侧 */}
+      {/* Markdown Preview Controls - Capsule Style */}
       {showPreviewButton && (
-        <button
-          className={clsx(
-            "flex items-center gap-1.5 px-3 h-full text-xs transition-colors border-l border-[#1e1e1e] flex-shrink-0",
-            previewMode === 'editor'
-              ? "text-gray-400 hover:text-white hover:bg-[#2a2d2e]"
-              : "text-blue-400 bg-[#1e1e1e]"
-          )}
-          onClick={togglePreviewMode}
-          title={getPreviewTitle()}
-        >
-          {getPreviewIcon()}
-          <span className="hidden sm:inline">
-            {previewMode === 'editor' ? '编辑' : previewMode === 'preview' ? '预览' : '分屏'}
-          </span>
-        </button>
+        <div className="flex items-center bg-gray-800/40 p-0.5 rounded-full border border-white/5 ml-2">
+          <button
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black transition-all",
+              previewMode !== 'editor'
+                ? "text-blue-400 bg-blue-500/10 shadow-sm"
+                : "text-gray-500 hover:text-white"
+            )}
+            onClick={togglePreviewMode}
+          >
+            {getPreviewIcon()}
+            <span className="hidden sm:inline uppercase tracking-widest">
+              {previewMode === 'editor' ? 'VIBE' : previewMode === 'preview' ? 'EYE' : 'SPLIT'}
+            </span>
+          </button>
+        </div>
       )}
 
       {contextMenu && (

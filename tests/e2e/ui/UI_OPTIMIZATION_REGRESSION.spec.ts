@@ -63,6 +63,14 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
       if (layoutStore) {
         layoutStore.setState({ isAIChatOpen: true, rightSidebarWidth: 384 });
       }
+
+      // 预先打开两个文件用于 Tab 测试
+      const fileStore = (window as any).__fileStore;
+      if (fileStore) {
+        fileStore.getState().openFile({ id: 'file1', name: 'README.md', path: '/README.md', content: '# Hi', isDirty: false });
+        fileStore.getState().openFile({ id: 'file2', name: 'main.tsx', path: '/main.tsx', content: 'console.log(1)', isDirty: false });
+        fileStore.getState().setActiveFile('file1');
+      }
     });
 
     // 4. 🏆 基线：物理清理 UI 干扰层 (Joyride 永久清理)
@@ -203,5 +211,42 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
     expect(box?.x).toBe(8);
     
     await expect(aiHeader).toBeVisible();
+  });
+
+  /**
+   * [验证点] 编辑区 TabBar 胶囊化与选中态动效
+   */
+  test('TabBar should feature capsule tabs with physical motion', async ({ page }) => {
+    const tabContainer = page.locator('[data-testid="tab-bar-container"]');
+    await expect(tabContainer).toBeVisible();
+
+    // 1. 验证 Tab 胶囊化物理特征
+    const firstTab = tabContainer.locator('[data-testid="editor-tab"]').first();
+    await expect(firstTab).toBeVisible();
+    const borderRadius = await firstTab.evaluate(el => window.getComputedStyle(el).borderRadius);
+    // 工业级标准：全圆角胶囊
+    expect(parseInt(borderRadius)).toBeGreaterThan(10);
+
+    // 2. 验证选中态物理指示器 (Active Pill)
+    const activePill = tabContainer.locator('[data-testid="tab-active-pill"]');
+    await expect(activePill).toBeVisible();
+    const box1 = await activePill.boundingBox();
+
+    // 3. 模拟切换标签动作
+    const tabs = tabContainer.locator('[data-testid="editor-tab"]');
+    const count = await tabs.count();
+    if (count > 1) {
+        await tabs.nth(1).click();
+        
+        // 4. 验证位移动画 (物理竞态消除)
+        await page.waitForFunction((initialX) => {
+            const el = document.querySelector('[data-testid="tab-active-pill"]') as HTMLElement;
+            if (!el) return false;
+            return Math.abs(el.getBoundingClientRect().x - initialX) > 20;
+        }, box1?.x || 0, { timeout: 5000 });
+
+        const box2 = await activePill.boundingBox();
+        expect(box2?.x).not.toBeCloseTo(box1?.x || 0, 1);
+    }
   });
 });
