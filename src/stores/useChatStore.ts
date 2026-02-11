@@ -1666,21 +1666,241 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
     // Stream Content Listener - 接收流式消息内容
 
-    // 🔥 FIX v0.4.0: 引入高性能缓冲渲染机制
+    // 🔥 v0.4.5: 引入高性能增量更新机制
 
     let renderRequested = false;
 
-    let localMessagesBuffer: Message[] = [...coreUseChatStore.getState().messages];
+    let pendingChunks: { textChunk?: string, toolCallUpdate?: any }[] = [];
 
     // 强制同步更新函数（用于关键时刻如 finish）
 
     const flushUpdates = () => {
 
-        const { messages } = coreUseChatStore.getState();
+        if (pendingChunks.length === 0) return;
 
-        // 这里的逻辑在 unlistenStream 外部已经处理好了 updatedMessages
+        const chunksToProcess = [...pendingChunks];
 
-        // 所以我们只需要在这里触发最终的同步更新即可
+        pendingChunks = [];
+
+        coreUseChatStore.setState((state) => {
+
+            const updatedMessages = state.messages.map(m => {
+
+                if (m.id === assistantMsgId) {
+
+                    const newMsg = { ...m };
+
+                    // @ts-ignore
+
+                    if (!newMsg.contentSegments) newMsg.contentSegments = [];
+
+                    for (const chunk of chunksToProcess) {
+
+                        if (chunk.textChunk) {
+
+                            const safeTextChunk = typeof chunk.textChunk === 'string' ? chunk.textChunk : JSON.stringify(chunk.textChunk);
+
+                            newMsg.content = (newMsg.content || '') + safeTextChunk;
+
+                            const order = (newMsg.contentSegments || []).length;
+
+                            const startPos = (newMsg.content || '').length - safeTextChunk.length;
+
+                            // @ts-ignore
+
+                            newMsg.contentSegments = [...(newMsg.contentSegments || []), {
+
+                                type: 'text' as const, order, timestamp: Date.now(),
+
+                                content: safeTextChunk, startPos, endPos: newMsg.content.length
+
+                            }];
+
+                        }
+
+                        if (chunk.toolCallUpdate) {
+
+                            const toolCallUpdate = chunk.toolCallUpdate;
+
+                            const deltaName = toolCallUpdate.function?.name || '';
+
+                            const newArgsChunk = toolCallUpdate.function?.arguments || '';
+
+                            const existingCalls = newMsg.toolCalls || [];
+
+                            
+
+                            // 查找现有调用的索引
+
+                            const existingIndex = existingCalls.findIndex(tc => {
+
+                                if (toolCallUpdate.id && tc.id === toolCallUpdate.id) return true;
+
+                                if (toolCallUpdate.index !== undefined && toolCallUpdate.index !== null) {
+
+                                    return (tc as any).index === toolCallUpdate.index;
+
+                                }
+
+                                return false;
+
+                            });
+
+                            if (existingIndex !== -1) {
+
+                                const existingCall = existingCalls[existingIndex];
+
+                                const updatedCalls = [...existingCalls];
+
+                                
+
+                                // 累加名称和参数
+
+                                const existingName = (existingCall as any).function?.name || '';
+
+                                const updatedName = (existingName === 'unknown' ? '' : existingName) + deltaName;
+
+                                const updatedArgsString = ((existingCall as any).function?.arguments || '') + newArgsChunk;
+
+                                
+
+                                let parsedArgs: any;
+
+                                try {
+
+                                    parsedArgs = JSON.parse(updatedArgsString);
+
+                                } catch (e) {
+
+                                    parsedArgs = { ...existingCall.args };
+
+                                    const safeArgsString = String(updatedArgsString);
+
+                                    
+
+                                    // 🔥 工业级鲁棒正则：匹配未闭合的 content，且妥善处理末尾的转义符
+
+                                    // 注意：这里使用 [^"]* 而不是复杂的递归，以确保即便在转义符截断时也能匹配到前半部分
+
+                                    const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*?)(?:\\|"?$)/);
+
+                                    if (contentMatch) {
+
+                                        let content = contentMatch[1];
+
+                                        content = content.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+                                        parsedArgs.content = content;
+
+                                    }
+
+                                    const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"?/);
+
+                                    if (relPathMatch) parsedArgs.rel_path = relPathMatch[1];
+
+                                }
+
+                                if (parsedArgs.content) {
+
+                                    console.log(`[Chat] ⚡️ Streaming tool content: ${parsedArgs.content.length} chars`);
+
+                                }
+
+                                updatedCalls[existingIndex] = {
+
+                                    ...existingCall,
+
+                                    id: toolCallUpdate.id || existingCall.id,
+
+                                    tool: updatedName || (existingCall as any).tool,
+
+                                    args: parsedArgs,
+
+                                    function: { name: updatedName, arguments: updatedArgsString },
+
+                                    isPartial: true
+
+                                } as any;
+
+                                newMsg.toolCalls = updatedCalls;
+
+                            } else {
+
+                                // 创建新调用（即使名字暂时缺失）
+
+                                const toolName = deltaName || 'unknown';
+
+                                let initialArgs: any;
+
+                                try { 
+
+                                    initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {}; 
+
+                                } catch (e) { 
+
+                                    initialArgs = {}; 
+
+                                    const safeArgsString = String(newArgsChunk);
+
+                                    const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"?/);
+
+                                    if (contentMatch) {
+
+                                        let content = contentMatch[1];
+
+                                        content = content.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+                                        initialArgs.content = content;
+
+                                    }
+
+                                    const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"?/);
+
+                                    if (relPathMatch) initialArgs.rel_path = relPathMatch[1];
+
+                                }
+
+                                const newToolCallId = toolCallUpdate.id || `call_${crypto.randomUUID()}`;
+
+                                const newToolCall = {
+
+                                    id: newToolCallId, type: 'function' as const, 
+
+                                    tool: toolName, args: initialArgs,
+
+                                    function: { name: toolName, arguments: newArgsChunk },
+
+                                    status: 'pending' as const, isPartial: true, index: toolCallUpdate.index
+
+                                };
+
+                                // @ts-ignore
+
+                                newMsg.toolCalls = [...existingCalls, newToolCall];
+
+                                const order = (newMsg.contentSegments || []).length;
+
+                                // @ts-ignore
+
+                                newMsg.contentSegments = [...(newMsg.contentSegments || []), { type: 'tool' as const, order, timestamp: Date.now(), toolCallId: newToolCallId }];
+
+                            }
+
+                        }
+
+                    }
+
+                    return newMsg;
+
+                }
+
+                return m;
+
+            });
+
+            return { messages: updatedMessages };
+
+        });
 
     };
 
@@ -1830,183 +2050,9 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         if (textChunk || toolCallUpdate) {
 
-            // 🔥 v0.4.0: 批量处理逻辑
+            // 将块添加到队列
 
-            // 并不是在这里直接更新 updatedMessages，而是先计算出结果
-
-            // 由于 Zustand 的特性，我们直接对当前状态进行计算
-
-            if (renderRequested) {
-
-                // 已经调度了渲染，我们只需更新 buffer 即可（这里通过 closure 共享 messages 变量）
-
-                // 但是 useChatStore.setState 是外部调用的，所以我们需要在内部维护一个最新的 messages
-
-            }
-
-            // 我们执行逻辑计算，更新本地缓冲区
-
-            localMessagesBuffer = localMessagesBuffer.map(m => {
-
-                if (m.id === assistantMsgId) {
-
-                    const newMsg = { ...m };
-
-                    // @ts-ignore
-
-                    if (!newMsg.contentSegments) newMsg.contentSegments = [];
-
-                    if (textChunk) {
-
-                        const safeTextChunk = typeof textChunk === 'string' ? textChunk : JSON.stringify(textChunk);
-
-                        newMsg.content = (newMsg.content || '') + safeTextChunk;
-
-                        // 🔥 FIX: 不可变更新 contentSegments，防止黑屏
-
-                        const order = (newMsg.contentSegments || []).length;
-
-                        const startPos = (newMsg.content || '').length - textChunk.length;
-
-                        // @ts-ignore
-
-                        newMsg.contentSegments = [...(newMsg.contentSegments || []), {
-
-                            type: 'text' as const, order, timestamp: Date.now(),
-
-                            content: textChunk, startPos, endPos: newMsg.content.length
-
-                        }];
-
-                    }
-
-                    if (toolCallUpdate) {
-
-                        const toolName = toolCallUpdate.function?.name || toolCallUpdate.tool;
-
-                        const newArgsChunk = toolCallUpdate.function?.arguments || '';
-
-                        const existingCalls = newMsg.toolCalls || [];
-
-                        const existingIndex = existingCalls.findIndex(tc => {
-
-                            if (toolCallUpdate.id && tc.id === toolCallUpdate.id) return true;
-
-                            if (toolCallUpdate.id === null && toolCallUpdate.index !== null) {
-
-                                return (tc as any).index === toolCallUpdate.index;
-
-                            }
-
-                            return false;
-
-                        });
-
-                        if (existingIndex !== -1) {
-
-                            const existingCall = existingCalls[existingIndex];
-
-                            const updatedCalls = [...existingCalls];
-
-                            const updatedArgsString = ((existingCall as any).function?.arguments || '') + newArgsChunk;
-
-                            let parsedArgs: any;
-
-                            try {
-
-                                parsedArgs = JSON.parse(updatedArgsString);
-
-                            } catch (e) {
-
-                                parsedArgs = { ...existingCall.args };
-
-                                const safeArgsString = String(updatedArgsString);
-
-                                const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-
-                                if (contentMatch) {
-
-                                    let content = contentMatch[1];
-
-                                    content = content.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-
-                                    parsedArgs.content = content;
-
-                                }
-
-                                const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"/);
-
-                                if (relPathMatch) parsedArgs.rel_path = relPathMatch[1];
-
-                            }
-
-                            updatedCalls[existingIndex] = {
-
-                                ...existingCall,
-
-                                id: toolCallUpdate.id || existingCall.id,
-
-                                tool: toolName || (existingCall as any).tool,
-
-                                args: parsedArgs,
-
-                                function: { name: toolName || (existingCall as any).function?.name, arguments: updatedArgsString },
-
-                                isPartial: true
-
-                            } as any;
-
-                            newMsg.toolCalls = updatedCalls;
-
-                        } else {
-
-                            const isValidToolName = toolName && toolName !== 'unknown' && toolName.trim().length > 0;
-
-                            if (isValidToolName) {
-
-                                let initialArgs: any;
-
-                                try { initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {}; } catch (e) { initialArgs = {}; }
-
-                                const newToolCallId = toolCallUpdate.id || crypto.randomUUID();
-
-                                const newToolCall = {
-
-                                    id: newToolCallId, type: 'function' as const, tool: toolName, args: initialArgs,
-
-                                    function: { name: toolName, arguments: newArgsChunk },
-
-                                    status: 'pending' as const, isPartial: true, index: toolCallUpdate.index
-
-                                };
-
-                                // @ts-ignore
-
-                                newMsg.toolCalls = [...existingCalls, newToolCall];
-
-                                // 🔥 FIX: 不可变更新 contentSegments
-
-                                const order = (newMsg.contentSegments || []).length;
-
-                                // @ts-ignore
-
-                                newMsg.contentSegments = [...(newMsg.contentSegments || []), { type: 'tool' as const, order, timestamp: Date.now(), toolCallId: newToolCallId }];
-
-                            }
-
-                        }
-
-                    }
-
-                    return newMsg;
-
-                }
-
-                return m;
-
-            });
-
-            // 🔥 v0.4.0 高性能渲染：使用 requestAnimationFrame 进行节流
+            pendingChunks.push({ textChunk, toolCallUpdate });
 
             if (!renderRequested) {
 
@@ -2014,9 +2060,9 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
                 requestAnimationFrame(() => {
 
-                    // 在下一帧触发真正的 UI 更新，使用最新的本地缓冲区
+                    // 调用统一的增量更新逻辑
 
-                    coreUseChatStore.setState({ messages: [...localMessagesBuffer] });
+                    flushUpdates();
 
                     renderRequested = false;
 
@@ -2132,37 +2178,37 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         clearTimeout(finishTimeout);
 
-        console.log("[Chat] Stream finished event received", event.payload); // Updated log message
+        console.log(`[Chat] Stream finished event received ${event.payload}`);
 
-        // 🔥 v0.4.0: 最终刷新缓冲区，确保没有任何残余更新未应用
+        // 确保所有挂起的块都已处理
 
-        localMessagesBuffer = localMessagesBuffer.map(m => {
-
-            if (m.id === assistantMsgId && m.toolCalls) {
-
-                return {
-
-                    ...m,
-
-                    toolCalls: m.toolCalls.map(tc => ({
-
-                        ...tc,
-
-                        isPartial: false  // Mark as complete
-
-                    }))
-
-                };
-
-            }
-
-            return m;
-
-        });
-
-        coreUseChatStore.setState({ messages: [...localMessagesBuffer] });
+        flushUpdates();
 
         // Finalize all partial tool calls
+
+        coreUseChatStore.setState((state) => {
+
+            const updatedMessages = state.messages.map(m => {
+
+                if (m.id === assistantMsgId && m.toolCalls) {
+
+                    return {
+
+                        ...m,
+
+                        toolCalls: m.toolCalls.map(tc => ({ ...tc, isPartial: false }))
+
+                    };
+
+                }
+
+                return m;
+
+            });
+
+            return { messages: updatedMessages };
+
+        });
 
         const finalizedMessages = coreUseChatStore.getState().messages;
 

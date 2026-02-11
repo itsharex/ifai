@@ -70,6 +70,10 @@ const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps)
     if (prevProps.message.content !== nextProps.message.content) {
         return false;
     }
+    // 🔥 FIX: 必须比较 contentSegments，否则流式工具调用不会触发 UI 更新
+    if ((prevProps.message.contentSegments?.length || 0) !== (nextProps.message.contentSegments?.length || 0)) {
+        return false;
+    }
     // 🔥 FIX v0.3.9.3: 更彻底的 toolCalls 深度比较
     const prevToolCalls = prevProps.message.toolCalls;
     const nextToolCalls = nextProps.message.toolCalls;
@@ -88,8 +92,9 @@ const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps)
                 prevTC.status !== nextTC.status ||
                 prevTC.result !== nextTC.result ||
                 prevTC.isPartial !== nextTC.isPartial ||
-                // 使用 JSON.stringify 进行深度比较 args
-                JSON.stringify(prevTC.args) !== JSON.stringify(nextTC.args)) {
+                // ⚡️ PERFORMANCE FIX: 使用引用比较代替 JSON.stringify
+                // 在 useChatStore 中，我们确保了 args 每次更新都是一个新对象
+                prevTC.args !== nextTC.args) {
                 return false;
             }
         }
