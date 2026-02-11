@@ -61,6 +61,7 @@ import { ImageInput } from '../Multimodal';
 import type { ImageAttachment } from '../../types/multimodal';
 import { ToolClassificationIndicator } from '../ToolClassification';
 import { MessageSkeleton } from '../UI/Skeleton';
+import clsx from 'clsx';
 
 interface AIChatProps {
   width?: number;
@@ -2105,53 +2106,65 @@ ${suggestion.fixContext.code_context}
     }
   }, [rawMessages, agentAutoApprove, approveToolCall]);
 
+  const isSidekickMode = width ? width < 100 : false;
+
   // Header Component for reuse
   const renderHeader = () => (
     <div className="flex flex-col border-b border-white/5 bg-[#1e1e1e]/60 backdrop-blur-md sticky top-0 z-[60]" data-testid="sidebar-header">
       {/* Line 1: Brand & App Info */}
-      <div className="flex items-center justify-between px-4 py-2" data-testid="sidebar-header-brand">
+      <div className={clsx("flex items-center justify-between px-4 py-2", isSidekickMode && "flex-col gap-4 py-4 px-0")}>
         <div className="flex items-center gap-2.5 group">
           <div className="relative">
-            <img src={ifaiLogo} alt="IfAI Logo" className="w-5 h-5 opacity-90 transition-transform duration-300 group-hover:scale-110" />
+            <img src={ifaiLogo} alt="IfAI Logo" className={clsx("opacity-90 transition-transform duration-300 group-hover:scale-110", isSidekickMode ? "w-6 h-6" : "w-5 h-5")} />
             <div className="absolute inset-0 bg-blue-500/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-black text-gray-100 tracking-tight leading-none">IfAI Editor</span>
-            <span className="text-[9px] font-bold text-blue-500/80 tracking-widest uppercase mt-0.5">
-              V{appVersion}{IS_COMMERCIAL ? ' PRO' : ''}
-            </span>
-          </div>
+          {!isSidekickMode && (
+            <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col">
+              <span className="text-[11px] font-black text-gray-100 tracking-tight leading-none">IfAI Editor</span>
+              <span className="text-[9px] font-bold text-blue-500/80 tracking-widest uppercase mt-0.5">
+                V{appVersion}{IS_COMMERCIAL ? ' PRO' : ''}
+              </span>
+            </motion.div>
+          )}
         </div>
         
-        <div className="flex items-center gap-1 relative z-[70]">
+        <div className={clsx("flex items-center gap-1 relative z-[70]", isSidekickMode && "flex-col")}>
           <button
             onClick={() => toggleSearch()}
             data-testid="toggle-search-button"
             className={`p-1.5 rounded-lg transition-all active:scale-95 ${isSearchVisible ? 'text-blue-400 bg-blue-500/10' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
             title="搜索对话 (Cmd+F)"
           >
-            <Search size={14} />
+            <Search size={isSidekickMode ? 18 : 14} />
           </button>
         </div>
       </div>
 
-      {/* Line 2: Model Control Capsule (Only show if configured) */}
+      {/* Line 2: Model Control Capsule */}
       {isProviderConfigured && (
-        <div className="px-4 pb-2.5 flex items-center relative" data-testid="sidebar-header-controls" ref={modelPanelRef}>
+        <div className={clsx("px-4 pb-2.5 flex items-center relative", isSidekickMode && "px-2")} data-testid="sidebar-header-controls" ref={modelPanelRef}>
           <div 
             onClick={() => setIsModelPanelOpen(!isModelPanelOpen)}
-            className={`flex-1 flex items-center rounded-lg border transition-all cursor-pointer overflow-hidden group/capsule ${isModelPanelOpen ? 'bg-gray-800 border-blue-500/50 shadow-lg' : 'bg-gray-800/40 border-white/5 hover:border-blue-500/30'}`}
+            className={clsx(
+              "flex-1 flex items-center rounded-lg border transition-all cursor-pointer overflow-hidden group/capsule",
+              isModelPanelOpen ? "bg-gray-800 border-blue-500/50 shadow-lg" : "bg-gray-800/40 border-white/5 hover:border-blue-500/30",
+              isSidekickMode && "justify-center py-2"
+            )}
             data-testid="model-capsule"
           >
-            <div className="px-2.5 py-1.5 flex items-center gap-2 min-w-0 flex-1">
-              <span className="text-blue-400 flex-shrink-0">🧠</span>
-              <span className="text-[11px] font-bold text-gray-200 truncate">
-                {currentProvider?.name} <span className="text-gray-500 mx-1">/</span> {currentModel}
-              </span>
+            <div className={clsx("px-2.5 py-1.5 flex items-center gap-2 min-w-0", !isSidekickMode && "flex-1")}>
+              <span className={clsx("text-blue-400 flex-shrink-0", isSidekickMode ? "text-lg" : "text-[12px]")}>🧠</span>
+              {!isSidekickMode && (
+                <span className="text-[11px] font-bold text-gray-200 truncate">
+                  {currentProvider?.name} <span className="text-gray-500 mx-1">/</span> {currentModel}
+                </span>
+              )}
             </div>
-            <div className={`pr-2 transition-colors ${isModelPanelOpen ? 'text-blue-400' : 'text-gray-500 group-hover/capsule:text-blue-400'}`}>
-              <ChevronDown size={12} className={`transition-transform duration-200 ${isModelPanelOpen ? 'rotate-180' : ''}`} />
-            </div>
+            {!isSidekickMode && (
+              <div className={`pr-2 transition-colors ${isModelPanelOpen ? 'text-blue-400' : 'text-gray-500 group-hover/capsule:text-blue-400'}`}>
+                <ChevronDown size={12} className={`transition-transform duration-200 ${isModelPanelOpen ? 'rotate-180' : ''}`} />
+              </div>
+            )}
           </div>
 
           <AnimatePresence>
@@ -2159,6 +2172,7 @@ ${suggestion.fixContext.code_context}
               <ModelCapsulePanel 
                 onClose={() => setIsModelPanelOpen(false)} 
                 setSettingsOpen={setSettingsOpen} 
+                isSidekick={isSidekickMode}
               />
             )}
           </AnimatePresence>
@@ -2211,7 +2225,7 @@ ${suggestion.fixContext.code_context}
       {renderHeader()}
 
       {/* Thread Tabs */}
-      <ThreadTabs maxVisibleTabs={5} showMessageCount={true} showCloseButton={true} />
+      <ThreadTabs width={width} maxVisibleTabs={5} showMessageCount={true} showCloseButton={true} />
 
       {/* Thread Search Bar (Conditional) */}
       <AnimatePresence>

@@ -14,6 +14,7 @@
 
 import React, { useRef, useEffect, useMemo, useCallback, memo, useState } from 'react';
 import { useThreadStore } from '../../stores/threadStore';
+import { useFileStore } from '../../stores/fileStore';
 import { switchThread, setThreadMessages } from '../../stores/useChatStore';
 import { useChatStore as coreUseChatStore } from 'ifainew-core';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +22,7 @@ import { ThreadSearchBar } from './ThreadSearchBar';
 import { ThreadContextMenu } from './ThreadContextMenu';
 import { TagManager } from './TagManager';
 import type { Thread } from '../../stores/threadStore';
+import clsx from 'clsx';
 
 // ============================================================================
 // Types
@@ -33,6 +35,8 @@ interface ThreadTabsProps {
   showMessageCount?: boolean;
   /** Whether to show close buttons */
   showCloseButton?: boolean;
+  /** v0.3.6: Current container width */
+  width?: number;
 }
 
 // ============================================================================
@@ -52,6 +56,8 @@ interface ThreadItemProps {
   onContextMenu: (e: React.MouseEvent, threadId: string) => void;
   /** Signal to start editing from keyboard shortcut (F2) */
   startEditSignal: string | null;
+  /** v0.3.6: Whether in sidekick mode */
+  isSidekick?: boolean;
 }
 
 import { motion } from 'framer-motion';
@@ -70,6 +76,7 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
   onPin,
   onContextMenu,
   startEditSignal,
+  isSidekick,
 }) => {
   // Edit state for inline rename
   const [editing, setEditing] = React.useState(false);
@@ -148,12 +155,14 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
       layout
       data-thread-id={thread.id}
       className={`
-        group relative flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all duration-300 whitespace-nowrap
+        group relative flex items-center gap-2 rounded-full cursor-pointer transition-all duration-300 whitespace-nowrap
+        ${isSidekick ? 'p-2 justify-center min-w-[36px]' : 'px-3 py-1.5'}
         ${isActive
           ? 'bg-blue-600/10 text-blue-400 border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]'
           : 'bg-transparent text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
         }
       `}
+      title={isSidekick ? thread.title : undefined}
       onClick={() => {
         if (!editing) onClick(thread.id);
       }}
@@ -164,30 +173,32 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
       onContextMenu={(e) => onContextMenu(e, thread.id)}
     >
       {/* 意图图标与 Pin 状态 */}
-      <span className="text-[12px] flex-shrink-0">
+      <span className={clsx("flex-shrink-0", isSidekick ? "text-[16px]" : "text-[12px]")}>
         {thread.pinned ? '📌' : getIntentIcon(thread.title)}
       </span>
 
       {/* 标题 */}
-      {editing ? (
-        <input
-          ref={inputRef}
-          type="text"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={handleBlur}
-          className="w-[80px] text-[11px] font-bold bg-gray-700 text-white px-1.5 py-0.5 rounded-full outline-none focus:ring-1 focus:ring-blue-500"
-          autoFocus
-        />
-      ) : (
-        <span className={`text-[11px] font-bold truncate transition-all ${isActive ? 'max-w-[120px]' : 'max-w-[80px]'}`}>
-          {thread.title}
-        </span>
+      {!isSidekick && (
+        editing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
+            className="w-[80px] text-[11px] font-bold bg-gray-700 text-white px-1.5 py-0.5 rounded-full outline-none focus:ring-1 focus:ring-blue-500"
+            autoFocus
+          />
+        ) : (
+          <span className={`text-[11px] font-bold truncate transition-all ${isActive ? 'max-w-[120px]' : 'max-w-[80px]'}`}>
+            {thread.title}
+          </span>
+        )
       )}
 
-      {/* 关闭按钮 - 仅在选中或悬停时显示 */}
-      {showCloseButton && canClose && (
+      {/* 关闭按钮 - 极简模式下隐藏 */}
+      {showCloseButton && canClose && !isSidekick && (
         <button
           onClick={(e) => onClose(e, thread.id)}
           className={`
@@ -201,11 +212,11 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
         </button>
       )}
 
-      {/* 选中态的底部光迹 */}
+      {/* 选中态的光迹 - 极简模式显示在侧边 */}
       {isActive && (
         <motion.div
           layoutId="tab-active-pill"
-          className="absolute -bottom-[9px] left-1/4 right-1/4 h-[2px] bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6]"
+          className={clsx("absolute bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6]", isSidekick ? "-right-1 top-1/4 bottom-1/4 w-[2px]" : "-bottom-[9px] left-1/4 right-1/4 h-[2px]")}
           initial={false}
         />
       )}
@@ -223,8 +234,11 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
   maxVisibleTabs = 5,
   showMessageCount = true,
   showCloseButton = true,
+  width,
 }) => {
   const { t } = useTranslation();
+  const activeFileId = useFileStore(state => state.activeFileId);
+  const isSidekick = width ? width < 100 : false;
 
   // Edit signal state for F2 shortcut
   const [startEditSignal, setStartEditSignal] = React.useState<string | null>(null);
@@ -270,16 +284,29 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
         return true;
       })
       .sort((a, b) => {
-        // Pinned threads first, then by lastActiveAt
+        // 1. 强置顶优先
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
-        // 🔥 FIX: 如果 lastActiveAt 相同，使用 createdAt 作为 secondary sort key
-        // 这确保了快速创建的多个 thread 有稳定的排序顺序
+
+        // 2. 💎 Phase 4: 智能上下文相关性提权 (Smart Boosting)
+        if (activeFileId) {
+          const activeFileName = activeFileId.split('/').pop()?.toLowerCase() || '';
+          
+          const isARelated = a.title.toLowerCase().includes(activeFileName) || 
+                            a.tags.some(tag => activeFileId.includes(tag));
+          const isBRelated = b.title.toLowerCase().includes(activeFileName) || 
+                            b.tags.some(tag => activeFileId.includes(tag));
+
+          if (isARelated && !isBRelated) return -1;
+          if (!isARelated && isBRelated) return 1;
+        }
+
+        // 3. 最后活跃时间
         const timeDiff = b.lastActiveAt - a.lastActiveAt;
         if (timeDiff !== 0) return timeDiff;
         return b.createdAt - a.createdAt;
       });
-  }, [threads, searchQuery, tagFilter]);
+  }, [threads, searchQuery, tagFilter, activeFileId]);
 
   // Ref for scroll container
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -395,12 +422,12 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
 
   return (
     <>
-      <div className="flex flex-col bg-[#1e1e1e]/40 backdrop-blur-md">
-        <div className="flex items-center px-3 py-2 gap-2 overflow-hidden">
+      <div className={clsx("flex flex-col bg-[#1e1e1e]/40 backdrop-blur-md", isSidekick && "items-center")}>
+        <div className={clsx("flex px-3 py-2 gap-2 overflow-hidden", isSidekick ? "flex-col items-center px-1" : "items-center")}>
           {/* Scrollable tab list */}
           <div
             ref={scrollContainerRef}
-            className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-none py-1"
+            className={clsx("flex-1 flex gap-2 overflow-x-auto scrollbar-none py-1", isSidekick ? "flex-col overflow-y-auto overflow-x-hidden w-full px-1" : "items-center")}
           >
             {filteredThreads.map((thread) => (
               <ThreadItem
@@ -416,6 +443,7 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
                 onPin={handleThreadPin}
                 onContextMenu={handleThreadContextMenu}
                 startEditSignal={startEditSignal}
+                isSidekick={isSidekick}
               />
             ))}
           </div>
@@ -423,11 +451,10 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
           {/* New thread button - Compact Icon style */}
           <button
             onClick={handleNewThread}
-            className="
-              w-8 h-8 rounded-full bg-gray-800/50 hover:bg-blue-600/20
-              text-gray-400 hover:text-blue-400 transition-all
-              flex items-center justify-center flex-shrink-0 border border-white/5
-            "
+            className={clsx(
+              "rounded-full bg-gray-800/50 hover:bg-blue-600/20 text-gray-400 hover:text-blue-400 transition-all flex items-center justify-center flex-shrink-0 border border-white/5",
+              isSidekick ? "w-10 h-10 mb-2" : "w-8 h-8"
+            )}
             title={t('threads.newThread', '新建对话') + ' (Ctrl+T)'}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
