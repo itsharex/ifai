@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { ImagePlus, Upload } from 'lucide-react';
+import { Image as ImageIcon } from 'lucide-react';
 import type { ImageAttachment, ImageContent } from '../../types/multimodal';
 import { ImagePreview } from './ImagePreview';
 
@@ -190,54 +190,33 @@ export const ImageInput: React.FC<ImageInputProps> = ({
 
   return (
     <div
-      className={`flex flex-col gap-2 ${isDragging ? 'bg-blue-500/10' : ''}`}
+      className="flex items-center"
       onPaste={handlePaste}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* 图片预览列表 */}
-      {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {attachments.map((attachment) => (
-            <ImagePreview
-              key={attachment.id}
-              attachment={attachment}
-              onRemove={onRemoveAttachment}
-            />
-          ))}
-        </div>
-      )}
+      {/* 工具栏 - 仅保留上传按钮 */}
+      <button
+        onClick={triggerFileSelect}
+        disabled={!canAddMore || disabled}
+        className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+        title={canAddMore ? '上传图片' : `最多 ${maxImages} 张图片`}
+        data-testid="image-input-button"
+      >
+        <ImageIcon size={18} />
+      </button>
 
-      {/* 工具栏 */}
-      <div className="flex items-center gap-2">
-        {/* 文件上传按钮 */}
-        <button
-          onClick={triggerFileSelect}
-          disabled={!canAddMore || disabled}
-          className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title={canAddMore ? '上传图片' : `最多 ${maxImages} 张图片`}
-        >
-          <Upload size={18} />
-        </button>
-
-        {/* 提示文字 */}
-        <span className="text-xs text-gray-500">
-          {attachments.length > 0 && `${attachments.length}/${maxImages} `}
-          {canAddMore ? '支持粘贴、拖拽或点击上传图片' : '已达到图片数量上限'}
-        </span>
-
-        {/* 隐藏的文件输入 */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp"
-          multiple
-          className="hidden"
-          onChange={handleInputChange}
-          disabled={disabled}
-        />
-      </div>
+      {/* 隐藏的文件输入 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        multiple
+        className="hidden"
+        onChange={handleInputChange}
+        disabled={disabled}
+      />
     </div>
   );
 };
