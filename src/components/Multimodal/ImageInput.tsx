@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Image as ImageIcon } from 'lucide-react';
-import type { ImageAttachment, ImageContent } from '../../types/multimodal';
-import { ImagePreview } from './ImagePreview';
+import { Image } from 'lucide-react';
+import type { ImageAttachment } from '../../types/multimodal';
 
 interface ImageInputProps {
   /** 当前图片附件列表 */
@@ -19,14 +18,7 @@ interface ImageInputProps {
 }
 
 /**
- * 图片输入组件
- *
- * 功能：
- * - 粘贴图片 (Ctrl+V)
- * - 拖拽上传
- * - 文件选择器
- * - 图片预览
- * - 图片删除
+ * v0.3.6: 图片输入组件 (精简版 - 仅负责上传逻辑)
  */
 export const ImageInput: React.FC<ImageInputProps> = ({
   attachments,
@@ -39,10 +31,8 @@ export const ImageInput: React.FC<ImageInputProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 检查是否可以添加更多图片
   const canAddMore = attachments.length < maxImages;
 
-  // 处理文件选择
   const handleFileSelect = useCallback(async (files: FileList | File[]) => {
     if (!canAddMore || disabled) return;
 
@@ -51,22 +41,12 @@ export const ImageInput: React.FC<ImageInputProps> = ({
     const filesToProcess = fileArray.slice(0, remainingSlots);
 
     for (const file of filesToProcess) {
-      // 验证文件类型
-      if (!file.type.startsWith('image/')) {
-        console.warn('[ImageInput] 跳过非图片文件:', file.name);
-        continue;
-      }
+      if (!file.type.startsWith('image/')) continue;
 
-      // 验证文件大小
       if (file.size > maxFileSize * 1024 * 1024) {
         onAddAttachment({
           id: crypto.randomUUID(),
-          content: {
-            data: '',
-            mime_type: file.type,
-            name: file.name,
-            size: file.size,
-          },
+          content: { data: '', mime_type: file.type, name: file.name, size: file.size },
           previewUrl: '',
           status: 'error',
           error: `文件过大 (${maxFileSize}MB 限制)`,
@@ -75,15 +55,9 @@ export const ImageInput: React.FC<ImageInputProps> = ({
       }
 
       try {
-        // 读取文件为 Base64
         const reader = new FileReader();
         const base64Promise = new Promise<string>((resolve, reject) => {
-          reader.onload = () => {
-            const result = reader.result as string;
-            // 移除 data:image/xxx;base64, 前缀
-            const base64 = result.split(',')[1];
-            resolve(base64);
-          };
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
           reader.onerror = () => reject(new Error('读取失败'));
           reader.readAsDataURL(file);
         });
@@ -93,58 +67,34 @@ export const ImageInput: React.FC<ImageInputProps> = ({
 
         onAddAttachment({
           id: crypto.randomUUID(),
-          content: {
-            data: base64,
-            mime_type: file.type,
-            name: file.name,
-            size: file.size,
-          },
+          content: { data: base64, mime_type: file.type, name: file.name, size: file.size },
           previewUrl,
           status: 'ready',
         });
       } catch (error) {
         console.error('[ImageInput] 处理文件失败:', error);
-        onAddAttachment({
-          id: crypto.randomUUID(),
-          content: {
-            data: '',
-            mime_type: file.type,
-            name: file.name,
-            size: file.size,
-          },
-          previewUrl: '',
-          status: 'error',
-          error: '处理失败',
-        });
       }
     }
   }, [attachments.length, maxImages, maxFileSize, disabled, onAddAttachment]);
 
-  // 处理粘贴事件
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
     if (!canAddMore || disabled) return;
-
     const items = e.clipboardData?.items;
     if (!items) return;
-
     const files: File[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.kind === 'file' && item.type.startsWith('image/')) {
         const file = item.getAsFile();
-        if (file) {
-          files.push(file);
-        }
+        if (file) files.push(file);
       }
     }
-
     if (files.length > 0) {
       e.preventDefault();
       await handleFileSelect(files);
     }
   }, [canAddMore, disabled, handleFileSelect]);
 
-  // 处理拖拽事件
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (!canAddMore || disabled) return;
     e.preventDefault();
@@ -163,26 +113,10 @@ export const ImageInput: React.FC<ImageInputProps> = ({
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-
     const files = e.dataTransfer?.files;
-    if (files && files.length > 0) {
-      await handleFileSelect(files);
-    }
+    if (files && files.length > 0) await handleFileSelect(files);
   }, [canAddMore, disabled, handleFileSelect]);
 
-  // 处理文件输入变化
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      handleFileSelect(files);
-      // 重置 input 以允许再次选择相同文件
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  }, [handleFileSelect]);
-
-  // 触发文件选择器
   const triggerFileSelect = useCallback(() => {
     if (!canAddMore || disabled) return;
     fileInputRef.current?.click();
@@ -196,7 +130,6 @@ export const ImageInput: React.FC<ImageInputProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* 工具栏 - 仅保留上传按钮 */}
       <button
         onClick={triggerFileSelect}
         disabled={!canAddMore || disabled}
@@ -204,17 +137,19 @@ export const ImageInput: React.FC<ImageInputProps> = ({
         title={canAddMore ? '上传图片' : `最多 ${maxImages} 张图片`}
         data-testid="image-input-button"
       >
-        <ImageIcon size={18} />
+        <Image size={18} />
       </button>
 
-      {/* 隐藏的文件输入 */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/png,image/jpeg,image/gif,image/webp"
         multiple
         className="hidden"
-        onChange={handleInputChange}
+        onChange={(e) => {
+          if (e.target.files) handleFileSelect(e.target.files);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }}
         disabled={disabled}
       />
     </div>
