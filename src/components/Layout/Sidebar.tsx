@@ -1,4 +1,6 @@
 import React, { useEffect } from 'react';
+import clsx from 'clsx';
+import { motion } from 'framer-motion';
 import { FileTree } from '../FileTree/FileTree';
 import { useFileStore } from '../../stores/fileStore';
 import { openDirectory, readDirectory } from '../../utils/fileSystem';
@@ -21,7 +23,6 @@ export const Sidebar = () => {
     setSidebarActiveTab,
     isPromptManagerOpen,
     togglePromptManager,
-    // v0.2.6 新增：使用动态宽度
     sidebarWidth,
   } = useLayoutStore();
 
@@ -64,8 +65,6 @@ export const Sidebar = () => {
           // 初始化 Demo Proposal
           invoke('init_demo_proposal', { rootPath }).then(async (initialized) => {
             if (initialized) {
-              console.log('[Sidebar] Demo proposal initialized successfully');
-              // 刷新 proposal 索引
               const { useProposalStore } = await import('../../stores/proposalStore');
               await useProposalStore.getState().refreshIndex();
             }
@@ -84,13 +83,9 @@ export const Sidebar = () => {
       if (tree) {
         setFileTree(tree);
         invoke('init_rag_index', { rootPath: tree.path }).catch(e => console.warn('RAG init warning:', e));
-
-        // 初始化 Demo Proposal
         try {
           const initialized = await invoke('init_demo_proposal', { rootPath: tree.path });
           if (initialized) {
-            console.log('[Sidebar] Demo proposal initialized successfully');
-            // 刷新 proposal 索引
             const { useProposalStore } = await import('../../stores/proposalStore');
             await useProposalStore.getState().refreshIndex();
           }
@@ -104,77 +99,89 @@ export const Sidebar = () => {
   };
 
   return (
-    <div className="flex h-full border-r border-gray-700 bg-gray-900 flex-shrink-0">
-      {/* Activity Bar */}
-      <div className="w-12 flex flex-col items-center py-2 border-r border-gray-700 bg-[#1e1e1e]">
-        <button
-          className={`p-2 mb-2 rounded ${sidebarActiveTab === 'explorer' && !isPromptManagerOpen ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          onClick={() => {
-            setSidebarActiveTab('explorer');
-            if (isPromptManagerOpen) togglePromptManager();
-          }}
-          title={t('sidebar.explorer')}
+    <div className="flex h-full border-r border-gray-700 bg-gray-900 flex-shrink-0 relative">
+      {/* Activity Bar - Industrial Floating Capsule Design */}
+      <div className="w-[64px] flex flex-col items-center py-4 bg-transparent relative z-20">
+        <div 
+          data-testid="activity-bar-capsule"
+          className="absolute inset-y-4 left-2 right-2 rounded-full bg-[#1e1e1e]/60 backdrop-blur-xl border border-white/5 shadow-2xl flex flex-col items-center py-4 gap-4"
         >
-          <Files size={24} />
-        </button>
-        <button
-          className={`p-2 mb-2 rounded ${sidebarActiveTab === 'search' && !isPromptManagerOpen ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          onClick={() => {
-            setSidebarActiveTab('search');
-            if (isPromptManagerOpen) togglePromptManager();
-          }}
-          title={t('sidebar.search')}
-        >
-          <SearchIcon size={24} />
-        </button>
-        <button
-          className={`p-2 mb-2 rounded ${sidebarActiveTab === 'snippets' && !isPromptManagerOpen ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          onClick={() => {
-            setSidebarActiveTab('snippets');
-            if (isPromptManagerOpen) togglePromptManager();
-          }}
-          title={t('sidebar.snippets')}
-        >
-          <Code2 size={24} />
-        </button>
-        <button
-          className={`p-2 mb-2 rounded ${sidebarActiveTab === 'tasks' && !isPromptManagerOpen ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          onClick={() => {
-            setSidebarActiveTab('tasks');
-            if (isPromptManagerOpen) togglePromptManager();
-          }}
-          title={t('sidebar.tasks')}
-        >
-          <ListChecks size={24} />
-        </button>
-        <div className="flex-1" />
-        <button
-          className={`p-2 mb-2 rounded ${isPromptManagerOpen ? 'text-blue-400 bg-blue-900/20' : 'text-gray-500 hover:text-gray-300'}`}
-          onClick={() => togglePromptManager()}
-          title={`${t('sidebar.prompts')}${!IS_COMMERCIAL ? ' (Community - Read Only)' : ''}`}
-        >
-          <div className="relative">
-            <Cpu size={24} />
-            {!IS_COMMERCIAL && (
-              <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-0.5 border border-[#1e1e1e]">
-                <Lock size={8} className="text-white" />
-              </div>
+          {[
+            { id: 'explorer', icon: Files, title: t('sidebar.explorer') },
+            { id: 'search', icon: SearchIcon, title: t('sidebar.search') },
+            { id: 'snippets', icon: Code2, title: t('sidebar.snippets') },
+            { id: 'tasks', icon: ListChecks, title: t('sidebar.tasks') }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = sidebarActiveTab === tab.id && !isPromptManagerOpen;
+            return (
+              <button
+                key={tab.id}
+                className={clsx(
+                  "relative p-2.5 rounded-full transition-all duration-300 group active:scale-90",
+                  isActive ? "text-white" : "text-gray-500 hover:text-gray-300"
+                )}
+                onClick={() => {
+                  setSidebarActiveTab(tab.id as any);
+                  if (isPromptManagerOpen) togglePromptManager();
+                }}
+                title={String(tab.title)}
+              >
+                <Icon size={20} className="relative z-10" />
+                {isActive && (
+                  <motion.div
+                    layoutId="activity-active-pill"
+                    data-testid="activity-active-pill"
+                    className="absolute inset-0 bg-blue-600/20 rounded-full border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+              </button>
+            );
+          })}
+
+          <div className="flex-1" />
+
+          {/* Prompts / Settings Icon */}
+          <button
+            className={clsx(
+              "relative p-2.5 rounded-full transition-all duration-300 group active:scale-90",
+              isPromptManagerOpen ? "text-blue-400" : "text-gray-500 hover:text-gray-300"
             )}
-          </div>
-        </button>
+            onClick={() => togglePromptManager()}
+            title={`${String(t('sidebar.prompts'))}${!IS_COMMERCIAL ? ' (Community - Read Only)' : ''}`}
+          >
+            <div className="relative z-10">
+              <Cpu size={20} />
+              {!IS_COMMERCIAL && (
+                <div className="absolute -top-1 -right-1 bg-amber-500 rounded-full p-0.5 border border-[#1e1e1e]">
+                  <Lock size={6} className="text-white" />
+                </div>
+              )}
+            </div>
+            {isPromptManagerOpen && (
+              <motion.div
+                layoutId="activity-active-pill"
+                data-testid="activity-active-pill"
+                className="absolute inset-0 bg-blue-600/20 rounded-full border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+              />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Side Panel Content */}
       {!isPromptManagerOpen && (
-        <div className="flex flex-col h-full bg-gray-900" style={{ width: `${sidebarWidth}px` }}>
+        <div className="flex flex-col h-full bg-gray-900 border-l border-white/5" style={{ width: `${sidebarWidth}px` }}>
           {sidebarActiveTab === 'explorer' ? (
-            <>
-              <div className="flex items-center justify-between p-2">
-                <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">{t('sidebar.explorer')}</span>
+            <React.Fragment>
+              <div className="flex items-center justify-between px-4 h-9 border-b border-white/5 bg-gray-900/40 backdrop-blur-md" data-testid="sidebar-panel-header">
+                <span className="text-gray-400 text-[10px] font-bold uppercase tracking-[0.1em]">{String(t('sidebar.explorer'))}</span>
                 <button
                   onClick={handleOpenFolder}
-                  className="p-1 text-gray-400 hover:text-white hover:bg-gray-700 rounded"
-                  title={t('editor.openFolder')}
+                  className="p-1 text-gray-500 hover:text-white hover:bg-gray-800 rounded-md transition-colors"
+                  title={String(t('editor.openFolder'))}
                 >
                   <FolderOpen size={14} />
                 </button>
@@ -182,7 +189,7 @@ export const Sidebar = () => {
               <div className="flex-1 overflow-auto">
                 <FileTree />
               </div>
-            </>
+            </React.Fragment>
           ) : sidebarActiveTab === 'search' ? (
             <div className="flex flex-col h-full">
               <SearchPanel />

@@ -12,6 +12,16 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
 
   test.beforeEach(async ({ page }) => {
     test.setTimeout(60000);
+
+    // 监听错误和日志
+    page.on('pageerror', error => {
+      console.log(`[Browser Error] ${error.message}`);
+    });
+    page.on('console', msg => {
+      if (msg.type() === 'error') {
+        console.log(`[Browser Console Error] ${msg.text()}`);
+      }
+    });
     
     // 1. 初始化环境 (Mock AI 以保证 UI 测试速度)
     await setupE2ETestEnvironment(page, { useRealAI: false });
@@ -32,6 +42,10 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
     
     // 3. 🏆 基线：等待 Store Ready 并注入必要状态
     await page.waitForFunction(() => (window as any).__chatStore !== undefined, { timeout: 30000 });
+    
+    // 🔥 等待 UI 挂载
+    await page.waitForSelector('[data-testid="chat-panel"]', { timeout: 10000 });
+
     await page.evaluate(() => {
       // 注入 Mock Provider 确保 Header 渲染控制流
       const settingsStore = (window as any).__settingsStore;
@@ -71,18 +85,35 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
    * [验证点] 左侧活动栏 (Activity Bar) 胶囊化结构
    */
   test('Activity Bar should maintain floating capsule structure', async ({ page }) => {
-    // 待 Phase 2 实现后，通过数据属性定位
+    // 增加详细调试
+    const debugInfo = await page.evaluate(() => {
+        const layout = (window as any).__layoutStore?.getState();
+        const settings = (window as any).__settingsStore?.getState();
+        return { 
+            activeTab: layout?.sidebarActiveTab,
+            isPromptManagerOpen: layout?.isPromptManagerOpen,
+            currentProvider: settings?.currentProviderId,
+            bodyHtml: document.body.innerHTML.substring(0, 1000) // 采样
+        };
+    });
+    console.log('[E2E-Debug] Current State:', debugInfo);
+
     const activityBar = page.locator('[data-testid="activity-bar-capsule"]');
-    
-    // 1. 验证物理坐标 (工业级 8px 负空间)
-    await expect(activityBar).toBeVisible();
+    await activityBar.waitFor({ state: 'visible', timeout: 10000 });
     const box = await activityBar.boundingBox();
+    
     // 断言：x 应为 8px，表明它是悬浮的，而非紧贴左边缘
     expect(box?.x).toBe(8);
+    // 断言：宽度应为 48px
+    expect(box?.width).toBe(48);
     
     // 2. 验证材质系统 (毛玻璃)
     const blur = await activityBar.evaluate(el => window.getComputedStyle(el).backdropFilter);
     expect(blur).toContain('blur');
+
+    // 3. 验证选中态物理包裹
+    const activePill = activityBar.locator('[data-testid="activity-active-pill"]');
+    await expect(activePill).toBeVisible();
   });
 
   /**

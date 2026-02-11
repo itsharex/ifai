@@ -11,6 +11,8 @@ import { ContextMenu } from './ContextMenu';
 import { VirtualFileTree, useVirtualization } from './VirtualFileTree';
 import { detectLanguageFromPath } from '../../utils/languageDetection';
 
+import { Skeleton } from '../UI/Skeleton';
+
 // v0.3.0: 根目录项组件
 interface WorkspaceRootItemProps {
   root: WorkspaceRoot;
@@ -691,6 +693,19 @@ export const FileTree = () => {
 
   // v0.3.0: 判断是否有多工作区
   const hasMultiWorkspace = workspaceRoots.length > 0;
+
+  // 🔥 工业级加载反馈：当 rootPath 存在但 fileTree 尚未解析完成时，展示骨架屏
+  if (rootPath && !fileTree) {
+    return (
+      <div className="p-4 space-y-4">
+        <Skeleton className="h-4 w-3/4 bg-gray-800/50 rounded" />
+        <Skeleton className="h-4 w-1/2 bg-gray-800/50 rounded" />
+        <Skeleton className="h-4 w-5/6 bg-gray-800/50 rounded" />
+        <Skeleton className="h-4 w-2/3 bg-gray-800/50 rounded" />
+        <Skeleton className="h-4 w-3/4 bg-gray-800/50 rounded" />
+      </div>
+    );
+  }
 
   if (!fileTree) return (
     <div className="p-4 text-gray-500 text-sm text-center flex flex-col items-center gap-4">
