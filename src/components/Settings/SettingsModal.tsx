@@ -76,6 +76,7 @@ export const SettingsModal = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              data-testid={`settings-tab-${tab.id}`}
               className={clsx(
                 "flex items-center px-3 py-2 text-sm rounded mb-1 w-full text-left",
                 activeTab === tab.id ? "bg-[#37373d] text-white" : "text-gray-400 hover:text-white hover:bg-[#2a2d2e]"
@@ -100,7 +101,7 @@ export const SettingsModal = () => {
                activeTab === 'skills' ? '技能中心 (Skills Center)' :
                `${t(`settings.${activeTab}`)} ${t('chat.settings')}`}
             </h2>
-            <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-white">
+            <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-white" data-testid="close-settings">
               <X size={18} />
             </button>
           </div>
@@ -393,6 +394,7 @@ export const SettingsModal = () => {
                       onChange={(e) => settings.updateSettings({
                         agentAutoApprove: e.target.checked
                       })}
+                      data-testid="auto-approve-checkbox"
                       className="ml-4 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

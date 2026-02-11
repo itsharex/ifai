@@ -21,6 +21,9 @@ export * from './editor-page';
 // v0.3.0 专用测试工具
 export * from './v0-3-0-test-utils';
 
+// 设置相关辅助函数
+export * from './settings-helper';
+
 // 环境配置
 export * from '../config/test-environment';
 

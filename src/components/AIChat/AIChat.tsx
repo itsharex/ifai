@@ -2171,10 +2171,11 @@ ${suggestion.fixContext.code_context}
 
             <div className="w-px h-4 bg-white/5 mx-1" />
 
-            <button 
-                onClick={() => setSettingsOpen(true)} 
+            <button
+                onClick={() => setSettingsOpen(true)}
                 className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all active:scale-95"
                 title="AI Settings"
+                data-testid="settings-button"
             >
                 <Settings size={14} />
             </button>
