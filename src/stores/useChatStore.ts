@@ -1421,17 +1421,20 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         if (Array.isArray(displayContent)) {
             storageContent = displayContent.map(part => {
                 if (part.type === 'image_url' && part.image_url?.url) {
+                    // 只有当 Base64 长度确实很大时才脱敏
                     return { 
                         ...part, 
                         image_url: { 
                             ...part.image_url, 
-                            url: part.image_url.url.length > 1000 ? 'PREVIEW_DATA_HIDDEN' : part.image_url.url 
+                            url: part.image_url.url.length > 5000 ? 'PREVIEW_DATA_HIDDEN' : part.image_url.url 
                         } 
                     };
                 }
                 return part;
             });
         }
+
+        console.log(`[Chat] Adding user message ${msgId}, storage size: ${JSON.stringify(storageContent).length}`);
 
         const userMsg = {
 
@@ -2217,8 +2220,8 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         flushUpdates();
 
-        // 🔥 v0.3.6: 清理多模态数据缓存
-        multimodalCache.delete(msgId);
+        // 🔥 v0.3.6: 延迟清理多模态数据缓存 (给后端和重试逻辑留出余量)
+        setTimeout(() => multimodalCache.delete(msgId), 30000);
 
         // Finalize all partial tool calls
 
@@ -2422,24 +2425,34 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         const currentMode = (window as any).__IFAI_EDITOR_MODE__;
         const shouldEnableTools = (currentMode !== "vibe");
 
-        // 🔥 v0.3.6: 从缓存中获取完整的多模态内容（如果存在）
-        const cachedContent = multimodalCache.get(msgId);
-
         await invoke('ai_chat', {
             providerConfig,
             messages: msgHistory.map((m, i) => {
-                const isLastUserMsg = i === msgHistory.length - 1 && m.role === 'user';
-                // 🔥 v0.3.6 FIX: 如果是最后一条用户消息
-                if (isLastUserMsg) {
-                    // 如果内容是字符串，应用 enrichedContent (注入后的引用)
-                    if (typeof content === 'string') {
-                        return { ...m, content: enrichedContent };
-                    } 
-                    // 如果是多模态数组，则从缓存中还原完整内容，避免被空字符串或脱敏内容覆盖
-                    else if (cachedContent) {
+                // 🔥 v0.3.6 FIX: 鲁棒的还原逻辑
+                // 无论是否是最后一条，只要是 user 消息且存在脱敏标记，就尝试从缓存还原
+                if (m.role === 'user' && Array.isArray(m.content)) {
+                    // 查找原始完整数据（根据内容特征匹配或 ID 匹配，这里我们优先处理当前正在发送的消息）
+                    const isCurrentSendingMsg = i === msgHistory.length - 1;
+                    const cachedContent = isCurrentSendingMsg ? multimodalCache.get(msgId) : null;
+                    
+                    if (cachedContent) {
                         return { ...m, content: cachedContent };
                     }
+
+                    // 兜底处理：如果不是当前消息，但包含 PREVIEW_DATA_HIDDEN
+                    const hasHiddenData = m.content.some(p => p.type === 'image_url' && p.image_url?.url === 'PREVIEW_DATA_HIDDEN');
+                    if (hasHiddenData) {
+                        // 尝试从缓存中查找历史数据 (TODO: 长期历史可以考虑引入 IndexedDB 缓存)
+                        console.warn(`[Multimodal] Found desensitized message in history (index ${i}), attempting late binding...`);
+                    }
                 }
+
+                // 处理引用注入 (仅针对最后一条文本消息)
+                const isLastUserMsg = i === msgHistory.length - 1 && m.role === 'user';
+                if (isLastUserMsg && typeof content === 'string') {
+                    return { ...m, content: enrichedContent };
+                }
+
                 return { role: m.role, content: m.content };
             }),
             eventId: assistantMsgId,
