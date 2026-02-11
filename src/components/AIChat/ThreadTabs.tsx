@@ -54,6 +54,10 @@ interface ThreadItemProps {
   startEditSignal: string | null;
 }
 
+import { motion } from 'framer-motion';
+
+// ... (保持现有导入不变)
+
 const ThreadItem: React.FC<ThreadItemProps> = memo(({
   thread,
   isActive,
@@ -72,7 +76,6 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
   const [editValue, setEditValue] = React.useState(thread.title);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const hasBackgroundTasks = thread.agentTasks.length > 0;
   const updateThread = useThreadStore(state => state.updateThread);
 
   // Auto-focus and select all when editing starts
@@ -88,7 +91,7 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
     if (startEditSignal === thread.id && !editing) {
       handleStartEdit();
     }
-  }, [startEditSignal]);
+  }, [startEditSignal, thread.id]); // Added thread.id to deps
 
   // Sync editValue with thread.title (for external updates)
   React.useEffect(() => {
@@ -105,7 +108,6 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
   const handleSaveEdit = () => {
     const trimmed = editValue.trim();
     if (!trimmed) {
-      // Don't allow empty titles - revert
       setEditing(false);
       setEditValue(thread.title);
       return;
@@ -131,45 +133,42 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
     handleSaveEdit();
   };
 
+  // 💎 Phase 3: 根据标题初步判断意图图标
+  const getIntentIcon = (title: string) => {
+    const t = title.toLowerCase();
+    if (t.includes('bug') || t.includes('fix') || t.includes('修复') || t.includes('报错')) return '🐛';
+    if (t.includes('feature') || t.includes('实现') || t.includes('功能') || t.includes('add')) return '✨';
+    if (t.includes('refactor') || t.includes('重构') || t.includes('clean')) return '🛠️';
+    if (t.includes('test') || t.includes('测试')) return '🧪';
+    return '💬'; // 默认
+  };
+
   return (
-    <div
-      // 🔥 FIX: 移除内部 key - key 应该只在父组件的 map 中使用
-      // 重复的 key 会导致 React 协调机制出现问题
+    <motion.div
+      layout
       data-thread-id={thread.id}
       className={`
-        group relative flex items-center gap-2 px-3 py-2 rounded-t-lg cursor-pointer transition-all min-w-[140px] max-w-[200px]
+        group relative flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer transition-all duration-300 whitespace-nowrap
         ${isActive
-          ? 'bg-gray-800 text-white border-t-2 border-blue-500'
-          : 'bg-gray-850 text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+          ? 'bg-blue-600/10 text-blue-400 border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]'
+          : 'bg-transparent text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
         }
       `}
       onClick={() => {
-        // Don't switch thread when editing
-        if (!editing) {
-          onClick(thread.id);
-        }
+        if (!editing) onClick(thread.id);
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
         handleStartEdit();
       }}
-      onContextMenu={(e) => {
-        onContextMenu(e, thread.id);
-      }}
-      title={`${thread.title}\n${formatTimestamp(thread.lastActiveAt)}\n${thread.messageCount} 条消息\n双击重命名`}
+      onContextMenu={(e) => onContextMenu(e, thread.id)}
     >
-      {/* Pin indicator */}
-      {thread.pinned && (
-        <svg
-          className="w-3 h-3 text-yellow-500 flex-shrink-0"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
-        </svg>
-      )}
+      {/* 意图图标与 Pin 状态 */}
+      <span className="text-[12px] flex-shrink-0">
+        {thread.pinned ? '📌' : getIntentIcon(thread.title)}
+      </span>
 
-      {/* Thread title or inline edit input */}
+      {/* 标题 */}
       {editing ? (
         <input
           ref={inputRef}
@@ -178,59 +177,39 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
-          className="flex-1 text-sm font-medium bg-gray-700 text-white px-1.5 py-0.5 rounded outline-none focus:ring-2 focus:ring-blue-500"
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
+          className="w-[80px] text-[11px] font-bold bg-gray-700 text-white px-1.5 py-0.5 rounded-full outline-none focus:ring-1 focus:ring-blue-500"
+          autoFocus
         />
       ) : (
-        <span className="flex-1 truncate text-sm font-medium">
+        <span className={`text-[11px] font-bold truncate transition-all ${isActive ? 'max-w-[120px]' : 'max-w-[80px]'}`}>
           {thread.title}
         </span>
       )}
 
-      {/* Message count badge */}
-      {showMessageCount && thread.messageCount > 0 && (
-        <span className={`
-          text-xs px-1.5 py-0.5 rounded flex-shrink-0
-          ${isActive
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-700 text-gray-400'
-          }
-        `}>
-          {thread.messageCount}
-        </span>
-      )}
-
-      {/* Background task pulse indicator */}
-      {hasBackgroundTasks && (
-        <span className="absolute top-1 right-1 flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-        </span>
-      )}
-
-      {/* Close button (hover) */}
+      {/* 关闭按钮 - 仅在选中或悬停时显示 */}
       {showCloseButton && canClose && (
         <button
           onClick={(e) => onClose(e, thread.id)}
           className={`
-            opacity-0 group-hover:opacity-100 transition-opacity
-            flex-shrink-0 p-0.5 rounded hover:bg-gray-700
-            ${isActive ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-300'}
+            ml-1 p-0.5 rounded-full hover:bg-blue-500/20 hover:text-blue-300 transition-all
+            ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}
           `}
-          title="关闭对话"
         >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
       )}
 
-      {/* Unread activity indicator */}
-      {thread.hasUnreadActivity && !isActive && (
-        <span className="absolute bottom-1 right-1 h-2 w-2 rounded-full bg-blue-500"></span>
+      {/* 选中态的底部光迹 */}
+      {isActive && (
+        <motion.div
+          layoutId="tab-active-pill"
+          className="absolute -bottom-[9px] left-1/4 right-1/4 h-[2px] bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6]"
+          initial={false}
+        />
       )}
-    </div>
+    </motion.div>
   );
 });
 
@@ -416,62 +395,63 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
 
   return (
     <>
-      <div className="flex items-center bg-gray-900 border-b border-gray-800">
-      {/* Scrollable tab list */}
-      <div
-        ref={scrollContainerRef}
-        className="flex-1 flex items-center gap-1 px-2 py-1 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
-        style={{ maxWidth: `${maxVisibleTabs * 180}px` }}
-      >
-        {filteredThreads.map((thread) => (
-          <ThreadItem
-            key={thread.id}
-            thread={thread}
-            isActive={thread.id === activeThreadId}
-            showMessageCount={showMessageCount}
-            showCloseButton={showCloseButton}
-            canClose={filteredThreads.length > 1}
-            formatTimestamp={formatTimestamp}
-            onClick={handleThreadClick}
-            onClose={handleThreadClose}
-            onPin={handleThreadPin}
-            onContextMenu={handleThreadContextMenu}
-            startEditSignal={startEditSignal}
-          />
-        ))}
+      <div className="flex flex-col bg-[#1e1e1e]/40 backdrop-blur-md">
+        <div className="flex items-center px-3 py-2 gap-2 overflow-hidden">
+          {/* Scrollable tab list */}
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-none py-1"
+          >
+            {filteredThreads.map((thread) => (
+              <ThreadItem
+                key={thread.id}
+                thread={thread}
+                isActive={thread.id === activeThreadId}
+                showMessageCount={showMessageCount}
+                showCloseButton={showCloseButton}
+                canClose={filteredThreads.length > 1}
+                formatTimestamp={formatTimestamp}
+                onClick={handleThreadClick}
+                onClose={handleThreadClose}
+                onPin={handleThreadPin}
+                onContextMenu={handleThreadContextMenu}
+                startEditSignal={startEditSignal}
+              />
+            ))}
+          </div>
+
+          {/* New thread button - Compact Icon style */}
+          <button
+            onClick={handleNewThread}
+            className="
+              w-8 h-8 rounded-full bg-gray-800/50 hover:bg-blue-600/20
+              text-gray-400 hover:text-blue-400 transition-all
+              flex items-center justify-center flex-shrink-0 border border-white/5
+            "
+            title={t('threads.newThread', '新建对话') + ' (Ctrl+T)'}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        </div>
+        <div className="h-px bg-white/5 w-full" />
       </div>
 
-      {/* New thread button */}
-      <button
-        onClick={handleNewThread}
-        className="
-          px-3 py-2 m-1 rounded-lg bg-gray-800 hover:bg-gray-700
-          text-gray-400 hover:text-white transition-colors
-          flex items-center gap-1 flex-shrink-0
-        "
-        title={t('threads.newThread', '新建对话') + ' (Ctrl+T)'}
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-        </svg>
-        <span className="text-sm font-medium">{t('threads.new', '新对话')}</span>
-      </button>
-    </div>
+      {/* Thread Context Menu */}
+      {contextMenu && (
+        <ThreadContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          thread={threads[contextMenu.threadId] || null}
+          onClose={() => setContextMenu(null)}
+          onStartRename={(threadId) => setStartEditSignal(threadId)}
+          onShowTagManager={() => setShowTagManager(true)}
+        />
+      )}
 
-    {/* Thread Context Menu */}
-    {contextMenu && (
-      <ThreadContextMenu
-        x={contextMenu.x}
-        y={contextMenu.y}
-        thread={threads[contextMenu.threadId] || null}
-        onClose={() => setContextMenu(null)}
-        onStartRename={(threadId) => setStartEditSignal(threadId)}
-        onShowTagManager={() => setShowTagManager(true)}
-      />
-    )}
-
-    {/* Tag Manager Dialog */}
-    <TagManager isOpen={showTagManager} onClose={() => setShowTagManager(false)} />
+      {/* Tag Manager Dialog */}
+      <TagManager isOpen={showTagManager} onClose={() => setShowTagManager(false)} />
     </>
   );
 };
