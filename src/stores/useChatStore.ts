@@ -27,7 +27,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 import { recognizeIntent, shouldTriggerAgent, formatAgentName } from '../utils/intentRecognizer';
-import { shouldAutoApprove as checkAutoApprove } from '../utils/approvalPolicy';
+import { shouldAutoApprove as checkAutoApprove, categorizeTool } from '../utils/approvalPolicy';
 import { autoSaveThread } from './persistence/threadPersistence';
 
 import { countMessagesTokens, getModelMaxTokens, calculateTokenUsagePercentage } from '../utils/tokenCounter';
@@ -989,6 +989,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                     const assistantMsgId = crypto.randomUUID();
                     const isAutoApprovable = editorMode === "vibe" && (intentResult.category === 'read' || intentResult.category === 'demo');
 
+                    // @ts-ignore - custom property
                     addMessage({
                         id: assistantMsgId,
                         role: 'assistant',

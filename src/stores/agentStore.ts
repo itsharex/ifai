@@ -475,6 +475,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                                 const currentChatState = chatStore.getState();
                                 const approveToolCall = currentChatState.approveToolCall;
                                 
+                                const settings = useSettingsStore.getState();
+                                const threadStore = useThreadStore.getState();
+                                const sessionId = threadStore.activeThreadId || 'default';
+                                
                                 if (approveToolCall) {
                                     try {
                                         console.log(`[AgentStore] 🚀 Executing AUTO-APPROVE for ${toolCall.tool} (msgId: ${msgId})`);
@@ -499,6 +503,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                                 }
                             }, 200);
                         } else {
+                            const settings = useSettingsStore.getState();
+                            const threadStore = useThreadStore.getState();
+                            const sessionId = threadStore.activeThreadId || 'default';
+
                             // 🔥 DEBUG: 确认工具调用需要手动批准
                             console.log(`[AgentStore] 🔥 Tool call requires manual approval:`, {
                                 toolCallId: liveToolCall.id,

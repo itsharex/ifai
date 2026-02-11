@@ -57,6 +57,7 @@ declare module 'ifainew-core' {
     contentSegments?: any[];
     timestamp?: number;
     agentId?: string;
+    autoApproveTools?: boolean;
   }
 
   export interface ToolCall {
