@@ -60,8 +60,8 @@ pub mod ai {
         pub struct Message {
             #[serde(default)] pub role: String,
             pub content: Content,
-            #[serde(default)] pub tool_calls: Option<Vec<ToolCall>>,
-            #[serde(default)] pub tool_call_id: Option<String>,
+            #[serde(default, skip_serializing_if = "Option::is_none")] pub tool_calls: Option<Vec<ToolCall>>,
+            #[serde(default, skip_serializing_if = "Option::is_none")] pub tool_call_id: Option<String>,
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -8,37 +8,48 @@ use futures::stream::StreamExt;
 use eventsource_stream::Eventsource;
 
 pub fn sanitize_messages(messages: &mut Vec<Message>) {
+    // 1. Pre-scan all tool response IDs in the entire history
+    let mut all_completed_ids = std::collections::HashSet::new();
+    for msg in messages.iter() {
+        if msg.role == "tool" {
+            if let Some(id) = &msg.tool_call_id {
+                if !id.is_empty() {
+                    all_completed_ids.insert(id.clone());
+                }
+            }
+        }
+    }
+
+    // 2. Filter messages
     let mut i = 0;
     while i < messages.len() {
-        // Only process assistant messages that have tool_calls
-        if messages[i].role == "assistant" && messages[i].tool_calls.as_ref().map_or(false, |tc| !tc.is_empty()) {
-            let tool_calls = messages[i].tool_calls.clone().unwrap();
-            let mut completed_ids = std::collections::HashSet::new();
+        // Handle assistant messages with tool_calls
+        if messages[i].role == "assistant" {
+            if let Some(tool_calls) = messages[i].tool_calls.clone() {
+                // Filter to keep only tool_calls that have corresponding responses anywhere in history
+                let filtered_calls: Vec<_> = tool_calls.into_iter()
+                    .filter(|tc| all_completed_ids.contains(&tc.id))
+                    .collect();
 
-            // Scan forward to find all tool response messages
-            let mut j = i + 1;
-            while j < messages.len() && messages[j].role == "tool" {
-                if let Some(id) = &messages[j].tool_call_id {
-                    completed_ids.insert(id.clone());
+                if filtered_calls.is_empty() {
+                    messages[i].tool_calls = None;
+                } else {
+                    messages[i].tool_calls = Some(filtered_calls);
                 }
-                j += 1;
-            }
-
-            // Filter to keep only tool_calls that have responses
-            let filtered_calls: Vec<_> = tool_calls.into_iter()
-                .filter(|tc| completed_ids.contains(&tc.id))
-                .collect();
-
-            if filtered_calls.is_empty() {
-                // No completed calls - remove tool_calls field entirely
-                messages[i].tool_calls = None;
-            } else {
-                // Update with only completed calls
-                messages[i].tool_calls = Some(filtered_calls);
             }
         }
         i += 1;
     }
+
+    // 3. Final pass: Remove any tool messages that don't have a tool_call_id
+    // (OpenAI API will reject these)
+    messages.retain(|m| {
+        if m.role == "tool" {
+            m.tool_call_id.as_ref().map_or(false, |id| !id.is_empty())
+        } else {
+            true
+        }
+    });
 }
 
 pub async fn fetch_ai_completion(

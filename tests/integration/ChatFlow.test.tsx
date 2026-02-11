@@ -123,13 +123,21 @@ describe('Chat Flow Integration', () => {
     const streamCallback = eventListeners[streamEventName];
     expect(streamCallback).toBeDefined();
 
-    // Simulate chunk 1
-    streamCallback({ payload: JSON.stringify({ type: 'content', content: 'Hello' }) });
-    expect(useChatStore.getState().messages[1].content).toBe('Hello');
+    // Mock requestAnimationFrame to execute immediately for testing
+    const originalRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = (cb) => { cb(0); return 0; };
 
-    // Simulate chunk 2
-    streamCallback({ payload: JSON.stringify({ type: 'content', content: ' World' }) });
-    expect(useChatStore.getState().messages[1].content).toBe('Hello World');
+    try {
+      // Simulate chunk 1
+      streamCallback({ payload: JSON.stringify({ type: 'content', content: 'Hello' }) });
+      expect(useChatStore.getState().messages[1].content).toBe('Hello');
+
+      // Simulate chunk 2
+      streamCallback({ payload: JSON.stringify({ type: 'content', content: ' World' }) });
+      expect(useChatStore.getState().messages[1].content).toBe('Hello World');
+    } finally {
+      window.requestAnimationFrame = originalRaf;
+    }
 
     // 3. Simulate Finish
     const finishEventName = `${assistantMsgId}_finish`;

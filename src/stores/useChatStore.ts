@@ -573,7 +573,7 @@ async function selectMessagesForContext(
 
             // 从最近的消息开始，向前累加 Token
 
-            const windowSelected: typeof selected = [];
+            let windowSelected: typeof selected = [];
 
             let currentTokens = 0;
 
@@ -585,7 +585,9 @@ async function selectMessagesForContext(
 
             currentTokens += systemMessages.reduce((sum, s) => sum + s.estimatedTokens, 0);
 
-            // 然后从最近的消息开始添加
+            // 然后从最近的消息开始添加（倒序遍历 selected）
+
+            const windowIndices = new Set(windowSelected.map(s => s.index));
 
             for (let i = selected.length - 1; i >= 0; i--) {
 
@@ -593,17 +595,77 @@ async function selectMessagesForContext(
 
                 if (s.message.role === 'system') continue;  // 已添加
 
+                if (windowIndices.has(s.index)) continue;
+
                 if (currentTokens + s.estimatedTokens <= maxTokenLimit) {
 
                     windowSelected.push(s);
 
+                    windowIndices.add(s.index);
+
                     currentTokens += s.estimatedTokens;
+
+                    // 🔥 v0.2.6 关键修复：如果添加了工具消息，必须确保其配对消息也被添加
+
+                    // 如果是工具响应消息，确保其对应的 assistant tool_calls 消息也在窗口内
+
+                    if (s.message.tool_call_id) {
+
+                        const partner = selected.find(p => 
+
+                            p.message.toolCalls && 
+
+                            p.message.toolCalls.some(tc => tc.id === s.message.tool_call_id)
+
+                        );
+
+                        if (partner && !windowIndices.has(partner.index)) {
+
+                            windowSelected.push(partner);
+
+                            windowIndices.add(partner.index);
+
+                            currentTokens += partner.estimatedTokens;
+
+                        }
+
+                    }
+
+                    // 如果是包含 tool_calls 的 assistant 消息，确保其所有响应也在窗口内
+
+                    if (s.message.toolCalls && s.message.toolCalls.length > 0) {
+
+                        const partners = selected.filter(p => 
+
+                            p.message.tool_call_id && 
+
+                            s.message.toolCalls?.some(tc => tc.id === p.message.tool_call_id)
+
+                        );
+
+                        for (const p of partners) {
+
+                            if (!windowIndices.has(p.index)) {
+
+                                windowSelected.push(p);
+
+                                windowIndices.add(p.index);
+
+                                currentTokens += p.estimatedTokens;
+
+                            }
+
+                        }
+
+                    }
 
                 } else if (windowSelected.length < systemMessages.length + 3) {
 
                     // 至少保留系统消息 + 最后 3 条消息
 
                     windowSelected.push(s);
+
+                    windowIndices.add(s.index);
 
                     currentTokens += s.estimatedTokens;
 
@@ -627,9 +689,23 @@ async function selectMessagesForContext(
 
     selected.sort((a, b) => a.index - b.index);
 
-    // 7. 返回消息（去重后的）
+    // 7. 返回消息（去重后的）同时执行最后的鲁棒性检查：移除无效的工具消息
 
-    return selected.map(s => s.message);
+    const result = selected.map(s => s.message).filter(msg => {
+
+        if (msg.role === 'tool' && (!msg.tool_call_id || msg.tool_call_id.trim() === '')) {
+
+            console.warn('[Context] Dropping tool message with missing tool_call_id to prevent API error');
+
+            return false;
+
+        }
+
+        return true;
+
+    });
+
+    return result;
 
 }
 
