@@ -177,12 +177,13 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
    * [验证点] 选中态物理包裹 (Active Pill Motion)
    */
   test('Tab active indicator should move physically', async ({ page }) => {
-    const chatBtn = page.locator('[data-testid="view-mode-chat"]');
-    const timelineBtn = page.locator('[data-testid="view-mode-timeline"]');
+    const viewSelector = page.locator('[data-testid="ai-view-selector"]');
+    const chatBtn = viewSelector.locator('[data-testid="view-mode-chat"]');
+    const timelineBtn = viewSelector.locator('[data-testid="view-mode-timeline"]');
     
     // 1. 获取初始位置 (对话)
     await chatBtn.click();
-    const pill = page.locator('[data-testid="tab-active-pill"]');
+    const pill = viewSelector.locator('[data-testid="tab-active-pill"]');
     await expect(pill).toBeVisible();
     const box1 = await pill.boundingBox();
     
@@ -191,7 +192,7 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
     
     // 3. 验证位置已发生物理偏移
     await page.waitForFunction((initialX) => {
-        const el = document.querySelector('[data-testid="tab-active-pill"]') as HTMLElement;
+        const el = document.querySelector('[data-testid="ai-view-selector"] [data-testid="tab-active-pill"]') as HTMLElement;
         if (!el) return false;
         return Math.abs(el.getBoundingClientRect().x - initialX) > 10;
     }, box1?.x || 0, { timeout: 5000 });
