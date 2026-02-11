@@ -108,31 +108,36 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
   });
 
   /**
-   * [验证点] AI 侧边栏 Header 压缩与紧凑度
+   * [验证点] AI 侧边栏 Header 二次瘦身 (Interaction Descent)
    */
-  test('AI Chat Header should be compact and height-limited', async ({ page }) => {
+  test('AI Chat Header should be ultra-compact (under 40px)', async ({ page }) => {
     const header = page.locator('[data-testid="ai-chat-header"]');
     
-    // 断言：总高度应为 68px (32px + 36px)
+    // 断言：总高度应压缩至 40px 以内 (仅保留品牌行)
     await expect(header).toBeVisible();
     const box = await header.boundingBox();
-    expect(box?.height).toBeCloseTo(68, 0);
+    expect(box?.height).toBeLessThanOrEqual(40);
     
-    // 验证品牌行 (Brand Line)
-    const brandLine = header.locator('[data-testid="ai-brand-line"]');
-    await expect(brandLine).toBeVisible();
-    const brandBox = await brandLine.boundingBox();
-    expect(brandBox?.height).toBeCloseTo(32, 0);
-    
-    // 验证控制胶囊 (Control Capsule)
-    const controlCapsule = header.locator('[data-testid="ai-control-capsule"]');
-    await expect(controlCapsule).toBeVisible();
-    const controlBox = await controlCapsule.boundingBox();
-    expect(controlBox?.height).toBeCloseTo(36, 0);
+    // 验证原有的控制胶囊行已消失
+    const oldCapsule = page.locator('[data-testid="ai-control-capsule"]');
+    await expect(oldCapsule).not.toBeVisible();
+  });
 
-    // 验证搜索图标 (Search Icon) 应当存在且可点击
-    const searchBtn = header.locator('[data-testid="ai-search-toggle"]');
-    await expect(searchBtn).toBeVisible();
+  /**
+   * [验证点] 底部输入框模型切换入口
+   */
+  test('Chat input area should feature a model selector capsule', async ({ page }) => {
+    const bottomSelector = page.locator('[data-testid="ai-model-selector-bottom"]');
+    
+    // 1. 验证底部入口可见性与微型胶囊形态
+    await expect(bottomSelector).toBeVisible();
+    const borderRadius = await bottomSelector.evaluate(el => window.getComputedStyle(el).borderRadius);
+    expect(parseInt(borderRadius)).toBeGreaterThan(10);
+
+    // 2. 模拟点击唤起面板 (应在输入框上方滑出)
+    await bottomSelector.click();
+    const modelPanel = page.locator('[data-testid="model-capsule-panel"]');
+    await expect(modelPanel).toBeVisible();
   });
 
   /**
@@ -158,7 +163,7 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
     const box = await searchPanel.boundingBox();
     
     expect(box?.height).toBeGreaterThan(30);
-    // 动态断言：搜索面板的 y 坐标应等于 Header 的 y + height
+    // 动态断言：搜索面板的 y 坐标应等于 Header 的 y + height (即便 Header 瘦身了也适用)
     if (headerBox && box) {
         expect(box.y).toBeCloseTo(headerBox.y + headerBox.height, 0);
     }

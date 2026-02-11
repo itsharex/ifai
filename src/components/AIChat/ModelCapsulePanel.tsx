@@ -19,10 +19,10 @@ export const ModelCapsulePanel: React.FC<ModelCapsulePanelProps> = ({ onClose, s
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+      initial={{ opacity: 0, y: 10, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-      className="absolute top-full left-4 right-4 mt-2 bg-gray-900 border border-white/10 rounded-xl shadow-2xl z-[100] overflow-hidden backdrop-blur-xl"
+      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+      className="w-full bg-gray-900 border border-white/10 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[100] overflow-hidden backdrop-blur-2xl"
     >
       <div className="p-2 border-b border-white/5 bg-white/5">
         <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-2">选择模型</span>

@@ -2108,18 +2108,18 @@ ${suggestion.fixContext.code_context}
 
   const isSidekickMode = width ? width < 100 : false;
 
-  // Header Component for reuse
+  // Header Component for reuse - Secondary Thinning (Phase 6)
   const renderHeader = () => (
     <div className="flex flex-col bg-[#1e1e1e]/60 backdrop-blur-md sticky top-0 z-[60] relative" data-testid="ai-chat-header">
       {/* Precision Border Overlay */}
       <div className="absolute inset-x-0 bottom-0 h-px bg-white/5 z-10" />
 
-      {/* Line 1: Brand & App Info - Target Height: 32px */}
+      {/* Line 1: Brand & App Info - Thin Mode: 36px */}
       <div 
         data-testid="ai-brand-line"
         className={clsx(
           "flex items-center justify-between px-4", 
-          isSidekickMode ? "flex-col gap-2 py-3 px-0" : "h-8"
+          isSidekickMode ? "flex-col gap-2 py-3 px-0" : "h-9"
         )}
       >
         <div className="flex items-center gap-2.5 group">
@@ -2148,49 +2148,6 @@ ${suggestion.fixContext.code_context}
           </button>
         </div>
       </div>
-
-      {/* Line 2: Model Control Capsule - Target Height: 36px */}
-      {isProviderConfigured && (
-        <div 
-          className={clsx("px-4 flex items-center relative", isSidekickMode ? "px-2 pb-2" : "h-9")} 
-          data-testid="ai-control-capsule" 
-          ref={modelPanelRef}
-        >
-          <div 
-            onClick={() => setIsModelPanelOpen(!isModelPanelOpen)}
-            className={clsx(
-              "flex-1 flex items-center rounded-full border transition-all cursor-pointer overflow-hidden group/capsule",
-              isModelPanelOpen ? "bg-gray-800 border-blue-500/50 shadow-lg" : "bg-gray-800/40 border-white/5 hover:border-blue-500/30",
-              isSidekickMode && "justify-center py-2"
-            )}
-            data-testid="model-capsule"
-          >
-            <div className={clsx("px-2.5 py-1 flex items-center gap-2 min-w-0", !isSidekickMode && "flex-1")}>
-              <span className={clsx("text-blue-400 flex-shrink-0", isSidekickMode ? "text-lg" : "text-[11px]")}>🧠</span>
-              {!isSidekickMode && (
-                <span className="text-[10px] font-bold text-gray-200 truncate tracking-wide">
-                  {currentProvider?.name} <span className="text-gray-600 mx-0.5">•</span> {currentModel}
-                </span>
-              )}
-            </div>
-            {!isSidekickMode && (
-              <div className={`pr-2 transition-colors ${isModelPanelOpen ? 'text-blue-400' : 'text-gray-500 group-hover/capsule:text-blue-400'}`}>
-                <ChevronDown size={10} className={`transition-transform duration-200 ${isModelPanelOpen ? 'rotate-180' : ''}`} />
-              </div>
-            )}
-          </div>
-
-          <AnimatePresence>
-            {isModelPanelOpen && (
-              <ModelCapsulePanel 
-                onClose={() => setIsModelPanelOpen(false)} 
-                setSettingsOpen={setSettingsOpen} 
-                isSidekick={isSidekickMode}
-              />
-            )}
-          </AnimatePresence>
-        </div>
-      )}
     </div>
   );
 

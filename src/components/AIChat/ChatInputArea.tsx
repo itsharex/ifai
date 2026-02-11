@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Hash, Image, AtSign, X, Code, Terminal, ChevronRight, Activity } from 'lucide-react';
 import { useChatStore } from '../../stores/useChatStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { useFileStore } from '../../stores/fileStore';
 import { ImageInput } from '../Multimodal/ImageInput';
 import { FuzzyFileSearch } from './FuzzyFileSearch';
@@ -9,6 +10,7 @@ import { SymbolSearch } from './SymbolSearch';
 import { SlashCommandList } from './SlashCommandList';
 import { ContextHUD } from './ContextHUD';
 import { ToolClassificationIndicator } from '../ToolClassification';
+import { ModelCapsulePanel } from './ModelCapsulePanel';
 import type { ImageAttachment } from '../../types/multimodal';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -30,11 +32,33 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
   const [showCommands, setShowCommands] = useState(false);
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isModelPanelOpen, setIsModelPanelOpen] = useState(false);
+  const modelPanelRef = useRef<HTMLDivElement>(null);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { sendMessage, messages } = useChatStore();
-  const { currentProviderId, currentModel } = useSettingsStore();
+  const { providers, currentProviderId, currentModel } = useSettingsStore();
   const { allFilePaths, refreshFileTree } = useFileStore();
+
+  const setSettingsOpen = useLayoutStore(state => state.setSettingsOpen);
+
+  const currentProvider = React.useMemo(() => 
+    providers.find(p => p.id === currentProviderId),
+    [providers, currentProviderId]
+  );
+
+  // Close panel when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelPanelRef.current && !modelPanelRef.current.contains(event.target as Node)) {
+        setIsModelPanelOpen(false);
+      }
+    };
+    if (isModelPanelOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isModelPanelOpen]);
 
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [originalInput, setOriginalInput] = useState('');
@@ -197,11 +221,11 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
         )}
       </AnimatePresence>
 
-      <div data-testid="chat-input-container" className={clsx("relative flex flex-col w-full transition-all duration-500 rounded-2xl border bg-[#1e1e1e]/90 backdrop-blur-3xl border-white/5 shadow-2xl group-focus-within:border-blue-500/40 overflow-hidden", isLoading && "opacity-80")}>
+      <div data-testid="chat-input-container" className={clsx("relative flex flex-col w-full transition-all duration-500 rounded-2xl border bg-[#1e1e1e]/90 backdrop-blur-3xl border-white/5 shadow-2xl group-focus-within:border-blue-500/40", isLoading && "opacity-80")}>
         {/* 1. 顶部预览流 (附件与图片) */}
         <AnimatePresence mode="popLayout">
           {(imageAttachments.length > 0 || activeReferences.length > 0) && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="flex flex-wrap items-center gap-3 p-3 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent overflow-x-auto scrollbar-none">
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="flex flex-wrap items-center gap-3 p-3 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent overflow-x-auto scrollbar-none rounded-t-2xl">
               {activeReferences.map(ref => (
                 <div key={ref.path} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black group/chip hover:bg-blue-500/20 transition-all">
                   <Hash size={10} /><span className="max-w-[120px] truncate">{ref.name}</span>
@@ -224,7 +248,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
         </div>
 
         {/* 3. 底部集成状态栏 (Status Dashboard) */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-black/20 via-white/[0.02] to-black/20 border-t border-white/5 backdrop-blur-sm min-h-[40px]">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-black/20 via-white/[0.02] to-black/20 border-t border-white/5 backdrop-blur-sm min-h-[40px] rounded-b-2xl">
           {/* 左侧：识别状态与性能指标 */}
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="scale-95 origin-left">
@@ -241,7 +265,40 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
           </div>
 
           {/* 右侧：操作按钮与发送 */}
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-0.5" ref={modelPanelRef}>
+            {/* Phase 6: Interaction Descent - Bottom Model Selector */}
+            <div className="relative flex items-center">
+              <button
+                data-testid="ai-model-selector-bottom"
+                onClick={() => setIsModelPanelOpen(!isModelPanelOpen)}
+                className={clsx(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95 group/model",
+                  isModelPanelOpen 
+                    ? "bg-blue-600/20 border-blue-500/50 text-blue-400" 
+                    : "bg-white/5 border-white/5 text-gray-500 hover:border-white/10 hover:text-gray-300"
+                )}
+                title={`当前模型: ${currentModel}`}
+              >
+                <span className="text-[10px] leading-none">🧠</span>
+                <span className="text-[9px] font-black uppercase tracking-tighter max-w-[60px] truncate">
+                  {currentModel.split('/').pop()?.replace('glm-', '') || 'AI'}
+                </span>
+              </button>
+
+              <AnimatePresence>
+                {isModelPanelOpen && (
+                  <div className="absolute bottom-[calc(100%+12px)] right-0 z-[150] w-64 origin-bottom-right">
+                    <ModelCapsulePanel 
+                      onClose={() => setIsModelPanelOpen(false)} 
+                      setSettingsOpen={setSettingsOpen}
+                    />
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="w-px h-4 bg-white/5 mx-1" />
+
             <div className="flex items-center">
               <ImageInput attachments={imageAttachments} onAddAttachment={(a) => setImageAttachments(prev => [...prev, a])} onRemoveAttachment={(id) => setImageAttachments(prev => prev.filter(i => i.id !== id))} disabled={isLoading} />
               <button onClick={() => setShowMention(!showMention)} className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all" title="引用文件"><AtSign size={16} /></button>
