@@ -2270,7 +2270,7 @@ ${suggestion.fixContext.code_context}
                 layoutId="view-mode-active"
                 data-testid="tab-active-pill"
                 className="absolute inset-0 bg-gray-800 rounded-md -z-10 shadow-sm border border-white/5"
-                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
               />
             )}
           </button>
@@ -2285,7 +2285,7 @@ ${suggestion.fixContext.code_context}
                 layoutId="view-mode-active"
                 data-testid="tab-active-pill"
                 className="absolute inset-0 bg-gray-800 rounded-md -z-10 shadow-sm border border-white/5"
-                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
               />
             )}
           </button>

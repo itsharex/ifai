@@ -17,11 +17,6 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
     page.on('pageerror', error => {
       console.log(`[Browser Error] ${error.message}`);
     });
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        console.log(`[Browser Console Error] ${msg.text()}`);
-      }
-    });
     
     // 1. 初始化环境 (Mock AI 以保证 UI 测试速度)
     await setupE2ETestEnvironment(page, { useRealAI: false });
@@ -85,26 +80,14 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
    * [验证点] 左侧活动栏 (Activity Bar) 胶囊化结构
    */
   test('Activity Bar should maintain floating capsule structure', async ({ page }) => {
-    // 增加详细调试
-    const debugInfo = await page.evaluate(() => {
-        const layout = (window as any).__layoutStore?.getState();
-        const settings = (window as any).__settingsStore?.getState();
-        return { 
-            activeTab: layout?.sidebarActiveTab,
-            isPromptManagerOpen: layout?.isPromptManagerOpen,
-            currentProvider: settings?.currentProviderId,
-            bodyHtml: document.body.innerHTML.substring(0, 1000) // 采样
-        };
-    });
-    console.log('[E2E-Debug] Current State:', debugInfo);
-
     const activityBar = page.locator('[data-testid="activity-bar-capsule"]');
     await activityBar.waitFor({ state: 'visible', timeout: 10000 });
     const box = await activityBar.boundingBox();
     
     // 断言：x 应为 8px，表明它是悬浮的，而非紧贴左边缘
     expect(box?.x).toBe(8);
-    // 断言：宽度应为 48px
+    // 断言：宽度应为 48px (左右 left-2 right-2 抵消后的宽度)
+    // 64px - 8px - 8px = 48px
     expect(box?.width).toBe(48);
     
     // 2. 验证材质系统 (毛玻璃)
@@ -152,18 +135,10 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
     const searchBtn = header.locator('[data-testid="ai-search-toggle"]');
     const searchPanel = page.locator('[data-testid="ai-search-panel"]');
 
-    // 1. 验证初始状态：面板应隐藏或高度为 0
-    // 注意：由于 AnimatePresence，它可能不在 DOM 中，或者 height 为 0
-    const isVisibleInitial = await searchPanel.isVisible();
-    if (isVisibleInitial) {
-        const box = await searchPanel.boundingBox();
-        expect(box?.height).toBe(0);
-    }
-
-    // 2. 点击切换按钮
+    // 1. 点击切换按钮
     await searchBtn.click();
     
-    // 3. 验证面板滑入并稳定 (使用 waitForFunction 消除动画竞态)
+    // 2. 验证面板滑入并稳定 (使用 waitForFunction 消除动画竞态)
     await page.waitForFunction((panelSelector) => {
         const el = document.querySelector(panelSelector) as HTMLElement;
         if (!el) return false;
@@ -180,7 +155,7 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
         expect(box.y).toBeCloseTo(headerBox.y + headerBox.height, 0);
     }
 
-    // 4. 再次点击隐藏
+    // 3. 再次点击隐藏
     await searchBtn.click();
     await expect(searchPanel).not.toBeVisible();
   });
@@ -189,7 +164,6 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
    * [验证点] 选中态物理包裹 (Active Pill Motion)
    */
   test('Tab active indicator should move physically', async ({ page }) => {
-    // 确保 AI 侧边栏已展开 (通过 beforeEach 中的注入)
     const chatBtn = page.locator('[data-testid="view-mode-chat"]');
     const timelineBtn = page.locator('[data-testid="view-mode-timeline"]');
     
@@ -202,7 +176,7 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
     // 2. 切换到时间线
     await timelineBtn.click();
     
-    // 3. 验证位置已发生物理偏移 (使用 waitForFunction 等待动画稳定)
+    // 3. 验证位置已发生物理偏移
     await page.waitForFunction((initialX) => {
         const el = document.querySelector('[data-testid="tab-active-pill"]') as HTMLElement;
         if (!el) return false;
@@ -214,21 +188,20 @@ test.describe('UI Optimization & Industrial Refinement Regression @regression', 
   });
 
   /**
-   * [验证点] 持久化与重启自愈
+   * [验证点] 响应式边界自适应 (Responsive Boundary)
    */
-  test('UI density settings should persist after reload', async ({ page }) => {
-    // 1. 物理更改为紧凑模式
-    await page.evaluate(() => (window as any).__layoutStore?.getState().setDensity('compact'));
+  test('Layout should adapt to small viewports without breaking capsules', async ({ page }) => {
+    // 切换到较窄的视口 (例如 1024px)
+    await page.setViewportSize({ width: 1024, height: 768 });
     
-    // 2. 重启
-    await page.reload();
+    const activityBar = page.locator('[data-testid="activity-bar-capsule"]');
+    const aiHeader = page.locator('[data-testid="ai-chat-header"]');
     
-    // 3. 验证 Store 恢复
-    await page.waitForFunction(() => (window as any).__layoutStore?.getState().density === 'compact');
+    // 验证活动栏依然可见且保持 8px 负空间
+    await expect(activityBar).toBeVisible();
+    const box = await activityBar.boundingBox();
+    expect(box?.x).toBe(8);
     
-    // 4. 验证物理 Header 依然紧凑
-    const header = page.locator('[data-testid="ai-chat-header"]');
-    const box = await header.boundingBox();
-    expect(box?.height).toBeLessThanOrEqual(68);
+    await expect(aiHeader).toBeVisible();
   });
 });

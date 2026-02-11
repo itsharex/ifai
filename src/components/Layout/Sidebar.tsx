@@ -133,7 +133,7 @@ export const Sidebar = () => {
                     layoutId="activity-active-pill"
                     data-testid="activity-active-pill"
                     className="absolute inset-0 bg-blue-600/20 rounded-full border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                    transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
                   />
                 )}
               </button>
@@ -164,7 +164,7 @@ export const Sidebar = () => {
                 layoutId="activity-active-pill"
                 data-testid="activity-active-pill"
                 className="absolute inset-0 bg-blue-600/20 rounded-full border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
-                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
               />
             )}
           </button>

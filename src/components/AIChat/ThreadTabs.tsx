@@ -216,8 +216,10 @@ const ThreadItem: React.FC<ThreadItemProps> = memo(({
       {isActive && (
         <motion.div
           layoutId="tab-active-pill"
-          className={clsx("absolute bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6]", isSidekick ? "-right-1 top-1/4 bottom-1/4 w-[2px]" : "-bottom-[9px] left-1/4 right-1/4 h-[2px]")}
+          data-testid="tab-active-pill"
+          className={clsx("absolute bg-blue-500 rounded-full shadow-[0_0_10px_#3b82f6]", isSidekick ? "-right-1 top-1/4 bottom-1/4 w-[2px]" : "-bottom-[9px] left-1/4 right-1/4 h-[2px]")}
           initial={false}
+          transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
         />
       )}
     </motion.div>
