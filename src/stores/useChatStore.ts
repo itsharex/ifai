@@ -2383,8 +2383,8 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     try {
         // 🔥 v0.5.0: 增强型模式判定 (SendMessage 路径)
         // 仅在模式明确为 "spec" 时才启用工具（防御性白名单）
-        const currentMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
-        const shouldEnableTools = (currentMode === "spec");
+        const currentMode = (window as any).__IFAI_EDITOR_MODE__;
+        const shouldEnableTools = (currentMode !== "vibe");
 
         await invoke('ai_chat', {
             providerConfig,
@@ -2393,7 +2393,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             projectRoot: useFileStore.getState().rootPath,
             enableTools: shouldEnableTools,
             activeSkillIds: (window as any).__IFAI_ACTIVE_SKILLS__ || [],
-            mode: currentMode
+            mode: currentMode || "vibe"
         });
 
     } catch (e) {
@@ -2771,10 +2771,10 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
         try {
             // 🔥 v0.5.0: 增强型模式判定
-            const currentMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
+            const currentMode = (window as any).__IFAI_EDITOR_MODE__;
             const shouldEnableTools = options?.enableTools !== undefined 
                 ? options.enableTools 
-                : (currentMode === "spec");
+                : (currentMode !== "vibe");
 
             await invoke('ai_chat', { 
                 providerConfig: backendConfig, 
@@ -2783,7 +2783,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
                 projectRoot: useFileStore.getState().rootPath, 
                 enableTools: shouldEnableTools,
                 activeSkillIds: (window as any).__IFAI_ACTIVE_SKILLS__ || [],
-                mode: currentMode
+                mode: currentMode || "vibe"
             });
 
                 

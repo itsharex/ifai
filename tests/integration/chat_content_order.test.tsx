@@ -32,12 +32,12 @@ describe('MessageItem Content Ordering (v0.4.0 Fix)', () => {
     const message = {
       id: 'msg-order-refined-test',
       role: 'assistant' as const,
-      content: 'I will do X. Finished X.',
+      content: 'I will do X. All tasks have been completed successfully. Here is a long summary of what was changed in the project.',
       toolCalls: [{ id: 'tc-weight', tool: 'agent_write_file', status: 'completed', result: '{}', timestamp: 150 }],
       contentSegments: [
         { type: 'text', order: 0, content: 'I will do X. ', timestamp: 100 },
         { type: 'tool', order: 1, toolCallId: 'tc-weight', timestamp: 200 },
-        { type: 'text', order: 2, content: 'Finished X.', timestamp: 300 }
+        { type: 'text', order: 2, content: 'All tasks have been completed successfully. Here is a long summary of what was changed in the project.', timestamp: 300 }
       ]
     };
 
@@ -53,7 +53,7 @@ describe('MessageItem Content Ordering (v0.4.0 Fix)', () => {
     const textContent = container.textContent || '';
     const introPos = textContent.indexOf('I will do X');
     const toolPos = textContent.indexOf('agent_write_file');
-    const summaryPos = textContent.indexOf('Finished X');
+    const summaryPos = textContent.indexOf('All tasks have been completed');
     
     console.log(`[Test] Intro: ${introPos}, Tool: ${toolPos}, Summary: ${summaryPos}`);
     

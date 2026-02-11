@@ -18,10 +18,14 @@ vi.mock('../../src/stores/settingsStore', () => ({
 }));
 
 vi.mock('../../src/stores/fileStore', () => ({
-  useFileStore: {
+  useFileStore: Object.assign(() => ({
+    allFilePaths: [], 
+    activeFileId: '',
+    refreshFileTree: vi.fn() 
+  }), {
     getState: () => ({ allFilePaths: [], activeFileId: '' }),
     subscribe: vi.fn(),
-  }
+  })
 }));
 
 // Mock SlashCommandList 组件 (因为它可能有复杂的外部依赖)

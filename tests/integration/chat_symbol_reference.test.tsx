@@ -28,7 +28,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 vi.mock('../../src/utils/fileSystem', () => ({
   readFileContent: vi.fn(async (path) => {
-    return "Line 1
+    return `Line 1
 Line 2
 Line 3
 Line 4
@@ -47,7 +47,7 @@ Line 16
 Line 17
 Line 18
 Line 19
-Line 20";
+Line 20`;
   }),
   readDirectory: vi.fn(),
 }));

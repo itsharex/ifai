@@ -70,7 +70,7 @@ describe('ChatInputArea High-Fidelity Integration', () => {
 
   it('SHOULD maintain high-tech button states (Send Button Glow)', async () => {
     render(<ChatInputArea isLoading={false} />);
-    const sendButton = screen.getByTestId('send-button');
+    const sendButton = screen.getByTestId('chat-send-button');
     const textarea = screen.getByPlaceholderText(/问问 IfAI/i);
     
     // 初始状态：按钮应该是灰色的

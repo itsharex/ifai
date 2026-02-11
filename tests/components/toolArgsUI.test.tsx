@@ -179,7 +179,9 @@ describe('Streaming Tool Args Viewer', () => {
       />
     );
 
-    expect(container.textContent).toContain('生成中...');
+    expect(container.textContent).toContain('/tmp/test.txt');
+    // 应该不再包含“生成中...”，因为 hasValue 为 true
+    expect(container.textContent).not.toContain('生成中...');
   });
 
   test('should show checked state for completed parameters', () => {
