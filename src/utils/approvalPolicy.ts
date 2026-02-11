@@ -15,8 +15,12 @@ export interface ApprovalContext {
  * 统一的工具调用分类逻辑
  */
 export function categorizeTool(toolName: string): ToolCategory {
-  // 归一化处理：移除前缀，统一匹配
-  const baseName = toolName.replace(/^agent_/, '');
+  if (!toolName) return 'dangerous';
+
+  // 归一化处理：转小写，移除 agent_ 前缀，统一将空格/横杠转为下划线
+  const normalizedName = toolName.toLowerCase()
+    .replace(/^agent_/, '')
+    .replace(/[\s-]/g, '_');
   
   const safeBaseNames = [
     'read_file',
@@ -25,8 +29,11 @@ export function categorizeTool(toolName: string): ToolCategory {
     'scan_directory',
     'get_file_tree',
     'search_file_content',
+    'grep_search',
+    'search',
     'glob',
-    'list_files'
+    'list_files',
+    'ls'
   ];
 
   const destructiveBaseNames = [
@@ -37,8 +44,8 @@ export function categorizeTool(toolName: string): ToolCategory {
     'remove_file'
   ];
 
-  if (safeBaseNames.includes(baseName)) return 'safe';
-  if (destructiveBaseNames.includes(baseName)) return 'destructive';
+  if (safeBaseNames.includes(normalizedName)) return 'safe';
+  if (destructiveBaseNames.includes(normalizedName)) return 'destructive';
   
   return 'dangerous'; // 默认：写入操作等
 }

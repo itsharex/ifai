@@ -1801,20 +1801,29 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                                 }
 
                                 updatedCalls[existingIndex] = {
-
                                     ...existingCall,
-
                                     id: toolCallUpdate.id || existingCall.id,
-
                                     tool: updatedName || (existingCall as any).tool,
-
                                     args: parsedArgs,
-
                                     function: { name: updatedName, arguments: updatedArgsString },
-
-                                    isPartial: true
-
+                                    isPartial: toolCallUpdate.isPartial ?? existingCall.isPartial
                                 } as any;
+
+                                // 🔥 v0.5.0: 即时自动审批 (针对流式传输中已接收完毕的工具)
+                                if (updatedCalls[existingIndex].isPartial === false) {
+                                    const tc = updatedCalls[existingIndex];
+                                    const latestEditorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
+                                    const settings = useSettingsStore.getState();
+                                    
+                                    // 检查是否符合 Vibe 模式下的自动执行条件
+                                    if (latestEditorMode === 'vibe' && categorizeTool(tc.tool) === 'safe') {
+                                        console.log(`[Chat] 🚀 Immediate Vibe-approval for ${tc.tool}`);
+                                        // 异步触发审批，不阻塞渲染
+                                        setTimeout(() => {
+                                            (window as any).__chatStore?.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
+                                        }, 0);
+                                    }
+                                }
 
                                 newMsg.toolCalls = updatedCalls;
 
