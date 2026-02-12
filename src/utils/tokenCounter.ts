@@ -110,9 +110,32 @@ export function getModelMaxTokens(model: string): number {
     return modelLimits[model];
   }
 
-  // 尝试前缀匹配
+  // 尝试更宽松的匹配逻辑
+  const lowerModel = model.toLowerCase();
+  
+  // 1. 尝试前缀匹配 (原有逻辑)
   for (const [key, limit] of Object.entries(modelLimits)) {
-    if (model.startsWith(key)) {
+    if (lowerModel.startsWith(key.toLowerCase())) {
+      return limit;
+    }
+  }
+
+  // 2. 尝试后缀匹配 (处理 provider/model 格式)
+  for (const [key, limit] of Object.entries(modelLimits)) {
+    if (lowerModel.endsWith(key.toLowerCase())) {
+      return limit;
+    }
+  }
+
+  // 3. 尝试归一化模糊匹配 (移除所有特殊字符后匹配)
+  // 例如: "z-ai/glm4.7" -> "zaiglm47", "glm-4.7" -> "glm47"
+  const normalize = (s: string) => s.replace(/[^a-z0-9]/g, '');
+  const normalizedModel = normalize(lowerModel);
+  
+  for (const [key, limit] of Object.entries(modelLimits)) {
+    const normalizedKey = normalize(key.toLowerCase());
+    // 如果 key 比较长才匹配，避免短 key (如 "o1") 误判
+    if (normalizedKey.length > 2 && normalizedModel.includes(normalizedKey)) {
       return limit;
     }
   }
