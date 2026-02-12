@@ -10,11 +10,17 @@ if (typeof window === 'undefined') {
 
 // 2. Mock 核心依赖
 vi.mock('../../src/stores/useChatStore', () => ({
-  useChatStore: () => ({ sendMessage: vi.fn() }),
+  useChatStore: () => ({ sendMessage: vi.fn(), messages: [] }),
 }));
 
 vi.mock('../../src/stores/settingsStore', () => ({
-  useSettingsStore: () => ({ currentProviderId: 'e2e', currentModel: 'm' }),
+  useSettingsStore: () => ({ 
+    providers: [
+      { id: 'e2e', name: 'E2E', protocol: 'openai', baseUrl: '', apiKey: '', models: ['m'], enabled: true }
+    ],
+    currentProviderId: 'e2e', 
+    currentModel: 'm' 
+  }),
 }));
 
 vi.mock('../../src/stores/fileStore', () => ({

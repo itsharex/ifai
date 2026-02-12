@@ -20,11 +20,15 @@ if (typeof window === 'undefined') {
 vi.mock('../../src/stores/useChatStore', () => ({
   useChatStore: () => ({
     sendMessage: vi.fn(),
+    messages: [],
   }),
 }));
 
 vi.mock('../../src/stores/settingsStore', () => ({
   useSettingsStore: () => ({
+    providers: [
+      { id: 'openai', name: 'OpenAI', protocol: 'openai', baseUrl: '', apiKey: '', models: ['gpt-4o'], enabled: true }
+    ],
     currentProviderId: 'openai',
     currentModel: 'gpt-4o',
   }),

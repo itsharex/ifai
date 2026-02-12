@@ -8,16 +8,25 @@ if (typeof window === 'undefined') { (global as any).window = {}; }
 
 // 模拟核心 store
 vi.mock('../../src/stores/useChatStore', () => ({
-  useChatStore: Object.assign(() => ({ sendMessage: vi.fn() }), {
-    getState: () => ({ sendMessage: vi.fn() })
+  useChatStore: Object.assign(() => ({ sendMessage: vi.fn(), messages: [] }), {
+    getState: () => ({ sendMessage: vi.fn(), messages: [] })
   })
 }));
 
-vi.mock('../../src/stores/settingsStore', () => ({
-  useSettingsStore: Object.assign(() => ({ currentProviderId: 'e2e', currentModel: 'm' }), {
-    getState: () => ({ currentProviderId: 'e2e', currentModel: 'm' })
-  })
-}));
+vi.mock('../../src/stores/settingsStore', () => {
+  const mockState = {
+    providers: [
+      { id: 'e2e', name: 'E2E', protocol: 'openai', baseUrl: '', apiKey: '', models: ['m'], enabled: true }
+    ],
+    currentProviderId: 'e2e',
+    currentModel: 'm'
+  };
+  return {
+    useSettingsStore: Object.assign(() => mockState, {
+      getState: () => mockState
+    })
+  };
+});
 
 // 模拟 Tauri
 vi.mock('@tauri-apps/api/core', () => ({

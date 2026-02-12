@@ -23,7 +23,13 @@ vi.mock('../../src/stores/useChatStore', () => {
 });
 
 vi.mock('../../src/stores/settingsStore', () => ({
-  useSettingsStore: () => ({ currentProviderId: 'e2e', currentModel: 'm' }),
+  useSettingsStore: () => ({ 
+    providers: [
+      { id: 'e2e', name: 'E2E', protocol: 'openai', baseUrl: '', apiKey: '', models: ['m'], enabled: true }
+    ],
+    currentProviderId: 'e2e', 
+    currentModel: 'm' 
+  }),
 }));
 
 vi.mock('../../src/stores/fileStore', () => {
