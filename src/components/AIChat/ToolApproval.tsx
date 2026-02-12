@@ -1,3 +1,4 @@
+import { PivoProjectTree } from "./PivoProjectTree";
 import React, { useState, useLayoutEffect, useMemo } from 'react';
 import { Check, X, Terminal, FilePlus, Eye, FolderOpen, Search, Trash2, ChevronDown, ChevronUp, File, Folder, FileCheck, CheckCircle, XCircle, RotateCcw, Loader2, AlertTriangle } from 'lucide-react';
 import { ToolCall, useChatStore } from '../../stores/useChatStore';
@@ -614,46 +615,37 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
             )}
 
             {/* ✅ 执行结果展示 - 工业级UI，无JSON显示 */}
-            {/* 🔥 FIX: 显示所有工具的执行结果，包括 agent_write_file */}
-            {(toolCall.status === 'completed' || toolCall.status === 'failed' || toolCall.result) && !isPartial && (
+            {(toolCall.status === "completed" || toolCall.status === "failed" || toolCall.result) && !isPartial && (
                 <div className="px-5 pb-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                    {/* 结果标题 */}
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                            {/* ⚡️ FIX: 根据result判断是否成功，而不是只看status */}
                             <div className={`w-1 h-4 rounded-full ${
-                                toolCall.status === 'failed' ? 'bg-red-500' :
-                                toolCall.result || toolCall.status === 'completed' ? 'bg-green-500' : 'bg-gray-500'
+                                toolCall.status === "failed" ? "bg-red-500" :
+                                toolCall.result || toolCall.status === "completed" ? "bg-green-500" : "bg-gray-500"
                             }`} />
                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                                {toolCall.status === 'failed' ? '执行失败' : '执行结果'}
+                                {toolCall.status === "failed" ? "执行失败" : "执行结果"}
                             </span>
                         </div>
-                        {/* 状态徽章 */}
-                        {/* ⚡️ FIX: 根据result存在与否和status判断显示 */}
                         <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
-                            toolCall.status === 'failed'
-                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                : toolCall.result || toolCall.status === 'completed'
-                                ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                                : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                            toolCall.status === "failed"
+                                ? "bg-red-500/10 text-red-400 border-red-500/20"
+                                : toolCall.result || toolCall.status === "completed"
+                                ? "bg-green-500/10 text-green-400 border-green-500/20"
+                                : "bg-gray-500/10 text-gray-400 border-gray-500/20"
                         }`}>
-                            {toolCall.status === 'failed' ? '失败' : toolCall.result || toolCall.status === 'completed' ? '成功' : '运行中'}
+                            {toolCall.status === "failed" ? "失败" : toolCall.result || toolCall.status === "completed" ? "成功" : "运行中"}
                         </div>
                     </div>
 
-                    {/* 结果内容卡片 */}
-                    {/* ⚡️ FIX: 根据result和status判断背景色 */}
                     <div className={`p-4 rounded-xl border overflow-hidden ${
-                        toolCall.status === 'failed'
-                            ? 'bg-gradient-to-br from-red-500/5 to-red-500/10 border-red-500/20'
-                            : toolCall.result || toolCall.status === 'completed'
-                            ? 'bg-gradient-to-br from-green-500/5 to-green-500/10 border-green-500/20'
-                            : 'bg-gradient-to-br from-gray-500/5 to-gray-500/10 border-gray-500/20'
+                        toolCall.status === "failed"
+                            ? "bg-gradient-to-br from-red-500/5 to-red-500/10 border-red-500/20"
+                            : toolCall.result || toolCall.status === "completed"
+                            ? "bg-gradient-to-br from-green-500/5 to-green-500/10 border-green-500/20"
+                            : "bg-gradient-to-br from-gray-500/5 to-gray-500/10 border-gray-500/20"
                     }`}>
-                        {/* 成功图标动画 */}
-                        {/* ⚡️ FIX: 有result或status=completed时显示成功图标 */}
-                        {(toolCall.result || toolCall.status === 'completed') && toolCall.status !== 'failed' && (
+                        {(toolCall.result || toolCall.status === "completed") && toolCall.status !== "failed" && (
                             <div className="flex items-center justify-center mb-3">
                                 <div className="relative">
                                     <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
@@ -664,8 +656,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                             </div>
                         )}
 
-                        {/* 失败图标动画 */}
-                        {toolCall.status === 'failed' && (
+                        {toolCall.status === "failed" && (
                             <div className="flex items-center justify-center mb-3">
                                 <div className="relative">
                                     <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
@@ -675,19 +666,33 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                             </div>
                         )}
 
-                        {/* 格式化的结果内容 */}
                         <div className="overflow-auto leading-relaxed">
-                            {/* ⚡️ FIX: Bash命令使用工业级控制台样式（只有最新的bash命令显示） */}
-                            {shouldShowConsole() ? (() => {
-                                const bashOutput = parseBashOutput();
-                                return bashOutput ? (
-                                    <BashConsoleOutput
-                                        output={bashOutput.output}
-                                        command={bashOutput.command}
-                                        exitCode={bashOutput.exitCode}
-                                        success={bashOutput.success}
-                                    />
-                                ) : (
+                            {(() => {
+                                // 1. 检测 PIVO
+                                try {
+                                    const parsed = JSON.parse(toolCall.result || "{}");
+                                    if (parsed.structure) {
+                                        return <PivoProjectTree structure={parsed.structure} keyFiles={parsed.key_files} />;
+                                    }
+                                } catch (e) {}
+
+                                // 2. 检测 Bash 控制台
+                                if (shouldShowConsole()) {
+                                    const bashOutput = parseBashOutput();
+                                    if (bashOutput) {
+                                        return (
+                                            <BashConsoleOutput
+                                                output={bashOutput.output}
+                                                command={bashOutput.command}
+                                                exitCode={bashOutput.exitCode}
+                                                success={bashOutput.success}
+                                            />
+                                        );
+                                    }
+                                }
+
+                                // 3. 默认 Markdown
+                                return (
                                     <ReactMarkdown
                                         components={{
                                             h1: ({node, ...props}) => <h1 {...props} className="text-base font-bold text-gray-200 mb-2" />,
@@ -700,57 +705,16 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                                             strong: ({node, ...props}) => <strong {...props} className="font-bold text-gray-200" />,
                                             em: ({node, ...props}) => <em {...props} className="italic text-gray-300" />,
                                             code({ node, inline, ...rest }: any) {
-                                                if (inline) {
-                                                    return (
-                                                        <code {...rest} className="px-1.5 py-0.5 bg-gray-800 text-green-400 rounded text-[10px] font-mono" />
-                                                    );
-                                                }
-                                                return (
-                                                    <code {...rest} className="block bg-gray-900 p-2 rounded text-[10px] text-gray-300 font-mono overflow-x-auto" />
-                                                );
+                                                if (inline) return <code {...rest} className="px-1.5 py-0.5 bg-gray-800 text-green-400 rounded text-[10px] font-mono" />;
+                                                return <code {...rest} className="block bg-gray-900 p-2 rounded text-[10px] text-gray-300 font-mono overflow-x-auto" />;
                                             },
-                                            pre({node, ...props}) {
-                                                return (
-                                                    <pre {...props} className="bg-gray-900 p-3 rounded-lg overflow-x-auto mb-2 border border-gray-700" />
-                                                );
-                                            },
+                                            pre: ({node, ...props}) => <pre {...props} className="bg-gray-900 p-3 rounded-lg overflow-x-auto mb-2 border border-gray-700" />,
                                         }}
                                     >
                                         {formatToolResultToMarkdown(toolCall.result, toolCall)}
                                     </ReactMarkdown>
                                 );
-                            })() : (
-                                <ReactMarkdown
-                                    components={{
-                                        h1: ({node, ...props}) => <h1 {...props} className="text-base font-bold text-gray-200 mb-2" />,
-                                        h2: ({node, ...props}) => <h2 {...props} className="text-sm font-bold text-gray-300 mb-2 mt-3" />,
-                                        h3: ({node, ...props}) => <h3 {...props} className="text-xs font-bold text-gray-400 mb-1" />,
-                                        p: ({node, ...props}) => <p {...props} className="text-xs text-gray-300 mb-2 last:mb-0" />,
-                                        ul: ({node, ...props}) => <ul {...props} className="list-disc list-inside mb-2 text-gray-300 space-y-1" />,
-                                        ol: ({node, ...props}) => <ol {...props} className="list-decimal list-inside mb-2 text-gray-300 space-y-1" />,
-                                        li: ({node, ...props}) => <li {...props} className="ml-2 text-gray-300" />,
-                                        strong: ({node, ...props}) => <strong {...props} className="font-bold text-gray-200" />,
-                                        em: ({node, ...props}) => <em {...props} className="italic text-gray-300" />,
-                                        code({ node, inline, ...rest }: any) {
-                                            if (inline) {
-                                                return (
-                                                    <code {...rest} className="px-1.5 py-0.5 bg-gray-800 text-green-400 rounded text-[10px] font-mono" />
-                                                );
-                                            }
-                                            return (
-                                                <code {...rest} className="block bg-gray-900 p-2 rounded text-[10px] text-gray-300 font-mono overflow-x-auto" />
-                                            );
-                                        },
-                                        pre({node, ...props}) {
-                                            return (
-                                                <pre {...props} className="bg-gray-900 p-3 rounded-lg overflow-x-auto mb-2 border border-gray-700" />
-                                            );
-                                        },
-                                    }}
-                                >
-                                    {formatToolResultToMarkdown(toolCall.result, toolCall)}
-                                </ReactMarkdown>
-                            )}
+                            })()}
                         </div>
                     </div>
                 </div>
