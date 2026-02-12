@@ -234,6 +234,9 @@ fn save_project_config_internal(
         }
     }
 
+    // 🏆 v0.3.6: 自动初始化 Prompt 模板
+    let _ = ensure_prompts_initialized(config_path.parent().unwrap().parent().unwrap().to_str().unwrap());
+
     Ok(())
 }
 
@@ -259,6 +262,9 @@ pub async fn delete_project_config(project_root: String) -> Result<(), String> {
         fs::remove_file(&config_path)
             .map_err(|e| format!("Failed to delete config file: {}", e))?;
     }
+
+    // 🏆 v0.3.6: 自动初始化 Prompt 模板
+    let _ = ensure_prompts_initialized(config_path.parent().unwrap().parent().unwrap().to_str().unwrap());
 
     Ok(())
 }
@@ -313,4 +319,36 @@ No frontmatter here
         let config = parse_frontmatter(content).unwrap();
         assert_eq!(config, ProjectConfig::default());
     }
+}
+
+/// Ensure .ifai/prompts directory is initialized with builtin templates
+pub fn ensure_prompts_initialized(project_root: &str) -> Result<(), String> {
+    use crate::prompt_manager::BuiltinPrompts;
+    use std::fs;
+    use std::path::Path;
+
+    let prompt_dir = Path::new(project_root).join(".ifai/prompts");
+    
+    // 🏆 Only initialize if the directory does not exist
+    if prompt_dir.exists() {
+        return Ok(());
+    }
+
+    println!("[ProjectConfig] Initializing .ifai/prompts with builtin templates...");
+    fs::create_dir_all(&prompt_dir).map_err(|e| e.to_string())?;
+
+    for file_path in BuiltinPrompts::iter() {
+        if let Some(content_file) = BuiltinPrompts::get(&file_path) {
+            let target_path = prompt_dir.join(file_path.as_ref());
+            
+            // Create parent directories if needed (e.g., for system/main.md)
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            
+            fs::write(target_path, content_file.data).map_err(|e| e.to_string())?;
+        }
+    }
+    
+    Ok(())
 }

@@ -69,10 +69,21 @@ pub async fn list_prompts(project_root: String) -> Result<Vec<PromptTemplate>, S
     Ok(prompts)
 }
 
+
 #[tauri::command]
-pub async fn get_prompt(project_root: String, path: String) -> Result<PromptTemplate, String> {
+pub async fn get_prompt(project_root: String, path: String, locale: Option<String>) -> Result<PromptTemplate, String> {
     if path.starts_with("builtin://") {
         let internal_path = &path[10..];
+        
+        // 🚀 i18n Builtin support
+        if let Some(ref l) = locale {
+            let i18n_path = format!("{}/{}", l, internal_path);
+            if let Some(content_file) = BuiltinPrompts::get(&i18n_path) {
+                let content = std::str::from_utf8(content_file.data.as_ref()).unwrap_or("");
+                return storage::load_prompt_from_str(content, Some(path)).map_err(|e| e.to_string());
+            }
+        }
+
         if let Some(content_file) = BuiltinPrompts::get(internal_path) {
             let content = std::str::from_utf8(content_file.data.as_ref()).unwrap_or("");
             return storage::load_prompt_from_str(content, Some(path))
@@ -82,6 +93,15 @@ pub async fn get_prompt(project_root: String, path: String) -> Result<PromptTemp
     }
 
     let root = get_prompt_root(&project_root);
+    
+    // 🚀 i18n File System support
+    if let Some(ref l) = locale {
+        let i18n_full_path = root.join(l).join(&path);
+        if i18n_full_path.exists() {
+            return storage::load_prompt(&i18n_full_path).map_err(|e| e.to_string());
+        }
+    }
+
     let full_path = root.join(&path);
     storage::load_prompt(&full_path).map_err(|e| e.to_string())
 }

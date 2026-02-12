@@ -26,6 +26,7 @@ export function categorizeTool(toolName: string): ToolCategory {
     'read_file',
     'list_dir',
     'list_directory',
+    'scan_project',
     'scan_directory',
     'get_file_tree',
     'search_file_content',

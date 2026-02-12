@@ -189,6 +189,23 @@ pub async fn agent_batch_read(root_path: String, paths: Vec<String>) -> Result<S
 
 /// Scan directory and return structured file tree
 /// Supports glob patterns and file limits
+
+#[tauri::command]
+pub async fn agent_scan_project(root_path: String, rel_path: String, max_depth: Option<usize>) -> Result<String, String> {
+    println!("[Wrapper] agent_scan_project: root={}, rel={}, depth={:?}", root_path, rel_path, max_depth);
+    #[cfg(feature = "commercial")]
+    {
+        let depth = max_depth.unwrap_or(3);
+        let result = ifainew_core::agent::agent_scan_project(root_path, rel_path, depth).await?;
+        return serde_json::to_string(&result).map_err(|e| e.to_string());
+    }
+    #[cfg(not(feature = "commercial"))]
+    {
+        // Fallback: 社区版使用现有的扫描逻辑
+        return agent_scan_directory(root_path, rel_path, None, max_depth, Some(500)).await;
+    }
+}
+
 #[tauri::command]
 pub async fn agent_scan_directory(
     root_path: String,

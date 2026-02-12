@@ -1607,230 +1607,111 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     };
 
     // 转换为API格式
-
-    const msgHistory = messagesToSend.map(m => {
-
+    let msgHistory = messagesToSend.map(m => {
         const toolCalls = m.toolCalls
-
             ? m.toolCalls
-
-                .filter(tc => tc.tool) // 过滤掉没有 tool 名称的
-
+                .filter(tc => tc.tool)
                 .map(tc => {
-
-                    // 🔥 FIX: 使用 tc.function.arguments（流式累积的完整 JSON 字符串）而不是 tc.args
-
-                    // tc.args 可能在 JSON.parse 失败时是空对象 {}，导致参数丢失
-
-                    const argsString = (tc as any).function?.arguments || '{}';
-
+                    const argsString = (tc as any).function?.arguments || "{}";
                     return {
-
                         id: tc.id,
-
-                        type: 'function',
-
+                        type: "function",
                         function: {
-
                             name: tc.tool,
-
-                            arguments: typeof argsString === 'string' ? argsString : JSON.stringify(argsString || {})
-
+                            arguments: typeof argsString === "string" ? argsString : JSON.stringify(argsString || {})
                         }
-
                     };
-
                 })
-
             : undefined;
-
-        // 🔥 v0.3.0: 使用 prepareMessageContent 保持 ContentPart[] 格式
-
         const content = prepareMessageContent(m.content);
-
         return {
-
             role: m.role,
-
             content: content,
-
             tool_calls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
-
             tool_call_id: m.tool_call_id
-
         };
-
     });
+
+    // 🚀 v0.3.6: PIVO 行为准则注入
+    const PIVO_PROMPT = "CRITICAL GUIDELINE: When exploring a project or a new directory, DO NOT call agent_list_dir recursively. You MUST use \"agent_scan_project\" to get a bird-eye view of the project structure and key files in ONE go. Only use agent_read_file for specific implementation details.";
+    if (!msgHistory.some(m => m.content === PIVO_PROMPT) && msgHistory.length < 5) {
+        msgHistory.unshift({ role: "system", content: PIVO_PROMPT });
+    }
 
     // 5. Setup Listeners
-
-    // const { listen } = await import('@tauri-apps/api/event');
-
     // Status Listener
-
     const unlistenStatus = await listen<string>(`${assistantMsgId}_status`, (event) => {
-
         const { messages } = coreUseChatStore.getState();
-
         const lastAssistantMsg = messages.find(m => m.id === assistantMsgId);
-
         if (lastAssistantMsg) {
-
-            // Safety check for payload type
-
-            const safePayload = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
-
+            const safePayload = typeof event.payload === "string" ? event.payload : JSON.stringify(event.payload);
             console.log(`[Chat] Status update: ${safePayload}`);
-
             if (!lastAssistantMsg.content) {
-
                 const updatedMessages = messages.map(m => 
-
                     m.id === assistantMsgId ? { ...m, content: `_(${safePayload})_ \n\n` } : m
-
                 );
-
                 coreUseChatStore.setState({ messages: updatedMessages });
-
             }
-
         }
-
     });
 
-    // Stream Content Listener - 接收流式消息内容
-
-    // 🔥 v0.4.5: 引入高性能增量更新机制
-
+    // Stream Content Listener
     let renderRequested = false;
-
     let pendingChunks: { textChunk?: string, toolCallUpdate?: any }[] = [];
 
-    // 强制同步更新函数（用于关键时刻如 finish）
-
     const flushUpdates = () => {
-
         if (pendingChunks.length === 0) return;
-
         const chunksToProcess = [...pendingChunks];
-
         pendingChunks = [];
-
         coreUseChatStore.setState((state) => {
-
             const updatedMessages = state.messages.map(m => {
-
                 if (m.id === assistantMsgId) {
-
                     const newMsg = { ...m };
-
-                    // @ts-ignore
-
-                    if (!newMsg.contentSegments) newMsg.contentSegments = [];
-
+                    if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
                     for (const chunk of chunksToProcess) {
-
                         if (chunk.textChunk) {
-
-                            const safeTextChunk = typeof chunk.textChunk === 'string' ? chunk.textChunk : JSON.stringify(chunk.textChunk);
-
-                            newMsg.content = (newMsg.content || '') + safeTextChunk;
-
-                            const order = (newMsg.contentSegments || []).length;
-
-                            const startPos = (newMsg.content || '').length - safeTextChunk.length;
-
-                            // @ts-ignore
-
-                            newMsg.contentSegments = [...(newMsg.contentSegments || []), {
-
-                                type: 'text' as const, order, timestamp: Date.now(),
-
+                            const safeTextChunk = typeof chunk.textChunk === "string" ? chunk.textChunk : JSON.stringify(chunk.textChunk);
+                            newMsg.content = (newMsg.content || "") + safeTextChunk;
+                            const order = ((newMsg as any).contentSegments || []).length;
+                            const startPos = (newMsg.content || "").length - safeTextChunk.length;
+                            (newMsg as any).contentSegments = [...((newMsg as any).contentSegments || []), {
+                                type: "text" as const, order, timestamp: Date.now(),
                                 content: safeTextChunk, startPos, endPos: newMsg.content.length
-
                             }];
-
                         }
-
                         if (chunk.toolCallUpdate) {
-
                             const toolCallUpdate = chunk.toolCallUpdate;
-
-                            const deltaName = toolCallUpdate.function?.name || '';
-
-                            const newArgsChunk = toolCallUpdate.function?.arguments || '';
-
+                            const deltaName = toolCallUpdate.function?.name || "";
+                            const newArgsChunk = toolCallUpdate.function?.arguments || "";
                             const existingCalls = newMsg.toolCalls || [];
-
-                            
-
-                            // 查找现有调用的索引
-
                             const existingIndex = existingCalls.findIndex(tc => {
-
                                 if (toolCallUpdate.id && tc.id === toolCallUpdate.id) return true;
-
                                 if (toolCallUpdate.index !== undefined && toolCallUpdate.index !== null) {
-
                                     return (tc as any).index === toolCallUpdate.index;
-
                                 }
-
                                 return false;
-
                             });
 
                             if (existingIndex !== -1) {
-
                                 const existingCall = existingCalls[existingIndex];
-
                                 const updatedCalls = [...existingCalls];
-
+                                const existingName = (existingCall as any).function?.name || "";
+                                const updatedName = (existingName === "unknown" ? "" : existingName) + deltaName;
+                                const updatedArgsString = ((existingCall as any).function?.arguments || "") + newArgsChunk;
                                 
-
-                                // 累加名称和参数
-
-                                const existingName = (existingCall as any).function?.name || '';
-
-                                const updatedName = (existingName === 'unknown' ? '' : existingName) + deltaName;
-
-                                const updatedArgsString = ((existingCall as any).function?.arguments || '') + newArgsChunk;
-
-                                
-
                                 let parsedArgs: any;
-
-                                try {
-
-                                    parsedArgs = JSON.parse(updatedArgsString);
-
-                                } catch (e) {
-
+                                try { parsedArgs = JSON.parse(updatedArgsString); }
+                                catch (e) {
                                     parsedArgs = { ...existingCall.args };
-
                                     const safeArgsString = String(updatedArgsString);
-
-                                    
-
-                                    // 🔥 工业级鲁棒正则：匹配未闭合的 content，且妥善处理末尾的转义符
-                                    // 使用贪婪匹配 (*) 确保在流式传输未闭合时捕获所有已到达字符
                                     const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:\\|"?$)/s);
                                     if (contentMatch) {
                                         let content = contentMatch[1];
-                                        content = content.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                                        content = content.replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
                                         parsedArgs.content = content;
                                     }
-
                                     const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"?/);
-
                                     if (relPathMatch) parsedArgs.rel_path = relPathMatch[1];
-
-                                }
-
-                                if (parsedArgs.content) {
-
-                                    console.log(`[Chat] ⚡️ Streaming tool content: ${parsedArgs.content.length} chars`);
-
                                 }
 
                                 updatedCalls[existingIndex] = {
@@ -1840,89 +1721,43 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                                     args: parsedArgs,
                                     function: { name: updatedName, arguments: updatedArgsString },
                                     isPartial: toolCallUpdate.isPartial ?? existingCall.isPartial,
-                                    // @ts-ignore - preserve batchId
                                     batchId: (existingCall as any).batchId
                                 } as any;
 
-                                // 🔥 v0.5.0: 即时自动审批 (针对流式传输中已接收完毕的工具)
                                 if (updatedCalls[existingIndex].isPartial === false) {
                                     const tc = updatedCalls[existingIndex];
-                                    const latestEditorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
+                                    const latestEditorMode = (window as any).__IFAI_EDITOR_MODE__ || "standard";
                                     const settings = useSettingsStore.getState();
-                                    
-                                    // 检查是否符合 Vibe 模式下的自动执行条件
-                                    if (latestEditorMode === 'vibe' && categorizeTool(tc.tool) === 'safe') {
-                                        console.log(`[Chat] 🚀 Immediate Vibe-approval for ${tc.tool}`);
-                                        // 异步触发审批，不阻塞渲染
-                                        setTimeout(() => {
-                                            (window as any).__chatStore?.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
-                                        }, 0);
+                                    const shouldAuto = checkAutoApprove({
+                                        settings, editorMode: latestEditorMode as any,
+                                        isSessionTrusted: false, toolName: tc.tool, isSandbox: true, userMessageHasAutoApprove: false
+                                    });
+                                    if (shouldAuto) {
+                                        setTimeout(() => { (window as any).__chatStore?.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true }); }, 0);
                                     }
                                 }
-
                                 newMsg.toolCalls = updatedCalls;
-
                             } else {
-
-                                // 创建新调用（即使名字暂时缺失）
-
-                                const toolName = deltaName || 'unknown';
-
-                                let initialArgs: any;
-
-                                try { 
-
-                                    initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {}; 
-
-                                } catch (e) { 
-
-                                    initialArgs = {}; 
-
-                                    const safeArgsString = String(newArgsChunk);
-
-                                    const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"?/);
-
-                                    if (contentMatch) {
-
-                                        let content = contentMatch[1];
-
-                                        content = content.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-
-                                        initialArgs.content = content;
-
-                                    }
-
-                                    const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"?/);
-
-                                    if (relPathMatch) initialArgs.rel_path = relPathMatch[1];
-
-                                }
-
-                                const newToolCallId = toolCallUpdate.id || `call_${crypto.randomUUID()}`;
-
-                                // 🚀 v0.3.6: 工具批处理逻辑 (Tool Batching)
-                                // 识别可聚合工具（目录探索、文件读取等）- 增加不区分大小写和显示名称支持
-                                const aggregatableTools = ['agent_list_dir', 'agent_read_file', 'agent_search', 'list_dir', 'read_file', 'agent_list_directory', 'list directory', 'read file'];
-                                const currentEditorMode = (window as any).__IFAI_EDITOR_MODE__ || 'vibe';
-                                const lowerToolName = toolName.toLowerCase();
+                                const toolName = deltaName || "unknown";
+                                let initialArgs: any = {};
+                                try { initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {}; }
+                                catch (e) { /* fallback match */ }
                                 
+                                const newToolCallId = toolCallUpdate.id || `call_${crypto.randomUUID()}`;
+                                
+                                // Batching logic
+                                const aggregatableTools = ["agent_list_dir", "agent_read_file", "agent_search", "list_dir", "read_file", "agent_list_directory", "list directory", "read file"];
+                                const currentEditorMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
+                                const lowerToolName = toolName.toLowerCase();
                                 let batchId: string | undefined = undefined;
                                 if (aggregatableTools.some(t => lowerToolName.includes(t))) {
-                                    // 1. 优先尝试合并到当前消息内的上一个工具
                                     const lastToolCall = existingCalls.length > 0 ? existingCalls[existingCalls.length - 1] : null;
-                                    
                                     if (lastToolCall && (lastToolCall as any).batchId && aggregatableTools.some(t => (lastToolCall as any).tool.toLowerCase().includes(t))) {
                                         batchId = (lastToolCall as any).batchId;
-                                    } else if (currentEditorMode === 'vibe' || currentEditorMode === 'spec') {
-                                        // 2. 🏆 跨消息粘性逻辑：回溯上一条消息
-                                        const prevAssistantMsg = coreUseChatStore.getState().messages
-                                            .filter(m => m.role === 'assistant' && m.id !== assistantMsgId)
-                                            .pop();
-                                        
+                                    } else if (currentEditorMode === "vibe" || currentEditorMode === "spec") {
+                                        const prevAssistantMsg = coreUseChatStore.getState().messages.filter(m => m.role === "assistant" && m.id !== assistantMsgId).pop();
                                         const prevBatchId = prevAssistantMsg?.toolCalls?.find(tc => (tc as any).batchId)?.batchId;
-                                        
-                                        if (prevBatchId && typeof prevBatchId === 'string' && prevBatchId.startsWith('batch_')) {
-                                            console.log(`[Chat] 🔗 Reusing batchId from previous message: ${prevBatchId}`);
+                                        if (prevBatchId && typeof prevBatchId === "string" && prevBatchId.startsWith("batch_")) {
                                             batchId = prevBatchId;
                                         } else {
                                             batchId = `batch_${crypto.randomUUID().slice(0, 8)}`;
@@ -1931,519 +1766,101 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                                 }
 
                                 const newToolCall = {
-                                    id: newToolCallId, type: 'function' as const, 
+                                    id: newToolCallId, type: "function" as const, 
                                     tool: toolName, args: initialArgs,
                                     function: { name: toolName, arguments: newArgsChunk },
-                                    status: 'pending' as const, isPartial: true, index: toolCallUpdate.index,
-                                    // @ts-ignore - v0.3.6 batching
+                                    status: "pending" as const, isPartial: true, index: toolCallUpdate.index,
                                     batchId
                                 };
-
-                                // @ts-ignore
                                 newMsg.toolCalls = [...existingCalls, newToolCall];
-
-                                const order = (newMsg.contentSegments || []).length;
-
-                                // @ts-ignore
-
-                                newMsg.contentSegments = [...(newMsg.contentSegments || []), { type: 'tool' as const, order, timestamp: Date.now(), toolCallId: newToolCallId }];
-
+                                const order = ((newMsg as any).contentSegments || []).length;
+                                (newMsg as any).contentSegments = [...((newMsg as any).contentSegments || []), { type: "tool" as const, order, timestamp: Date.now(), toolCallId: newToolCallId }];
                             }
-
                         }
-
                     }
-
-                    return newMsg;
-
+                                        return newMsg;
                 }
-
                 return m;
-
             });
-
             return { messages: updatedMessages };
-
         });
-
     };
 
     const unlistenStream = await listen<string>(assistantMsgId, (event) => {
-
-        // [v3 Robust Stream Listener] - 彻底防御 event.payload.match 崩溃
-
-        let textChunk = '';
-
+        let textChunk = "";
         let toolCallUpdate: any = null;
-
         try {
-
             const rawPayload: any = event.payload;
-
-            if (rawPayload === null || rawPayload === undefined) return;
-
-            // 策略 A: payload 已经是对象
-
-            if (typeof rawPayload === 'object') {
-
-                if (rawPayload.type === 'content' && rawPayload.content) {
-
-                    const content = String(rawPayload.content);
-
-                    // 🔥 FIX: 过滤掉本地模型工具执行摘要
-
-                    const isLocalModelToolSummary =
-
-                        content.includes('[Local Model] Completed in') ||
-
-                        (content.includes('[OK] ') && content.includes('ms)\n{')) ||
-
-                        (rawPayload.metadata?.source === 'local_model' && content.includes('[OK]'));
-
-                    if (isLocalModelToolSummary) {
-
-                        console.log('[Chat] 🚫 过滤掉本地模型工具执行摘要，避免重复显示');
-
-                        return;
-
-                    }
-
-                    textChunk = content;
-
-                } else if (rawPayload.type === 'tool_call' && rawPayload.toolCall) {
-                    // 🔥 v0.5.0: 双模引擎渲染策略 - 只读工具允许在 Vibe 模式下穿透，以支持自动化背景探索
-                    const editorMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
-                    const toolName = rawPayload.toolCall.function?.name || rawPayload.toolCall.tool || '';
-                    const safeTools = ['agent_read_file', 'read_file', 'agent_list_directory', 'list_directory', 'agent_list_functions', 'list_functions', 'grep_search', 'search', 'List Directory', 'Read File'];
-                    const isSafe = safeTools.includes(toolName);
-
-                    if (editorMode === "vibe" && !isSafe) {
-                        return; // Vibe 模式依然拦截非安全工具
-                    }
-                    toolCallUpdate = rawPayload.toolCall;
-
-                } else if (rawPayload.type === 'thinking' || rawPayload.type === 'tool-result' || rawPayload.type === 'done') {
-
-                    return;
-
-                }
-
-            } 
-
-            // 策略 B: payload 是字符串
-
-            else if (typeof rawPayload === 'string') {
-
-                try {
-
-                    const parsed = JSON.parse(rawPayload);
-
-                    if (parsed && parsed.type === 'content' && parsed.content) {
-
-                        const content = String(parsed.content);
-
-                        const isLocalModelToolSummary =
-
-                            content.includes('[Local Model] Completed in') ||
-
-                            (content.includes('[OK] ') && content.includes('ms)\n{')) ||
-
-                            (parsed.metadata?.source === 'local_model' && content.includes('[OK]'));
-
-                        if (isLocalModelToolSummary) return;
-
-                        textChunk = content;
-
-                    } else if (parsed && parsed.type === 'tool_call' && parsed.toolCall) {
-
-                        toolCallUpdate = parsed.toolCall;
-
-                    }
-
-                } catch (jsonErr) {
-
-                    if (typeof rawPayload.match === 'function') {
-
-                        const objects = rawPayload.match(/\{[^{}]+\}/g);
-
-                        if (objects) {
-
-                            for (let i = objects.length - 1; i >= 0; i--) {
-
-                                try {
-
-                                    const obj = JSON.parse(objects[i]);
-
-                                    if (obj && obj.type === 'content' && obj.content) {
-
-                                        const content = String(obj.content);
-
-                                        const isLocalModelToolSummary =
-
-                                            content.includes('[Local Model] Completed in') ||
-
-                                            (content.includes('[OK] ') && content.includes('ms)\n{')) ||
-
-                                            (obj.metadata?.source === 'local_model' && content.includes('[OK]'));
-
-                                        if (isLocalModelToolSummary) continue;
-
-                                        textChunk = content;
-
-                                        break;
-
-                                    }
-
-                                } catch (e2) {}
-
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            }
-
-        } catch (fatalErr) {
-
-            console.error('[Fatal] Robust stream listener error:', fatalErr);
-
-        }
+            if (!rawPayload) return;
+            const parsed = typeof rawPayload === "string" ? JSON.parse(rawPayload) : rawPayload;
+            if (parsed.type === "content") textChunk = parsed.content;
+            else if (parsed.type === "tool_call") toolCallUpdate = parsed.toolCall;
+        } catch (e) { /* ignore */ }
 
         if (textChunk || toolCallUpdate) {
-
-            // 将块添加到队列
-
             pendingChunks.push({ textChunk, toolCallUpdate });
-
             if (!renderRequested) {
-
                 renderRequested = true;
-
-                requestAnimationFrame(() => {
-
-                    // 调用统一的增量更新逻辑
-
-                    flushUpdates();
-
-                    renderRequested = false;
-
-                });
-
+                requestAnimationFrame(() => { flushUpdates(); renderRequested = false; });
             }
-
         }
-
     });
 
-    // References Listener (RAG)
-
-    const unlistenRefs = await listen<string[]>("codebase-references", (event) => {
-
+    const unlistenFinish = await listen<string>(`${assistantMsgId}_finish`, async () => {
+        flushUpdates();
+        
+        // 🚀 v0.3.6: 状态自愈巡检 (State Self-Healing)
+        // 强制关闭所有残留的 isPartial 状态，防止 UI 永久卡在“生成中”
         coreUseChatStore.setState(state => ({
-
-            messages: state.messages.map(m =>
-
-                m.id === userMsgId ? { ...m, references: event.payload } : m
-
-            )
-
+            messages: state.messages.map(m => m.id === assistantMsgId ? {
+                ...m,
+                toolCalls: m.toolCalls?.map(tc => ({ ...tc, isPartial: false }))
+            } : m)
         }));
 
-    });
-
-    // History Compaction Listener (Auto-summarization Fix)
-
-    const unlistenCompacted = await listen<any[]>(`${assistantMsgId}_compacted`, (event) => {
-
-        console.log("[Chat] History compacted event received", event.payload);
-
-        const compactedMessages = event.payload.map((m: any, index: number) => {
-
-            // Try to preserve original message IDs by matching with existing messages
-
-            const existingMsg = coreUseChatStore.getState().messages.find(existing =>
-
-                existing.role === m.role &&
-
-                existing.content === m.content &&
-
-                (!existing.toolCalls && !m.tool_calls ||
-
-                 existing.toolCalls?.length === m.tool_calls?.length)
-
-            );
-
-            // Use existing ID if found, otherwise generate new one
-
-            const id = existingMsg?.id || crypto.randomUUID();
-
-            return {
-
-                id,
-
-                role: m.role,
-
-                content: m.content,
-
-                toolCalls: m.tool_calls,
-
-                tool_call_id: m.tool_call_id,
-
-                // Preserve other properties from existing message
-
-                ...(existingMsg ? { agentId: (existingMsg as any).agentId, isAgentLive: (existingMsg as any).isAgentLive } : {})
-
-            };
-
-        });
-
-        // Replace history but keep the currently streaming assistant message
-
-        coreUseChatStore.setState({ messages: [...compactedMessages, assistantMsgPlaceholder] });
-
-    });
-
-    // Finish Listener - Finalize tool calls when streaming completes
-
-    // Increase timeout for local LLMs (Ollama) which may be slower
-
-    const finishTimeout = setTimeout(() => {
-
-        console.warn(`[Chat] WARNING: _finish event timeout for ${assistantMsgId}_finish after 60 seconds`);
-
-        console.warn(`[Chat] This suggests the backend stream did not complete properly`);
-
-        // Timeout: cleanup all listeners including unlistenFinish to prevent leaks
-
-        console.log(`[Chat] Cleaning up all listeners due to timeout`);
-
-        unlistenStatus();
-
-        unlistenStream();
-
-        unlistenRefs();
-
-        unlistenCompacted();
-
-        unlistenFinish();  // Clean up finish listener to prevent memory leaks
-
-        unlistenError();
-
-        // Also set isLoading to false to allow user to send new messages
-
-        coreUseChatStore.setState({ isLoading: false });
-
-    }, 60000);  // Increased to 60 seconds for commercial version with ifainew-core
-
-    const unlistenFinish = await listen<string>(`${assistantMsgId}_finish`, async (event) => {
-
-        clearTimeout(finishTimeout);
-
-        console.log(`[Chat] Stream finished event received ${event.payload}`);
-
-        // 确保所有挂起的块都已处理
-
-        flushUpdates();
-
-        // 🔥 v0.3.6: 延迟清理多模态数据缓存 (给后端和重试逻辑留出余量)
-        setTimeout(() => multimodalCache.delete(msgId), 30000);
-
-        // Finalize all partial tool calls
-
-        coreUseChatStore.setState((state) => {
-
-            const updatedMessages = state.messages.map(m => {
-
-                if (m.id === assistantMsgId && m.toolCalls) {
-
-                    return {
-
-                        ...m,
-
-                        toolCalls: m.toolCalls.map(tc => ({ ...tc, isPartial: false }))
-
-                    };
-
-                }
-
-                return m;
-
-            });
-
-            return { messages: updatedMessages };
-
-        });
-
+        // 🏆 自动执行保底：触发那些刚被自愈闭合的工具
+        flushUpdates(); // 再次刷新以确保状态同步到局部变量
+        
         const finalizedMessages = coreUseChatStore.getState().messages;
-
-        const assistantMsg = finalizedMessages.find(m => m.id === assistantMsgId);
-
-        console.log(`[Chat] Assistant message toolCalls:`, assistantMsg?.toolCalls?.length || 0);
-
-        if (assistantMsg?.toolCalls) {
-
-            console.log(`[Chat] Tool calls:`, assistantMsg.toolCalls.map(tc => ({
-
-                id: tc.id,
-
-                tool: tc.tool,
-
-                status: tc.status,
-
-                isPartial: tc.isPartial
-
-            })));
-
-        }
-
-        // ✨ NEW: Auto-approve tool calls (same logic as in patchedSendMessage)
         const settings = useSettingsStore.getState();
-        const assistantIndex = coreUseChatStore.getState().messages.findIndex(m => m.id === assistantMsgId);
+        const currentThreadId = useThreadStore.getState().activeThreadId || "default";
         
-        // Find the user message that triggered this assistant message
-        let userMessageHasAutoApprove = false;
-        const currentMessages = coreUseChatStore.getState().messages;
-        
-        if (assistantIndex > 0) {
-            for (let i = assistantIndex - 1; i >= 0; i--) {
-                if (currentMessages[i].role === 'user') {
-                    userMessageHasAutoApprove = (currentMessages[i] as any).autoApproveTools === true;
-                    console.log(`[Chat] User message autoApproveTools: ${userMessageHasAutoApprove}`);
-                    break;
-                }
-            }
-        }
-
-        // 🔥 v0.3.4: 添加会话信任检查
-        const approvalMode = settings.agentApprovalMode || 'session-once';
-        const sessionId = useThreadStore.getState().activeThreadId || 'default';
-        const sessionTrust = settings.trustedSessions?.[sessionId];
-        // 🔥 修复：确保返回布尔值而不是 undefined
-        const isSessionTrusted = sessionTrust ? Date.now() < sessionTrust.expiresAt : false;
-        
-        // 🔥 v0.5.0 Vibe Mode Silent Approval
-        const latestEditorMode = (window as any).__IFAI_EDITOR_MODE__ || 'standard';
-
-        const currentAssistantMsg = currentMessages.find(m => m.id === assistantMsgId);
-        
-        if (currentAssistantMsg && currentAssistantMsg.toolCalls) {
-            const pendingToolCalls = currentAssistantMsg.toolCalls.filter(tc => {
-                const isPending = tc.status === 'pending';
-                const isAdvancedMode = latestEditorMode === 'spec' || latestEditorMode === 'vibe';
-                
-                if (!isPending || (tc.isPartial && !isAdvancedMode)) return false;
-
-                return checkAutoApprove({
-                    settings,
-                    editorMode: latestEditorMode as any,
-                    isSessionTrusted,
-                    toolName: tc.tool,
-                    isSandbox: true,
-                    userMessageHasAutoApprove
+        const message = finalizedMessages.find(m => m.id === assistantMsgId);
+        if (message && message.toolCalls) {
+            const latestEditorMode = (window as any).__IFAI_EDITOR_MODE__ || "standard";
+            const pendingToolCalls = message.toolCalls.filter(tc => {
+                return tc.status === "pending" && !tc.isPartial && checkAutoApprove({
+                    settings, editorMode: latestEditorMode as any,
+                    isSessionTrusted: false, toolName: tc.tool, isSandbox: true, userMessageHasAutoApprove: false
                 });
             });
 
             if (pendingToolCalls.length > 0) {
-                console.log(`[Chat] 🚀 Strong Auto-approve triggered for ${pendingToolCalls.length} tools`);
-                
-                for (const tc of pendingToolCalls) {
-                    try {
-                        // 使用当前挂载的封装版 approveToolCall
-                        await (window as any).__chatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
-                    } catch (err) {
-                        console.error(`[Chat] Auto-approval failed for ${tc.id}:`, err);
-                    }
-                }
-
-                // 检查是否在自动工具调用循环中
-                const { messages } = coreUseChatStore.getState();
-                const recentToolCalls = messages
-                    .slice(-5)
-                    .filter(m => m.toolCalls && m.toolCalls.length > 0);
-
-                if (recentToolCalls.length >= 5) {
-                    console.warn(`[Chat] Detected potential tool call loop, stopping auto-continue`);
-                    coreUseChatStore.setState({ isLoading: false });
-                } else {
-                    coreUseChatStore.setState({ isLoading: true });
-
-                    // Execute all tool calls
-                    for (const tc of pendingToolCalls) {
-                        // @ts-ignore
-                        await coreUseChatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
-                    }
-
-                    console.log(`[Chat] All tool calls executed from patchedSendMessage`);
-
-                    const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-                    if (providerConfig) {
-                        console.log(`[Chat] Continuing conversation after tool execution (scheduled in 300ms)`);
-                        setTimeout(async () => {
-                            console.log(`[Chat] Executing delayed continuation`);
-                            unlistenStatus(); unlistenStream(); unlistenRefs(); unlistenCompacted(); unlistenFinish(); unlistenError();
-                            
-                            const finalMessages = coreUseChatStore.getState().messages;
-                            await patchedGenerateResponse(
-                                finalMessages,
-                                providerConfig,
-                                { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") }
-                            );
-                        }, 300);
-                        return;
-                    } else {
-                        coreUseChatStore.setState({ isLoading: false });
-                    }
+                const promises = pendingToolCalls.map(tc => coreUseChatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true }));
+                await Promise.all(promises);
+                const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+                if (providerConfig) {
+                    setTimeout(async () => {
+                        const latestMsg = coreUseChatStore.getState().messages.find(m => m.id === assistantMsgId);
+                        if (latestMsg?.toolCalls?.some(tc => tc.status === "approved")) return;
+                        unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
+                        await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig);
+                    }, 800);
+                    return;
                 }
             }
         }
-
-        // Cleanup listeners (normal completion)
-        console.log(`[Chat] Cleaning up listeners (normal completion)`);
-        unlistenStatus(); unlistenStream(); unlistenRefs(); unlistenCompacted(); unlistenFinish(); unlistenError();
+        unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
         coreUseChatStore.setState({ isLoading: false });
     });
-
-    // Error Listener - Handle stream errors
 
     const unlistenError = await listen<string>(`${assistantMsgId}_error`, (event) => {
-
-        // Safety check for payload type
-
-        const safePayload = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
-
-        console.error("[Chat] Stream error", safePayload);
-
-        const { messages } = coreUseChatStore.getState();
-
-        coreUseChatStore.setState({
-
-                        messages: messages.map(m =>
-
-                            m.id === assistantMsgId ? { ...m, content: `❌ Error: ${safePayload}` } : m
-
-                        )
-
-                    });
-
-            
-
-                    // Error: cleanup listeners
-
-                    multimodalCache.delete(msgId);
-
-                    if (typeof unlistenStatus === 'function') unlistenStatus();
-        if (typeof unlistenStream === 'function') unlistenStream();
-        if (typeof unlistenRefs === 'function') unlistenRefs();
-        if (typeof unlistenCompacted === 'function') unlistenCompacted();
-        if (typeof unlistenFinish === 'function') unlistenFinish();
-        if (typeof unlistenError === 'function') unlistenError();
-
-        coreUseChatStore.setState({ isLoading: false });
-
+        const safe = typeof event.payload === "string" ? event.payload : JSON.stringify(event.payload);
+        const displayError = safe.includes("429") ? "⚠️ **API 速率限制 (429)**: 您当前的消息发送过于频繁..." : safe;
+        coreUseChatStore.setState(s => ({ messages: s.messages.map(m => m.id === assistantMsgId ? { ...m, content: `❌ Error: ${displayError}` } : m), isLoading: false }));
+        unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
     });
+
 
     // 6. Invoke Backend
 
@@ -2451,7 +1868,8 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         // 🔥 v0.5.0: 增强型模式判定 (SendMessage 路径)
         // 仅在模式明确为 "spec" 时才启用工具（防御性白名单）
         const currentMode = (window as any).__IFAI_EDITOR_MODE__;
-        const shouldEnableTools = (currentMode !== "vibe");
+        // 🚀 v0.3.6: PIVO 穿透策略 - 在 Vibe 模式下也允许只读工具，以支持全景扫描
+        const shouldEnableTools = true; // 始终允许声明，但在后端或拦截层进行分类控制
 
         await invoke('ai_chat', {
             providerConfig,
@@ -2923,1296 +2341,126 @@ const patchedApproveToolCall = async (
     toolCallId: string,
     options?: { skipContinue?: boolean }
 ) => {
-    // 🔥 v0.5.0 并发控制 - 提升到入口层，保护整个执行生命周期并防止 429
     return await globalConcurrencyManager.run(async () => {
-        console.log(`[useChatStore] patchedApproveToolCall called - messageId: ${messageId}, toolCallId: ${toolCallId}, options:`, options);
+        console.log(`[useChatStore] patchedApproveToolCall called - messageId: ${messageId}, toolCallId: ${toolCallId}`);
         const state = coreUseChatStore.getState();
         let message = state.messages.find(m => m.id === messageId);
         let toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
 
-    // 🔥 FIX: 终端状态保护 - 防止覆盖已完成/失败/拒绝的工具调用
-
-    // 与 agentStore.ts 中的保护逻辑保持一致
-
-    const TERMINAL_STATES = ['completed', 'failed', 'rejected'] as const;
-
-    if (toolCall && TERMINAL_STATES.includes(toolCall.status as any)) {
-
-        console.warn(`[useChatStore] ⚠️ ToolCall already in terminal state: ${toolCall.status}, skipping approval`, {
-
-            toolCallId,
-
-            currentStatus: toolCall.status,
-
-            toolName: toolCall.tool
-
-        });
-
-        return;
-
-    }
-
-    // 🔥 FIX v0.3.7: ID 重定向逻辑 - 处理智谱 API 重复 tool_call 导致的 ID 不匹配
-
-    if (!message || !toolCall) {
-
-        const agentStore = useAgentStore.getState();
-
-        const canonicalId = agentStore.deduplicator.getCanonicalId(toolCallId);
-
-        // 🔥 FIX v0.3.8.2: 添加详细诊断日志
-
-        const threadStore = useThreadStore.getState();
-
-        console.error(`[useChatStore] ❌ Message or ToolCall not found`, {
-
-            messageId,
-
-            toolCallId,
-
-            messageFound: !!message,
-
-            toolCallFound: !!toolCall,
-
-            currentThreadId: threadStore.activeThreadId,
-
-            totalMessages: state.messages.length,
-
-            allMessageIds: state.messages.map(m => m.id).slice(0, 5), // 显示前5个消息ID
-
-        });
-
-        if (canonicalId) {
-
-            console.log(`[useChatStore] 🔄 ID Redirect: ${toolCallId} -> ${canonicalId}`);
-
-            message = state.messages.find(m => m.id === messageId);
-
-            toolCall = message?.toolCalls?.find(tc => tc.id === canonicalId);
-
-            if (toolCall) {
-
-                console.log(`[useChatStore] ✅ ID Redirect successful: found tool_call with canonical ID`);
-
-            } else {
-
-                console.error(`[useChatStore] ❌ ID Redirect failed: canonical ID ${canonicalId} also not found`);
-
-                return;
-
+        if (!message || !toolCall) {
+            const agentStore = useAgentStore.getState();
+            const canonicalId = agentStore.deduplicator.getCanonicalId(toolCallId);
+            if (canonicalId) {
+                message = state.messages.find(m => m.id === messageId);
+                toolCall = message?.toolCalls?.find(tc => tc.id === canonicalId);
             }
+            if (!toolCall) return;
+        }
 
-        } else {
+        const TERMINAL_STATES = ["completed", "failed", "rejected"];
+        if (TERMINAL_STATES.includes(toolCall.status)) return;
 
-            console.error("[useChatStore] ❌ No redirect mapping found. This message might belong to a different thread or has been deleted.");
-
+        if ((toolCall as any).agentId) {
+            const agentId = (toolCall as any).agentId;
+            coreUseChatStore.setState(s => ({
+                messages: s.messages.map(m => m.id === messageId ? {
+                    ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { ...tc, status: "approved" as const } : tc)
+                } : m)
+            }));
+            await useAgentStore.getState().approveAction(agentId, true);
             return;
-
         }
 
-    }
+        const fsTools = ["agent_write_file", "agent_read_file", "agent_list_dir", "agent_delete_file", "agent_list_functions", "agent_read_file_range", "agent_scan_project"];
+        const toolName = toolCall.tool || (toolCall as any).function?.name;
+        let relPath = toolCall.args?.rel_path || toolCall.args?.path || (toolName === "agent_list_dir" ? "." : "");
 
-    // 1. Handle Agent Tool Calls (delegated to AgentStore)
-
-    if ((toolCall as any).agentId) {
-
-        const agentId = (toolCall as any).agentId;
-
-        console.log(`[useChatStore] Using Agent approval flow for agent ${agentId}`);
-
-        coreUseChatStore.setState(state => ({
-
-            messages: state.messages.map(m =>
-
-                m.id === messageId ? {
-
-                    ...m,
-
-                    toolCalls: m.toolCalls?.map(tc =>
-
-                        tc.id === toolCallId ? { ...tc, status: 'approved' as const } : tc
-
-                    )
-
-                } : m
-
-            )
-
-        }));
-
-        console.log(`[useChatStore] Calling approveAction for agent ${agentId}`);
-
-        await useAgentStore.getState().approveAction(agentId, true);
-
-        console.log(`[useChatStore] approveAction completed for agent ${agentId}`);
-
-        // 🐛 FIX: Agent 执行完成后，更新工具状态为 completed
-
-        const agentStore = useAgentStore.getState();
-
-        const agent = agentStore.runningAgents.find(a => a.id === agentId);
-
-        if (agent && agent.status === 'completed') {
-
-            console.log(`[useChatStore] Agent completed, updating tool status to completed`);
-
-            coreUseChatStore.setState(state => ({
-
-                messages: state.messages.map(m =>
-
-                    m.id === messageId ? {
-
-                        ...m,
-
-                        toolCalls: m.toolCalls?.map(tc =>
-
-                            tc.id === toolCallId ? { ...tc, status: 'completed' as const } : tc
-
-                        )
-
-                    } : m
-
-                )
-
+        if (fsTools.includes(toolName)) {
+            coreUseChatStore.setState(s => ({
+                messages: s.messages.map(m => m.id === messageId ? {
+                    ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { ...tc, status: "approved" as const } : tc)
+                } : m)
             }));
 
-        }
-
-        useFileStore.getState().refreshFileTree();
-
-        return;
-
-    }
-
-    // 2. Handle File System Tools (Manual Invocation to fix snake_case args)
-
-    // 🔥 包含所有使用 snake_case 参数的 agent 工具，确保 DeepSeek 流式调用正确解析
-
-    const fsTools = [
-
-        'agent_write_file',
-
-        'agent_read_file',
-
-        'agent_list_dir',
-
-        'agent_delete_file',
-
-        'agent_list_functions',
-
-        'agent_read_file_range'
-
-    ];
-
-    const toolName = toolCall.tool || (toolCall as any).function?.name;
-
-    let relPath = '';  // 在 try 块外声明，以便 catch 块也能访问
-
-    if (fsTools.includes(toolName)) {
-
-        console.log(`[useChatStore] Intercepting FS tool: ${toolName}`);
-
-        // 🔥 DEBUG: 输出 toolCall 的完整状态以便诊断
-
-        console.log('[FS Tool] toolCall.id:', toolCall.id);
-
-        console.log('[FS Tool] toolCall.tool:', toolCall.tool);
-
-        console.log('[FS Tool] toolCall.args:', JSON.stringify(toolCall.args));
-
-        console.log('[FS Tool] toolCall.function:', JSON.stringify((toolCall as any).function));
-
-        console.log('[FS Tool] toolCall keys:', Object.keys(toolCall));
-
-        // Update status to approved
-
-        coreUseChatStore.setState(state => ({
-
-            messages: state.messages.map(m =>
-
-                m.id === messageId ? {
-
-                    ...m,
-
-                    toolCalls: m.toolCalls?.map(tc =>
-
-                        tc.id === toolCallId ? { ...tc, status: 'approved' as const } : tc
-
-                    )
-
-                } : m
-
-            )
-
-        }));
-
-        try {
-
-            const rootPath = useFileStore.getState().rootPath;
-
-            if (!rootPath) throw new Error("No project root opened");
-
-            // 🔥 FIX: 优先使用 tc.function.arguments（流式累积的完整 JSON 字符串）
-
-            // tc.args 可能在流式解析过程中是空对象，导致参数丢失
-
-            let args: any = toolCall.args || {};
-
-            // 如果 args 是空对象，尝试从 function.arguments 中解析
-
-            if (Object.keys(args).length === 0) {
-
-                const argsString = (toolCall as any).function?.arguments;
-
-                if (argsString && typeof argsString === 'string') {
-
-                    try {
-
-                        args = JSON.parse(argsString);
-
-                        console.log('[FS Tool] Parsed args from function.arguments:', args);
-
-                    } catch (e) {
-
-                        console.warn('[FS Tool] Failed to parse function.arguments:', e);
-
-                        args = {};
-
-                    }
-
-                }
-
-            }
-
-            console.log('[FS Tool] Final args:', JSON.stringify(args));
-
-            console.log('[FS Tool] args keys:', Object.keys(args));
-
-            // Get default relPath based on tool type
-
-            const getDefaultRelPath = () => {
-
-                if (toolName === 'agent_list_dir') return '.';
-
-                return '';
-
-            };
-
-            // Fix arguments: snake_case (LLM) -> camelCase (Tauri)
-
-            relPath = args.rel_path || args.relPath || getDefaultRelPath();
-
-            let content: string = args.content || "";
-
-            // 🔥 agent_read_file_range 额外参数
-
-            const startLine = args.start_line ?? args.startLine ?? 1;
-
-            const endLine = args.end_line ?? args.endLine ?? 100;
-
-            console.log('[FS Tool] Final relPath:', relPath);
-
-            console.log('[FS Tool] Final content length:', content.length);
-
-            console.log('[FS Tool] Final content preview:', content.substring(0, 100));
-
-            console.log('[FS Tool] Start line:', startLine, 'End line:', endLine);
-
-            // Debug: log content before unescaping
-
-            console.log('[FS Tool] Content preview (first 200 chars):', content.substring(0, 200));
-
-            console.log('[FS Tool] Has literal \\n:', content.includes('\\n'));
-
-            console.log('[FS Tool] Has literal \\r\\n:', content.includes('\\r\\n'));
-
-            console.log('[FS Tool] Has actual newline:', content.includes('\n'));
-
-            // Content unescaping fix: if content is stringified with escaped newlines, restore them
-
-            // Handle multiple escape formats
-
-            if (typeof content === 'string' && (content.includes('\\n') || content.includes('\\r') || content.includes('\\t'))) {
-
-                console.log('[FS Tool] Unescaping content...');
-
-                content = content
-
-                    .replace(/\\r\\n/g, '\n')   // Windows-style CRLF
-
-                    .replace(/\\n/g, '\n')       // Unix-style LF
-
-                    .replace(/\\r/g, '\r')       // CR
-
-                    .replace(/\\t/g, '\t')       // Tab
-
-                    .replace(/\\"/g, '"')        // Escaped quotes
-
-                    .replace(/\\\\/g, '\\');     // Escaped backslashes (must be last)
-
-                console.log('[FS Tool] Unescaped content preview:', content.substring(0, 200));
-
-            }
-
-            // 🔥 构建参数对象，根据工具类型包含不同的参数
-
-            const tauriArgs: any = {
-
-                rootPath,
-
-                relPath,
-
-            };
-
-            // 根据工具类型添加特定参数
-
-            if (toolName === 'agent_write_file') {
-
-                tauriArgs.content = content;
-
-            } else if (toolName === 'agent_read_file_range') {
-
-                tauriArgs.startLine = startLine;
-
-                tauriArgs.endLine = endLine;
-
-            }
-
-            console.log(`[useChatStore] Invoking ${toolName} with`, tauriArgs);
-
-            // 🔥 回滚功能：对于 agent_write_file，先捕获原始内容
-
-            let originalContent = '';
-
-            if (toolName === 'agent_write_file') {
-                try {
-                    originalContent = await invoke('agent_read_file', {
-                        rootPath,
-                        relPath
-                    });
-                    console.log('[Rollback] Captured original content for:', relPath);
-                } catch (e) {
-
-                    // 文件不存在，这是新建文件，originalContent 保持空字符串
-
-                    console.log('[Rollback] New file detected:', relPath);
-
-                }
-
-            }
-
-            const result = await invoke(toolName, tauriArgs);
-
-            // 🔥 回滚功能：包装 result 以包含回滚数据和 diff 所需数据
-
-            let stringResult: string;
-
-            if (toolName === 'agent_write_file') {
-
-                console.log('[Rollback] Building enhancedResult with content length:', content.length);
-
-                console.log('[Rollback] content preview:', content.substring(0, 100));
-
-                const enhancedResult = {
-
-                    success: true,
-
-                    message: typeof result === 'string' ? result : JSON.stringify(result),
-
-                    originalContent: originalContent || '',  // 空字符串表示新建文件
-
-                    newContent: content,  // 🔥 新增：保存新写入的内容，用于 diff 显示
-
-                    filePath: `${rootPath}/${relPath}`.replace(/\/\//g, '/'),
-
-                    timestamp: Date.now()
-
-                };
-
-                console.log('[Rollback] enhancedResult.newContent length:', enhancedResult.newContent.length);
-
-                stringResult = JSON.stringify(enhancedResult);
-
-                console.log('[Rollback] Enhanced result with rollback data and newContent');
-
-            } else {
-
-                // 🔥 FIX: 处理 ifainew_core 返回的字符数组问题
-
-                // agent_read_file 可能返回字符数组而不是字符串
-
-                if (typeof result === 'string') {
-
-                    stringResult = result;
-
-                } else if (Array.isArray(result)) {
-
-                    // 检查是否是字符数组（每个元素都是字符串）
-
-                    // 🔥 v0.3.4 修复：放宽长度限制，只检查是否都是字符串
-
-                    const isStringArray = result.length > 0 &&
-
-                                         result.every((item: any) => typeof item === 'string');
-
-                    // 🔥 v0.3.4 FIX: 检查是否是字符数组（每个元素长度 <= 1）
-
-                    const isCharArray = result.length > 10 &&
-
-                                       result.every((item: any) => typeof item === 'string' && item.length <= 1);
-
-                    if (isStringArray) {
-
-                        // 字符串数组：拼接成字符串
-
-                        // 适用于 agent_read_file 返回字符数组的情况
-
-                        console.log(`[useChatStore] 🔥 Detected string array, joining ${result.length} elements`);
-
-                        // 🔥 v0.3.4 FIX: 对于 agent_read_file，包装成对象格式以便简洁显示
-
-                        if (toolName === 'agent_read_file') {
-
-                            const fileContent = result.join('');
-
-                            const wrappedResult = {
-
-                                path: relPath,
-
-                                content: fileContent
-
-                            };
-
-                            stringResult = JSON.stringify(wrappedResult);
-
-                            console.log(`[useChatStore] 🔥 Wrapped agent_read_file result with path: ${relPath}, content length: ${fileContent.length}`);
-
-                        }
-
-                        // 🔥 v0.3.4 FIX: 对于 agent_list_dir，保留数组格式
-
-                        // 不拼接字符数组，让 formatToolResultToMarkdown 能够正确处理
-
-                        else if (toolName === 'agent_list_dir') {
-
-                            // 直接用 JSON.stringify 保留数组结构
-
-                            stringResult = JSON.stringify(result);
-
-                            console.log(`[useChatStore] 🔥 agent_list_dir: keeping array format (${result.length} elements)`);
-
-                        } else {
-
-                            // 其他工具：拼接成字符串
-
-                            stringResult = result.join('');
-
-                        }
-
-                    } else {
-
-                        // 普通数组：使用 JSON.stringify
-
-                        stringResult = JSON.stringify(result);
-
-                    }
-
-                } else {
-
-                    // 对象或其他类型：使用 JSON.stringify
-
-                    stringResult = JSON.stringify(result);
-
-                }
-
-            }
-
-            // Update status to completed
-
-            coreUseChatStore.setState(state => ({
-
-                messages: state.messages.map(m =>
-
-                    m.id === messageId ? {
-
-                        ...m,
-
-                        toolCalls: m.toolCalls?.map(tc =>
-
-                            tc.id === toolCallId ? { ...tc, status: 'completed' as const, result: stringResult } : tc
-
-                        )
-
-                    } : m
-
-                )
-
-            }));
-
-            // Sync with editor if the file is open
-
-            const fileStore = useFileStore.getState();
-
-            const openedFile = fileStore.openedFiles.find(f => f.path.endsWith(relPath));
-
-            if (openedFile) {
-
-                await fileStore.reloadFileContent(openedFile.id);
-
-            }
-
-            // 🔥 FIX: 对于 agent_read_file 和 agent_list_dir，tool 消息应该包含实际内容
-
-            let toolMessageContent = i18n.t('tool.success', { toolName: `${toolName} > ${relPath}` });
-
-            // agent_read_file: 返回文件内容
-
-            if (toolName === 'agent_read_file' && stringResult !== undefined) {
-
-                // 🔥 v0.3.4 FIX: 解析 JSON 格式的结果，提取文件内容
-
-                let fileContent = stringResult;
-
-                try {
-
-                    const parsed = JSON.parse(stringResult);
-
-                    if (parsed.content) {
-
-                        fileContent = parsed.content;
-
-                    }
-
-                } catch (e) {
-
-                    // 不是 JSON，使用原始字符串
-
-                }
-
-                // 对于文件读取，将文件内容作为 tool 消息发送给 LLM
-
-                // 限制内容长度避免超出 token 限制
-
-                const maxContentLength = 50000; // 50KB 限制
-
-                if (fileContent.length > maxContentLength) {
-
-                    toolMessageContent = `[文件内容过长，已截取前 ${maxContentLength} 字符]\n\n` + fileContent.substring(0, maxContentLength) + `\n\n... (省略剩余 ${fileContent.length - maxContentLength} 字符)`;
-
-                } else {
-
-                    toolMessageContent = fileContent;
-
-                }
-
-                console.log(`[useChatStore] File read result: ${fileContent.length} chars, truncated to ${toolMessageContent.length} chars`);
-
-            }
-
-            // agent_list_dir: 返回目录列表
-
-            if (toolName === 'agent_list_dir' && stringResult !== undefined) {
-
-                // 对于目录列表，将文件/目录列表作为 tool 消息发送给 LLM
-
-                // 限制列表长度避免超出 token 限制
-
-                const maxListLength = 10000; // 10KB 限制
-
-                if (stringResult.length > maxListLength) {
-
-                    toolMessageContent = `[目录列表过长，已截取前 ${maxListLength} 字符]\n\n` + stringResult.substring(0, maxListLength) + `\n\n... (省略剩余 ${stringResult.length - maxListLength} 字符)`;
-
-                } else {
-
-                    toolMessageContent = stringResult;
-
-                }
-
-                console.log(`[useChatStore] Dir list result: ${stringResult.length} chars, truncated to ${toolMessageContent.length} chars`);
-
-            }
-
-            // Add Tool Output Message
-
-            coreUseChatStore.getState().addMessage({
-
-                id: crypto.randomUUID(),
-
-                role: 'tool',
-
-                content: toolMessageContent,
-
-                tool_call_id: toolCallId
-
-            });
-
-            // Continue Conversation - 但对于本地模型执行的工具调用，不需要继续调用云端 API
-
-            // 因为后端已经通过 content 事件发送了格式化的结果
-
-            // 如果 skipContinue 选项为 true，也不自动继续（由调用者控制）
-
-            const settings = useSettingsStore.getState();
-
-            const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-
-            if (providerConfig && !(toolCall as any).isLocalModel && !options?.skipContinue) {
-
-                await patchedGenerateResponse(
-
-                    coreUseChatStore.getState().messages,
-
-                    providerConfig,
-
-                    { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") }
-
-                );
-
-            }
-
-        } catch (e) {
-
-            console.error(`[useChatStore] Tool execution failed:`, e);
-
-            // Update status to failed
-
-            coreUseChatStore.setState(state => ({
-
-                messages: state.messages.map(m =>
-
-                    m.id === messageId ? {
-
-                        ...m,
-
-                        toolCalls: m.toolCalls?.map(tc =>
-
-                            tc.id === toolCallId ? { ...tc, status: 'failed' as const, result: String(e) } : tc
-
-                        )
-
-                    } : m
-
-                )
-
-            }));
-
-            // Add Error Output
-
-            coreUseChatStore.getState().addMessage({
-
-                id: crypto.randomUUID(),
-
-                role: 'tool',
-
-                content: i18n.t('tool.error', { toolName: `${toolName} > ${relPath}`, error: String(e) }),
-
-                tool_call_id: toolCallId
-
-            });
-
-             // Still continue to let AI know it failed? 
-
-             // Yes, usually better to let AI retry or apologize.
-
-             const settings = useSettingsStore.getState();
-
-             const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-
-             if (providerConfig) {
-
-                 await patchedGenerateResponse(
-
-                     coreUseChatStore.getState().messages, 
-
-                     providerConfig, 
-
-                     { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") }
-
-                 );
-
-             }
-
-        }
-
-        useFileStore.getState().refreshFileTree();
-
-        return;
-
-    }
-
-    // 3. Handle Bash Tools - 🔥 FIX v0.3.4: 直接执行，避免 originalApproveToolCall 创建额外的 assistant 消息
-
-    const bashTools = ['bash', 'execute_bash_command', 'bash_execute_streaming'];
-
-    if (bashTools.includes(toolName)) {
-
-        console.log(`[useChatStore] Bash tool detected: ${toolName}`);
-
-        // 🔥 修复：确保工作目录是项目根目录
-
-        const rootPath = useFileStore.getState().rootPath;
-        
-        // 🔥 v0.5.0: 增强参数提取逻辑，确保 command 不为空
-        let args: any = toolCall.args || {};
-        if (Object.keys(args).length === 0) {
-            const argsString = (toolCall as any).function?.arguments;
-            if (argsString && typeof argsString === 'string') {
-                try {
-                    args = JSON.parse(argsString);
-                } catch (e) {
-                    console.warn('[Bash Tool] Failed to parse arguments string:', e);
-                }
-            }
-        }
-
-        const providedCwd = args.cwd || args.working_dir;
-
-        let workingDir = providedCwd;
-
-        // 检查是否需要修正工作目录
-
-        if (!workingDir || (workingDir && !workingDir.startsWith(rootPath))) {
-
-            console.warn(`[useChatStore] ⚠️ Auto-correcting working_dir to project root: ${rootPath}`);
-
-            workingDir = rootPath;
-
-        }
-
-        // 🔥 先更新状态为 'approved'，让 UI 立即反馈
-
-        coreUseChatStore.setState(state => ({
-
-            messages: state.messages.map(m =>
-
-                m.id === messageId ? {
-
-                    ...m,
-
-                    toolCalls: m.toolCalls?.map(tc =>
-
-                        tc.id === toolCallId ? {
-
-                            ...tc,
-
-                            status: 'approved' as const,
-
-                            args: {
-
-                                ...args,
-
-                                working_dir: workingDir,
-
-                                cwd: workingDir
-
-                            }
-
-                        } : tc
-
-                    )
-
-                } : m
-
-            )
-
-        }));
-
-        // 🔥 FIX v0.3.4: 直接执行 bash 命令，不调用 originalApproveToolCall
-
-        // 原因：originalApproveToolCall 会创建新的 assistant 消息（没有 tool_calls），
-
-        // 导致 API 错误："Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
-
-        let bashResult: any;
-
-        // 🔥 FIX v0.5.0: 增强型命令清洗 - 严防 AI 带入中文引导词 (如 "运行 npm run dev")
-        let cleanedCommand = (args.command || args.cmd || args.script || args.args || '').trim();
-        
-        // 自动剔除引导词前缀
-        const prefixPattern = /^(运行|执行|使用|请运行|请执行|run|execute)\s+/i;
-        if (prefixPattern.test(cleanedCommand)) {
-            const original = cleanedCommand;
-            cleanedCommand = cleanedCommand.replace(prefixPattern, '').trim();
-            console.log(`[useChatStore] 🧹 Cleaned command: "${original}" -> "${cleanedCommand}"`);
-        }
-
-        const commandToExecute = cleanedCommand;
-        
-        if (!commandToExecute || commandToExecute === 'execute_bash_command' || commandToExecute === 'bash') {
-            console.error(`[useChatStore] ❌ Invalid bash command: "${commandToExecute}". Refusing to execute.`);
-            bashResult = {
-                success: false,
-                stdout: '',
-                stderr: `Error: Invalid command "${commandToExecute}". The AI failed to provide a valid shell command.`,
-                exitCode: -1
-            };
-        } else {
             try {
-                // 🚀 v0.5.0: 修正后端命令名映射及参数名对齐 (Rust: working_dir -> workingDir)
-                bashResult = await invoke('execute_bash_command', {
-                    command: commandToExecute,
-                    workingDir: workingDir,
-                    envVars: args.env || args.envVars
+                const rootPath = useFileStore.getState().rootPath;
+                if (!rootPath) throw new Error("No project root");
+
+                let args = toolCall.args || {};
+                let outputContent: any;
+
+                if (toolName === "agent_scan_project") {
+                    outputContent = await invoke("agent_scan_project", { 
+                    rootPath, 
+                    relPath, 
+                    maxDepth: args.max_depth || args.maxDepth || 3 
                 });
-                console.log(`[useChatStore] Bash command executed, result type: ${typeof bashResult}`);
-            } catch (error) {
-                console.error(`[useChatStore] Bash execution error:`, error);
-                bashResult = {
-                    success: false,
-                    stdout: '',
-                    stderr: error instanceof Error ? error.message : String(error),
-                    exitCode: -1
-                };
+                } else if (toolName === "agent_list_functions") {
+                    outputContent = await invoke("agent_list_functions", { rootPath, relPath });
+                } else {
+                    const tauriArgs = { rootPath, relPath, ...args };
+                    outputContent = await invoke(toolName, tauriArgs);
+                }
+
+                let stringResult = typeof outputContent === "object" ? JSON.stringify(outputContent) : String(outputContent);
+
+                coreUseChatStore.setState(s => ({
+                    messages: s.messages.map(m => m.id === messageId ? {
+                        ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { ...tc, status: "completed" as const, result: stringResult } : tc)
+                    } : m)
+                }));
+
+                // Add tool result message
+                coreUseChatStore.getState().addMessage({
+                    id: crypto.randomUUID(),
+                    role: "tool",
+                    content: stringResult,
+                    tool_call_id: toolCallId
+                });
+
+                // 🚀 v0.3.6: 自动触发 AI 下一轮回复 (核心修复)
+                if (!options?.skipContinue) {
+                    const settings = useSettingsStore.getState();
+                    const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+                    if (providerConfig) {
+                        console.log("[Chat] Tool execution finished, auto-continuing conversation...");
+                        // 稍微延迟，确保 Store 状态已完全写入
+                        setTimeout(async () => {
+                            await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig);
+                        }, 300);
+                    }
+                }
+
+            } catch (e) {
+                console.error("[Chat] Tool error:", e);
+                coreUseChatStore.setState(s => ({
+                    messages: s.messages.map(m => m.id === messageId ? {
+                        ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { ...tc, status: "failed" as const, result: String(e) } : tc)
+                    } : m)
+                }));
             }
-        }
-
-        // 解析结果
-
-        let stdout = '';
-
-        let stderr = '';
-
-        let exitCode = 0;
-
-        let success = false;
-
-        let elapsed_ms = 0; // 🔥 定义变量
-
-        if (typeof bashResult === 'string') {
-
-            try {
-
-                const parsed = JSON.parse(bashResult);
-
-                stdout = parsed.stdout || '';
-
-                stderr = parsed.stderr || '';
-
-                exitCode = parsed.exitCode !== undefined ? parsed.exitCode : parsed.exit_code || 0;
-
-                success = parsed.success !== undefined ? parsed.success : exitCode === 0;
-
-                elapsed_ms = parsed.elapsed_ms || 0; // 🔥 提取时间
-
-            } catch {
-
-                // 不是 JSON，可能是原始输出
-
-                stdout = bashResult;
-
-                success = true;
-
-            }
-
         } else {
-
-            stdout = bashResult.stdout || '';
-
-            stderr = bashResult.stderr || '';
-
-            exitCode = bashResult.exitCode !== undefined ? bashResult.exitCode : bashResult.exit_code || 0;
-
-            success = bashResult.success !== undefined ? bashResult.success : exitCode === 0;
-
-            elapsed_ms = bashResult.elapsed_ms || 0; // 🔥 提取时间
-
+            await originalApproveToolCall(messageId, toolCallId);
         }
-
-        // 更新 toolCall 状态为 completed 并保存结果
-
-        // 🔥 FIX v0.3.9.3: 存储对象而不是字符串，与 agentStore.ts 保持一致
-
-        const resultObj = {
-
-            success,
-
-            stdout,
-
-            stderr,
-
-            exitCode,
-
-            elapsed_ms,
-
-            command: args.command // 🔥 使用 args.command
-
-        };
-
-        coreUseChatStore.setState(state => ({
-
-            messages: state.messages.map(m =>
-
-                m.id === messageId ? {
-
-                    ...m,
-
-                    toolCalls: m.toolCalls?.map(tc =>
-
-                        tc.id === toolCallId ? {
-
-                            ...tc,
-
-                            status: 'completed' as const,
-
-                            result: JSON.stringify(resultObj) // 保持字符串序列化，但确保结构完整
-
-                        } : tc
-
-                    )
-
-                } : m
-
-            )
-
-        }));
-
-        // 构建输出内容 (用于 tool 角色消息)
-
-        const outputParts = [];
-
-        if (success) {
-
-            outputParts.push(`✅ Command executed successfully (exit code: ${exitCode})`);
-
-            // ... (keep server startup check)
-
-            const stdoutLower = stdout.toLowerCase();
-
-            const isServerStartup =
-
-                stdoutLower.includes('local:') ||
-
-                stdoutLower.includes('network:') ||
-
-                stdoutLower.includes('ready in') ||
-
-                stdoutLower.includes('vite') ||
-
-                stdoutLower.includes('compiled successfully') ||
-
-                stdoutLower.includes('server running') ||
-
-                stdoutLower.includes('listening on') ||
-
-                stdoutLower.includes('running on') ||
-
-                stdout.includes('Server started successfully');
-
-            if (isServerStartup) {
-
-                outputParts.push(`\n📢 IMPORTANT: The development server has been successfully started and is now running in the background.`);
-
-                outputParts.push(`The server is ready to accept requests. Do NOT attempt to run this command again.`);
-
-                outputParts.push(`The user can now access the application in their browser.`);
-
-            }
-
-        } else if (exitCode === -1) {
-
-            outputParts.push(`⚠️ Command executed but timed out (exit code: -1)`);
-
-        } else {
-
-            outputParts.push(`❌ Command executed but failed (exit code: ${exitCode})`);
-
-        }
-
-        if (stdout) {
-
-            outputParts.push(`\nStdout:\n${stdout.trim()}`);
-
-        }
-
-        if (stderr) {
-
-            outputParts.push(`\nStderr:\n${stderr.trim()}`);
-
-        }
-
-        // 如果没有任何输出，提供更友好的提示
-
-        if (!stdout && !stderr) {
-
-            if (success) {
-
-                outputParts.push('\n(Command completed with no output)');
-
-            } else {
-
-                outputParts.push('\n(Command failed with no output)');
-
-            }
-
-        }
-
-        const outputContent = outputParts.join('\n');
-
-        // 创建 tool 消息
-
-        coreUseChatStore.getState().addMessage({
-
-            id: crypto.randomUUID(),
-
-            role: 'tool',
-
-            content: outputContent,
-
-            tool_call_id: toolCallId
-
-        });
-
-        console.log(`[useChatStore] Bash tool completed, created tool message`);
-
         useFileStore.getState().refreshFileTree();
-
-        return;
-
-    }
-
-    // 4. Fallback to Original Flow (for other tools)
-
-    console.log(`[useChatStore] Using original approval flow for: ${toolName}`);
-
-    await originalApproveToolCall(messageId, toolCallId);
-    useFileStore.getState().refreshFileTree();
     });
 };
 
 const patchedRejectToolCall = async (messageId: string, toolCallId: string) => {
-
-    console.log(`[useChatStore] patchedRejectToolCall called - messageId: ${messageId}, toolCallId: ${toolCallId}`);
-
-    // 🔥 FIX v0.3.7: ID 重定向逻辑 - 处理智谱 API 重复 tool_call 导致的 ID 不匹配
-
-    let message = coreUseChatStore.getState().messages.find(m => m.id === messageId);
-
-    let toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
-
-    // 🔥 FIX: 终端状态保护 - 防止拒绝已完成/失败的工具调用
-
-    // 与 approveToolCall 和 agentStore.ts 中的保护逻辑保持一致
-
-    const TERMINAL_STATES = ['completed', 'failed', 'rejected'] as const;
-
-    if (toolCall && TERMINAL_STATES.includes(toolCall.status as any)) {
-
-        console.warn(`[useChatStore] ⚠️ ToolCall already in terminal state: ${toolCall.status}, skipping rejection`, {
-
-            toolCallId,
-
-            currentStatus: toolCall.status,
-
-            toolName: toolCall.tool
-
-        });
-
-        return;
-
-    }
-
-    if (!message || !toolCall) {
-
-        const agentStore = useAgentStore.getState();
-
-        const canonicalId = agentStore.deduplicator.getCanonicalId(toolCallId);
-
-        if (canonicalId) {
-
-            console.log(`[useChatStore] 🔄 ID Redirect (reject): ${toolCallId} -> ${canonicalId}`);
-
-            message = coreUseChatStore.getState().messages.find(m => m.id === messageId);
-
-            toolCall = message?.toolCalls?.find(tc => tc.id === canonicalId);
-
-            if (!toolCall) {
-
-                console.error(`[useChatStore] ❌ ID Redirect failed: canonical ID ${canonicalId} also not found`);
-
-                return;
-
-            }
-
-        } else {
-
-            console.error("Message or ToolCall not found");
-
-            return;
-
-        }
-
-    }
-
-    if (toolCall && (toolCall as any).agentId) {
-
-        // Agent tool call: use Agent rejection flow
-
-        const agentId = (toolCall as any).agentId;
-
-        // Update tool call status to rejected
-
-        coreUseChatStore.setState(state => ({
-
-            messages: state.messages.map(m =>
-
-                m.id === messageId ? {
-
-                    ...m,
-
-                    toolCalls: m.toolCalls?.map(tc =>
-
-                        tc.id === toolCallId ? { ...tc, status: 'rejected' as const } : tc
-
-                    )
-
-                } : m
-
-            )
-
-        }));
-
-        await useAgentStore.getState().approveAction(agentId, false);
-
-    } else {
-
-        // Regular tool call: use original flow
-
-        await originalRejectToolCall(messageId, toolCallId);
-
-    }
-
-    // Refresh file tree after tool execution
-
-    useFileStore.getState().refreshFileTree();
-
-};
-
-const approveAllToolCalls = async (messageId: string) => {
-
-    const state = coreUseChatStore.getState();
-
-    const message = state.messages.find(m => m.id === messageId);
-
-    if (!message || !message.toolCalls) return;
-
-    for (const toolCall of message.toolCalls) {
-
-        if (toolCall.status === 'pending' && !toolCall.isPartial) {
-
-            await coreUseChatStore.getState().approveToolCall(messageId, toolCall.id);
-
-        }
-
-    }
-
-};
-
-const rejectAllToolCalls = async (messageId: string) => {
-
-    const state = coreUseChatStore.getState();
-
-    const message = state.messages.find(m => m.id === messageId);
-
-    if (!message || !message.toolCalls) return;
-
-    for (const toolCall of message.toolCalls) {
-
-        if (toolCall.status === 'pending' && !toolCall.isPartial) {
-
-            await coreUseChatStore.getState().rejectToolCall(messageId, toolCall.id);
-
-        }
-
-    }
-
+    await originalRejectToolCall(messageId, toolCallId);
 };
 
 // Apply patches to the store
-
 coreUseChatStore.setState({
-
     sendMessage: patchedSendMessage,
-
-    // @ts-ignore - patching generateResponse
-
     generateResponse: patchedGenerateResponse,
-
     approveToolCall: patchedApproveToolCall,
-
     rejectToolCall: patchedRejectToolCall,
-
-    // @ts-ignore - adding new methods to store
-
-    approveAllToolCalls,
-
-    // @ts-ignore - adding new methods to store
-
-    rejectAllToolCalls,
-
-    // @ts-ignore - adding history state
-
-    inputHistory: [],
-
-    // @ts-ignore
-
-    historyIndex: -1
-
+    approveAllToolCalls: async (mid: string) => {
+        const msg = coreUseChatStore.getState().messages.find(m => m.id === mid);
+        if (!msg?.toolCalls) return;
+        for (const tc of msg.toolCalls) if (tc.status === "pending") await coreUseChatStore.getState().approveToolCall(mid, tc.id);
+    }
 });
 
-// ----------------------------------
-
-// Re-export the core chatStore
-
 export const useChatStore = coreUseChatStore;
-
-// Re-export types
-
-export type { ChatState, ToolCall, Message, ContentPart, ImageUrl, BackendMessage, AIProviderConfig } from 'ifainew-core';
-
-// @ts-ignore
-
-if (typeof window !== 'undefined') {
-
-  (window as any).__chatStore = useChatStore;
-
-  // 🔥 E2E 测试支持：暴露 thread 辅助函数
-
-  (window as any).__switchThread = switchThread;
-
-  (window as any).__getThreadMessages = getThreadMessages;
-
-  (window as any).__setThreadMessages = setThreadMessages;
-
-  // 🔥 确保在 DOM 加载后再次设置（应对模块加载时机问题）
-
-  if (typeof document !== 'undefined') {
-
-    const setStore = () => {
-
-      (window as any).__chatStore = useChatStore;
-
-      (window as any).__switchThread = switchThread;
-
-      (window as any).__getThreadMessages = getThreadMessages;
-
-      (window as any).__setThreadMessages = setThreadMessages;
-
-    };
-
-    if (document.readyState === 'loading') {
-
-      document.addEventListener('DOMContentLoaded', setStore);
-
-    } else {
-
-      // DOM 已经加载完成，立即设置
-
-      setTimeout(setStore, 0);
-
-    }
-
-  }
-
-}
-

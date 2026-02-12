@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { PromptTemplate } from '../types/prompt';
 import { useFileStore } from './fileStore';
+import i18n from 'i18next';
 
 interface PromptState {
   prompts: PromptTemplate[];
@@ -43,19 +44,22 @@ export const usePromptStore = create<PromptState>((set, get) => ({
     const rootPath = useFileStore.getState().rootPath;
     if (!rootPath) return;
 
-    // First try to find in current list (populated by list_prompts)
+    const locale = i18n.language;
+
+    // First try to find in current list
     const prompt = get().prompts.find(p => p.path === path);
-    if (prompt) {
-        set({ selectedPrompt: prompt });
-    } else {
-        // Fallback for newly created files or if list is stale
-        try {
-            const fetched = await invoke<PromptTemplate>('get_prompt', { projectRoot: rootPath, path });
-            set({ selectedPrompt: fetched });
-        } catch (err) {
-            console.error('Failed to select prompt:', err);
-            set({ error: String(err) });
-        }
+    
+    try {
+        set({ isLoading: true });
+        const fetched = await invoke<PromptTemplate>('get_prompt', { 
+            projectRoot: rootPath, 
+            path,
+            locale: locale || 'en-US' 
+        });
+        set({ selectedPrompt: fetched, isLoading: false });
+    } catch (err) {
+        console.error('Failed to select prompt:', err);
+        set({ error: String(err), isLoading: false });
     }
   },
 
