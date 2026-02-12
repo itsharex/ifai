@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useThreadStore } from '../../stores/threadStore';
 import { toast } from 'sonner';
 import { ToolApproval } from './ToolApproval';
+import { ToolBatchApproval } from './ToolBatchApproval';
 import { ExploreProgress } from './ExploreProgress';
 import { ExploreProgress as ExploreProgressNew } from './ExploreProgressNew';
 import { TaskSummary } from './TaskSummary';
@@ -404,9 +405,18 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         return false;
     }, [message.content]);
     const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
+    
+    // 🏆 v0.3.6: 极简模式判定 - 隐藏 Vibe 模式下的冗余引导语
+    const isVibeMode = (window as any).__IFAI_EDITOR_MODE__ === 'vibe';
+    const isRedundantIntro = React.useMemo(() => {
+        if (!isVibeMode || isUser || !hasToolCalls) return false;
+        const text = typeof displayContent === 'string' ? displayContent.trim() : '';
+        // 🚀 激进模式：只要包含聚合卡片，默认就隐藏助理的普通说明文字，除非包含代码块
+        return !text.includes('```');
+    }, [isVibeMode, isUser, hasToolCalls, displayContent]);
+
     // 决定是否隐藏气泡
-    // 如果没有可见内容，但有工具调用，则隐藏气泡，直接显示工具卡片
-    const shouldHideBubble = !isUser && !hasVisibleContent && hasToolCalls;
+    const shouldHideBubble = (!isUser && !hasVisibleContent && hasToolCalls) || isRedundantIntro;
 //...
     // 🔥 FIX v0.4.0: 智能内容预处理 - 提取思考内容
     const { thinkingText, contentWithoutThinking } = React.useMemo(() => {
@@ -515,21 +525,65 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         });
 
         // F. 归并相邻文本片段
-        const result: ContentSegment[] = [];
+        const mergedTextResult: ContentSegment[] = [];
         for (const seg of sorted) {
             if (seg.type === 'text') {
-                const last = result[result.length - 1];
+                const last = mergedTextResult[mergedTextResult.length - 1];
                 if (last && last.type === 'text') {
                     last.content = (last.content || '') + (seg.content || '');
                     last.timestamp = seg.timestamp;
                 } else {
-                    result.push({ ...seg });
+                    mergedTextResult.push({ ...seg });
                 }
             } else {
-                result.push(seg);
+                mergedTextResult.push(seg);
             }
         }
-        return result;
+
+        // G. 🚀 v0.3.6: 批处理聚合 (Batch Consolidation)
+        // 扫描已排序和归并后的段落，将属于同一个 batchId 的工具调用聚合
+        const finalSegments: any[] = [];
+        const seenBatches = new Set<string>();
+
+        for (const segment of mergedTextResult) {
+            if (segment.type === 'tool' && segment.toolCallId) {
+                const toolCall = message.toolCalls?.find(tc => tc.id === segment.toolCallId);
+                const batchId = (toolCall as any)?.batchId;
+                const currentEditorMode = (window as any).__IFAI_EDITOR_MODE__ || 'vibe';
+                const lowerToolName = (toolCall?.tool || "").toLowerCase();
+                const isAggregatableName = lowerToolName.includes('list') || 
+                                         lowerToolName.includes('dir') || 
+                                         lowerToolName.includes('search') ||
+                                         lowerToolName.includes('read');
+
+                if (batchId) {
+                    if (seenBatches.has(batchId)) {
+                        // 属于已处理过的批次，跳过此段落
+                        continue;
+                    }
+                    seenBatches.add(batchId);
+                    // 标记这是一个批次锚点
+                    finalSegments.push({
+                        ...segment,
+                        isBatchAnchor: true,
+                        batchId
+                    });
+                } else if (currentEditorMode === 'vibe' && isAggregatableName) {
+                    // 🏆 物理兜底：即便没有 batchId，在 Vibe 模式下也将单个 List/Dir 强制聚合为树形外观
+                    finalSegments.push({
+                        ...segment,
+                        isBatchAnchor: true,
+                        batchId: `standalone_${toolCall?.id}`
+                    });
+                } else {
+                    finalSegments.push(segment);
+                }
+            } else {
+                finalSegments.push(segment);
+            }
+        }
+
+        return finalSegments;
     }, [message.contentSegments, contentWithoutThinking, message.toolCalls, effectivelyStreaming, thinkingText]);
     let toolCallIndex = 0;
     // Helper to render Markdown WITHOUT syntax highlighting (for streaming mode)
@@ -683,13 +737,51 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                             </div>
                         ) : sortedSegments ? (
                             <div className="space-y-3">
-                                {mergedSegments.map((segment: ContentSegment, index: number) => {
+                                {mergedSegments.map((segment: any, index: number) => {
                                     if (segment.type === 'text') {
                                         const content = segment.content;
                                         if (!content) return null;
                                         if (effectivelyStreaming) return renderMarkdownWithoutHighlight(content, `streaming-text-${index}`);
                                         return renderContentPart({ type: 'text', text: content }, index, effectivelyStreaming);
                                     } else if (segment.type === 'tool' && segment.toolCallId) {
+                                        // 🚀 v0.3.6: 批处理聚合渲染 (单例聚合版)
+                                        if (segment.isBatchAnchor && segment.batchId) {
+                                            // 🏆 核心逻辑：检查这是否是当前会话中“最后一条”包含该批次的消息
+                                            const allMessages = (window as any).__chatStore?.getState().messages || [];
+                                            const lastMsgWithThisBatch = [...allMessages].reverse().find(m => 
+                                                m.role === 'assistant' && 
+                                                m.toolCalls?.some(tc => (tc as any).batchId === segment.batchId)
+                                            );
+
+                                            // 如果当前消息不是最后一条包含该批次的消息，物理隐藏它，交给最后一条消息去渲染全量聚合
+                                            if (lastMsgWithThisBatch && lastMsgWithThisBatch.id !== message.id) {
+                                                return null;
+                                            }
+
+                                            const isStandalone = segment.batchId.startsWith('standalone_');
+                                            const standaloneId = isStandalone ? segment.batchId.replace('standalone_', '') : null;
+                                            
+                                            // 获取全量聚合数据（跨消息提取）
+                                            const batchCalls = isStandalone 
+                                                ? (message.toolCalls?.filter(tc => tc.id === standaloneId) || [])
+                                                : allMessages.flatMap(m => 
+                                                    (m.toolCalls || []).filter(tc => (tc as any).batchId === segment.batchId)
+                                                  );
+                                                
+                                            if (batchCalls.length === 0) return null;
+                                            
+                                            return (
+                                                <ToolBatchApproval 
+                                                    key={segment.batchId}
+                                                    batchId={segment.batchId}
+                                                    toolCalls={batchCalls}
+                                                    onApprove={(id) => onApprove(message.id, id)}
+                                                    onReject={(id) => onReject(message.id, id)}
+                                                    message={message}
+                                                />
+                                            );
+                                        }
+
                                         const toolCall = message.toolCalls?.find(tc => tc.id === segment.toolCallId);
                                         if (!toolCall) return null;
                                         return (
@@ -704,16 +796,42 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 })}
                             </div>
                         ) : (
-                            /* 🔥 FIX: Fallback 渲染也必须遵循 Action-First 逻辑 */
+                            /* 🔥 FIX: Fallback 渲染也必须遵循 Action-First 逻辑并支持聚合 */
                             <div className="space-y-3">
-                                {/* 置顶工具卡片 */}
-                                {message.toolCalls && message.toolCalls.map(toolCall => (
-                                    <ToolApproval 
-                                        key={toolCall.id} toolCall={toolCall} 
-                                        onApprove={() => onApprove(message.id, toolCall.id)} onReject={() => onReject(message.id, toolCall.id)} 
-                                        isLatestBashTool={isLatestBashTool(toolCall.id)} message={message}
-                                    />
-                                ))}
+                                {/* 处理工具卡片（支持聚合） */}
+                                {(() => {
+                                    if (!message.toolCalls) return null;
+                                    
+                                    const renderedBatches = new Set<string>();
+                                    return message.toolCalls.map(toolCall => {
+                                        const batchId = (toolCall as any).batchId;
+                                        
+                                        if (batchId) {
+                                            if (renderedBatches.has(batchId)) return null;
+                                            renderedBatches.add(batchId);
+                                            
+                                            const batchCalls = message.toolCalls?.filter(tc => (tc as any).batchId === batchId) || [];
+                                            return (
+                                                <ToolBatchApproval 
+                                                    key={batchId}
+                                                    batchId={batchId}
+                                                    toolCalls={batchCalls}
+                                                    onApprove={(id) => onApprove(message.id, id)}
+                                                    onReject={(id) => onReject(message.id, id)}
+                                                    message={message}
+                                                />
+                                            );
+                                        }
+
+                                        return (
+                                            <ToolApproval 
+                                                key={toolCall.id} toolCall={toolCall} 
+                                                onApprove={() => onApprove(message.id, toolCall.id)} onReject={() => onReject(message.id, toolCall.id)} 
+                                                isLatestBashTool={isLatestBashTool(toolCall.id)} message={message}
+                                            />
+                                        );
+                                    });
+                                })()}
                                 {/* 放置总结文字 */}
                                 {!effectivelyStreaming && contentWithoutThinking && renderContentPart({ type: 'text', text: contentWithoutThinking }, 0, false)}
                             </div>

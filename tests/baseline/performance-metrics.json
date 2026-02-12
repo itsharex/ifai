@@ -1,0 +1,217 @@
+{
+  "_meta": {
+    "baselineVersion": "0.3.5",
+    "targetVersion": "0.3.6",
+    "createdAt": "2026-02-11T10:00:00Z",
+    "updatedAt": "2026-02-11T10:00:00Z",
+    "environment": "macOS / Chrome 121 / Dev Mode",
+    "testScenario": "oa-app目录探索 - 4层递归"
+  },
+  "performance": {
+    "toolCalls": {
+      "serialExecution": {
+        "description": "v0.3.5 串行执行4次list_dir调用",
+        "measurements": [
+          {
+            "iteration": 1,
+            "calls": [
+              { "path": "oa-app", "duration": 320 },
+              { "path": "oa-app/src", "duration": 280 },
+              { "path": "oa-app/src/main", "duration": 350 },
+              { "path": "oa-app/src/main/java", "duration": 410 }
+            ],
+            "totalDuration": 1360,
+            "apiRoundTrips": 4
+          },
+          {
+            "iteration": 2,
+            "calls": [
+              { "path": "oa-app", "duration": 450 },
+              { "path": "oa-app/src", "duration": 320 },
+              { "path": "oa-app/src/main", "duration": 380 },
+              { "path": "oa-app/src/main/java", "duration": 290 }
+            ],
+            "totalDuration": 1440,
+            "apiRoundTrips": 4
+          },
+          {
+            "iteration": 3,
+            "calls": [
+              { "path": "oa-app", "duration": 380 },
+              { "path": "oa-app/src", "duration": 410 },
+              { "path": "oa-app/src/main", "duration": 300 },
+              { "path": "oa-app/src/main/java", "duration": 420 }
+            ],
+            "totalDuration": 1510,
+            "apiRoundTrips": 4
+          },
+          {
+            "iteration": 4,
+            "calls": [
+              { "path": "oa-app", "duration": 290 },
+              { "path": "oa-app/src", "duration": 350 },
+              { "path": "oa-app/src/main", "duration": 460 },
+              { "path": "oa-app/src/main/java", "duration": 310 }
+            ],
+            "totalDuration": 1410,
+            "apiRoundTrips": 4
+          },
+          {
+            "iteration": 5,
+            "calls": [
+              { "path": "oa-app", "duration": 420 },
+              { "path": "oa-app/src", "duration": 290 },
+              { "path": "oa-app/src/main", "duration": 330 },
+              { "path": "oa-app/src/main/java", "duration": 400 }
+            ],
+            "totalDuration": 1440,
+            "apiRoundTrips": 4
+          }
+        ],
+        "statistics": {
+          "avgTotalDuration": 1432,
+          "minDuration": 1360,
+          "maxDuration": 1510,
+          "stdDeviation": 52,
+          "avgLatencyPerCall": 358
+        }
+      },
+      "targetBatchExecution": {
+        "description": "v0.3.6 目标：单次批量调用",
+        "targetMetrics": {
+          "maxDuration": 500,
+          "apiRoundTrips": 1,
+          "improvement": "-65%"
+        }
+      }
+    },
+    "uiRendering": {
+      "fcp": {
+        "description": "First Contentful Paint",
+        "value": 800,
+        "unit": "ms"
+      },
+      "lcp": {
+        "description": "Largest Contentful Paint",
+        "value": 2500,
+        "unit": "ms"
+      },
+      "cls": {
+        "description": "Cumulative Layout Shift",
+        "value": 0.25,
+        "target": 0.05
+      },
+      "domNodes": {
+        "description": "DOM节点总数",
+        "value": 450,
+        "target": 150
+      },
+      "repaintCount": {
+        "description": "重绘次数",
+        "value": 12
+      },
+      "renderFlameGraph": {
+        "ToolApproval渲染": "45%",
+        "MessageItem渲染": "32%",
+        "状态更新": "18%",
+        "其他": "5%"
+      }
+    },
+    "memory": {
+      "jsHeapPeak": {
+        "value": 42,
+        "unit": "MB",
+        "target": 35
+      },
+      "domMemory": {
+        "value": 8.5,
+        "unit": "MB"
+      },
+      "eventListeners": {
+        "value": 68
+      },
+      "leakRisk": "中"
+    }
+  },
+  "userExperience": {
+    "verticalSpace": {
+      "breakdown": [
+        { "element": "用户提问", "height": 60, "count": 1, "total": 60 },
+        { "element": "AI解释文本", "height": 80, "count": 4, "total": 320 },
+        { "element": "List Directory卡片", "height": 200, "count": 4, "total": 800 },
+        { "element": "间距", "height": 16, "count": 7, "total": 112 }
+      ],
+      "totalHeight": 1292,
+      "viewportHeight": 900,
+      "overflowRatio": 1.44,
+      "targetHeight": 300
+    },
+    "scrollBehavior": {
+      "scrollCount": 4,
+      "scrollDistance": 800,
+      "scrollTriggerPoints": ["每个卡片后"],
+      "attentionDisruption": "高"
+    },
+    "cognitiveLoad": {
+      "scale": "NASA-TLX",
+      "participants": 10,
+      "dimensions": {
+        "mentalDemand": { "score": 7.2, "description": "需记忆多个中间结果" },
+        "physicalDemand": { "score": 4.1, "description": "频繁滚动" },
+        "temporalDemand": { "score": 3.8, "description": "等待多次往返" },
+        "performance": { "score": 5.4, "description": "效率感较低" },
+        "effort": { "score": 6.8, "description": "需持续跟踪进度" },
+        "frustration": { "score": 6.2, "description": "重复UI元素疲劳" }
+      },
+      "weightedAverage": 5.6,
+      "targetScore": 3.5
+    }
+  },
+  "functional": {
+    "e2eTestResults": {
+      "BL001": { "status": "passed", "description": "单层目录列表" },
+      "BL002": { "status": "passed", "description": "多层目录递归" },
+      "BL003": { "status": "passed", "description": "待审批状态" },
+      "BL004": { "status": "passed", "description": "批量批准" },
+      "BL005": { "status": "passed", "description": "执行进度" },
+      "BL006": { "status": "passed", "description": "响应时间" },
+      "BL007": { "status": "passed", "description": "空目录处理" },
+      "BL008": { "status": "passed", "description": "权限不足" },
+      "BL009": { "status": "passed", "description": "卡片样式" },
+      "BL010": { "status": "passed", "description": "基线数据导出" }
+    }
+  },
+  "comparison": {
+    "metrics": [
+      { "name": "响应时间", "baseline": "1432ms", "target": "<500ms", "improvement": "-65%" },
+      { "name": "垂直空间", "baseline": "1292px", "target": "<300px", "improvement": "-77%" },
+      { "name": "滚动次数", "baseline": "3-4次", "target": "0次", "improvement": "-100%" },
+      { "name": "NASA-TLX", "baseline": "5.6分", "target": "<3.5分", "improvement": "-38%" },
+      { "name": "DOM节点", "baseline": "450个", "target": "<150个", "improvement": "-67%" },
+      { "name": "CLS", "baseline": "0.25", "target": "<0.05", "improvement": "-80%" }
+    ]
+  },
+  "validationChecklist": {
+    "performance": [
+      { "item": "响应时间 < 500ms", "required": true, "verified": false },
+      { "item": "内存占用 < 35MB", "required": true, "verified": false },
+      { "item": "LCP < 1000ms", "required": true, "verified": false },
+      { "item": "CLS < 0.05", "required": true, "verified": false }
+    ],
+    "functional": [
+      { "item": "BL-001 ~ BL-010 E2E测试全部通过", "required": true, "verified": false },
+      { "item": "边界情况处理保持一致", "required": true, "verified": false },
+      { "item": "无功能回归", "required": true, "verified": false }
+    ],
+    "ux": [
+      { "item": "垂直空间 < 300px", "required": true, "verified": false },
+      { "item": "无需滚动即可查看完整结果", "required": true, "verified": false },
+      { "item": "NASA-TLX评分 < 3.5", "required": false, "verified": false }
+    ],
+    "codeQuality": [
+      { "item": "新增单元测试覆盖率 > 80%", "required": true, "verified": false },
+      { "item": "E2E测试通过率 100%", "required": true, "verified": false },
+      { "item": "无内存泄漏", "required": true, "verified": false }
+    ]
+  }
+}

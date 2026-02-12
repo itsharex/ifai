@@ -1839,7 +1839,9 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                                     tool: updatedName || (existingCall as any).tool,
                                     args: parsedArgs,
                                     function: { name: updatedName, arguments: updatedArgsString },
-                                    isPartial: toolCallUpdate.isPartial ?? existingCall.isPartial
+                                    isPartial: toolCallUpdate.isPartial ?? existingCall.isPartial,
+                                    // @ts-ignore - preserve batchId
+                                    batchId: (existingCall as any).batchId
                                 } as any;
 
                                 // 🔥 v0.5.0: 即时自动审批 (针对流式传输中已接收完毕的工具)
@@ -1898,20 +1900,46 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
                                 const newToolCallId = toolCallUpdate.id || `call_${crypto.randomUUID()}`;
 
+                                // 🚀 v0.3.6: 工具批处理逻辑 (Tool Batching)
+                                // 识别可聚合工具（目录探索、文件读取等）- 增加不区分大小写和显示名称支持
+                                const aggregatableTools = ['agent_list_dir', 'agent_read_file', 'agent_search', 'list_dir', 'read_file', 'agent_list_directory', 'list directory', 'read file'];
+                                const currentEditorMode = (window as any).__IFAI_EDITOR_MODE__ || 'vibe';
+                                const lowerToolName = toolName.toLowerCase();
+                                
+                                let batchId: string | undefined = undefined;
+                                if (aggregatableTools.some(t => lowerToolName.includes(t))) {
+                                    // 1. 优先尝试合并到当前消息内的上一个工具
+                                    const lastToolCall = existingCalls.length > 0 ? existingCalls[existingCalls.length - 1] : null;
+                                    
+                                    if (lastToolCall && (lastToolCall as any).batchId && aggregatableTools.some(t => (lastToolCall as any).tool.toLowerCase().includes(t))) {
+                                        batchId = (lastToolCall as any).batchId;
+                                    } else if (currentEditorMode === 'vibe' || currentEditorMode === 'spec') {
+                                        // 2. 🏆 跨消息粘性逻辑：回溯上一条消息
+                                        const prevAssistantMsg = coreUseChatStore.getState().messages
+                                            .filter(m => m.role === 'assistant' && m.id !== assistantMsgId)
+                                            .pop();
+                                        
+                                        const prevBatchId = prevAssistantMsg?.toolCalls?.find(tc => (tc as any).batchId)?.batchId;
+                                        
+                                        if (prevBatchId && typeof prevBatchId === 'string' && prevBatchId.startsWith('batch_')) {
+                                            console.log(`[Chat] 🔗 Reusing batchId from previous message: ${prevBatchId}`);
+                                            batchId = prevBatchId;
+                                        } else {
+                                            batchId = `batch_${crypto.randomUUID().slice(0, 8)}`;
+                                        }
+                                    }
+                                }
+
                                 const newToolCall = {
-
                                     id: newToolCallId, type: 'function' as const, 
-
                                     tool: toolName, args: initialArgs,
-
                                     function: { name: toolName, arguments: newArgsChunk },
-
-                                    status: 'pending' as const, isPartial: true, index: toolCallUpdate.index
-
+                                    status: 'pending' as const, isPartial: true, index: toolCallUpdate.index,
+                                    // @ts-ignore - v0.3.6 batching
+                                    batchId
                                 };
 
                                 // @ts-ignore
-
                                 newMsg.toolCalls = [...existingCalls, newToolCall];
 
                                 const order = (newMsg.contentSegments || []).length;
@@ -2806,16 +2834,32 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
             });
 
             if (pendingToolCalls.length > 0) {
-                for (const tc of pendingToolCalls) {
-                    // @ts-ignore
-                    await coreUseChatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
-                }
+                // 执行所有待处理的工具
+                const promises = pendingToolCalls.map(tc => 
+                    coreUseChatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true })
+                );
+                
+                // 等待这一批工具全部执行完毕
+                await Promise.all(promises);
+
                 const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
                 if (providerConfig) {
+                    // 🏆 物理削峰：延迟 800ms 触发，给 UI 和后端留出喘息时间，并防止 429
                     setTimeout(async () => {
+                        // 再次检查是否有其他工具正在运行（例如刚被批准的或者长耗时的）
+                        const latestMessages = coreUseChatStore.getState().messages;
+                        const latestMsg = latestMessages.find(m => m.id === assistantMsgId);
+                        const anyRunning = latestMsg?.toolCalls?.some(tc => tc.status === 'approved' || tc.isPartial);
+                        
+                        if (anyRunning) {
+                            console.log('[Chat] ⏳ Delaying feedback: tools still running');
+                            return; // 由最后一个完成的工具来触发 feedback
+                        }
+
+                        console.log('[Chat] 🚀 Batch tools completed, sending aggregated feedback');
                         unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
                         await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig, { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") });
-                    }, 500);
+                    }, 800);
                     return;
                 }
             }
@@ -2826,13 +2870,20 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
     });
 
     const unlistenError = await listen<string>(`${assistantMsgId}_error`, (event) => {
-
         const safe = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
+        console.error(`[Chat Error] ${safe}`);
 
-        coreUseChatStore.setState(s => ({ messages: s.messages.map(m => m.id === assistantMsgId ? { ...m, content: `❌ Error: ${safe}` } : m), isLoading: false }));
+        let displayError = safe;
+        if (safe.includes('429')) {
+            displayError = '⚠️ **API 速率限制 (429)**: 您当前的消息发送过于频繁，AI 暂时无法响应。请等待约 10-30 秒后再次发送或刷新页面。';
+        }
+
+        coreUseChatStore.setState(s => ({ 
+            messages: s.messages.map(m => m.id === assistantMsgId ? { ...m, content: `❌ Error: ${displayError}` } : m), 
+            isLoading: false 
+        }));
 
         unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
-
     });
 
         try {

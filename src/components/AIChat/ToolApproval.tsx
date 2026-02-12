@@ -394,7 +394,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                                     {getIcon()}
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-[13px] font-bold text-gray-100 tracking-tight leading-tight">
+                                    <span data-testid="tool-name" className="text-[13px] font-bold text-gray-100 tracking-tight leading-tight">
                                         {getToolLabel(toolCall.tool)}
                                     </span>
                                     {filePath ? (
@@ -411,7 +411,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
-                                <div className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${
+                                <div data-testid="status-badge" className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-all ${
                                     isPartial ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]' :
                                     toolCall.status === 'completed' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
                                     toolCall.status === 'failed' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
@@ -430,7 +430,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                     <div className="space-y-4 overflow-hidden">
                         {/* ✅ 流式参数显示 - write_file 也显示参数 */}
                         {isPartial && (
-                            <div className="bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4 rounded-xl border border-gray-700/30 shadow-inner">
+                            <div data-testid="tool-params" className="bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4 rounded-xl border border-gray-700/30 shadow-inner">
                                 <StreamingToolArgsViewer
                                     args={toolCall.args || {}}
                                     isStreaming={isPartial}
@@ -502,7 +502,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                         </div>
 
                         {/* 工具参数可视化 */}
-                        <div className="bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4 rounded-xl border border-gray-700/30 shadow-inner">
+                        <div data-testid="tool-params" className="bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4 rounded-xl border border-gray-700/30 shadow-inner">
                             <StreamingToolArgsViewer
                                 args={toolCall.args || {}}
                                 isStreaming={isPartial}
