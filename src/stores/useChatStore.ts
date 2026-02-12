@@ -1746,7 +1746,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
                                 const newToolCallId = toolCallUpdate.id || `call_${crypto.randomUUID()}`;
                                 
                                 // Batching logic
-                                const aggregatableTools = ["agent_list_dir", "agent_read_file", "agent_search", "list_dir", "read_file", "agent_list_directory", "list directory", "read file"];
+                                const aggregatableTools = ["agent_scan_project", "agent_list_dir", "agent_read_file", "agent_search", "list_dir", "read_file", "agent_list_directory", "list directory", "read file"];
                                 const currentEditorMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
                                 const lowerToolName = toolName.toLowerCase();
                                 let batchId: string | undefined = undefined;
