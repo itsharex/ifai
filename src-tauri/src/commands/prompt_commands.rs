@@ -11,97 +11,94 @@ fn get_prompt_root(project_root: &str) -> PathBuf {
 }
 
 #[tauri::command]
-pub async fn list_prompts(project_root: String) -> Result<Vec<PromptTemplate>, String> {
-    let mut prompts = Vec::new();
-    let mut overridden_paths = HashSet::new();
+pub async fn list_prompts(project_root: String, locale: Option<String>) -> Result<Vec<PromptTemplate>, String> {
+    let mut prompts_map = HashMap::new();
+    let lang = locale.unwrap_or_else(|| "en".to_string());
+    let lang_code = if lang.starts_with("zh") { "zh-CN" } else { "en" };
 
-    // 1. Load Project Prompts from File System First
+    // 1. Load Builtin Prompts with I18n Deduplication
+    for file_path in BuiltinPrompts::iter() {
+        if !file_path.ends_with(".md") { continue; }
+        
+        let path_str = file_path.as_ref();
+        // 逻辑路径定义：移除语言前缀
+        let logical_path = if path_str.starts_with("zh-CN/") {
+            path_str[6..].to_string()
+        } else if path_str.starts_with("en-US/") {
+            path_str[6..].to_string()
+        } else {
+            path_str.to_string()
+        };
+
+        // 优先级：当前语言 > 默认版
+        let is_current_lang = path_str.starts_with(lang_code);
+        
+        if !prompts_map.contains_key(&logical_path) || is_current_lang {
+            if let Some(content_file) = BuiltinPrompts::get(path_str) {
+                let content = std::str::from_utf8(content_file.data.as_ref()).unwrap_or("");
+                if let Ok(mut template) = storage::load_prompt_from_str(content, None) {
+                    template.path = Some(format!("builtin://{}", logical_path));
+                    if logical_path.starts_with("system/") {
+                        template.metadata.access_tier = crate::prompt_manager::AccessTier::Protected;
+                    }
+                    prompts_map.insert(logical_path, template);
+                }
+            }
+        }
+    }
+
+    // 2. Load Local Overrides (simplified for now to match logical paths)
+    // Local prompts override builtin prompts
     let root = get_prompt_root(&project_root);
     if root.exists() {
         for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
             if entry.path().is_file() && entry.path().extension().map_or(false, |ext| ext == "md") {
-                match storage::load_prompt(entry.path()) {
-                    Ok(mut template) => {
-                        if let Ok(rel) = entry.path().strip_prefix(&root) {
-                             let rel_path = rel.to_string_lossy().to_string();
-                             
-                             // Record that this path (or its original version) is handled locally
-                             // e.g., if we have system/main.override.md, we mark system/main.md as overridden
-                             let original_path = rel_path.replace(".override.md", ".md");
-                             overridden_paths.insert(original_path);
-                             
-                             template.path = Some(rel_path.clone());
-                             if rel_path.contains(".override.") {
-                                 template.metadata.name = format!("{} (Override)", template.metadata.name);
-                             }
-                             prompts.push(template);
-                        }
-                    },
-                    Err(e) => eprintln!("[PromptManager] Failed to load local prompt {:?}: {}", entry.path(), e),
+                if let Ok(rel) = entry.path().strip_prefix(&root) {
+                    let rel_path = rel.to_string_lossy().to_string();
+                    if let Ok(mut template) = storage::load_prompt(entry.path()) {
+                        template.path = Some(rel_path.clone());
+                        prompts_map.insert(rel_path, template);
+                    }
                 }
             }
         }
     }
 
-    // 2. Load Builtin Prompts, but SKIP those that have local overrides
-    for file_path in BuiltinPrompts::iter() {
-        if file_path.ends_with(".md") && !overridden_paths.contains(file_path.as_ref()) {
-            if let Some(content_file) = BuiltinPrompts::get(&file_path) {
-                let content = std::str::from_utf8(content_file.data.as_ref()).unwrap_or("");
-                match storage::load_prompt_from_str(content, None) {
-                    Ok(mut template) => {
-                        template.path = Some(format!("builtin://{}", file_path));
-                        if file_path.starts_with("system/") {
-                            template.metadata.access_tier = crate::prompt_manager::AccessTier::Protected;
-                        }
-                        prompts.push(template);
-                    },
-                    Err(e) => eprintln!("[PromptManager] Failed to load builtin prompt {}: {}", file_path, e),
-                }
-            }
-        }
-    }
-
-    // Sort prompts by name for consistent UI
-    prompts.sort_by(|a, b| a.metadata.name.cmp(&b.metadata.name));
-
-    println!("[PromptManager] Returning {} active prompts", prompts.len());
-    Ok(prompts)
+    let mut result: Vec<_> = prompts_map.into_values().collect();
+    result.sort_by(|a, b| a.metadata.name.cmp(&b.metadata.name));
+    Ok(result)
 }
-
 
 #[tauri::command]
 pub async fn get_prompt(project_root: String, path: String, locale: Option<String>) -> Result<PromptTemplate, String> {
+    let lang = locale.unwrap_or_else(|| "en".to_string());
+    let lang_code = if lang.starts_with("zh") { "zh-CN" } else { "en" };
+
     if path.starts_with("builtin://") {
-        let internal_path = &path[10..];
+        let logical_path = &path[10..];
         
-        // 🚀 i18n Builtin support
-        if let Some(ref l) = locale {
-            let i18n_path = format!("{}/{}", l, internal_path);
-            if let Some(content_file) = BuiltinPrompts::get(&i18n_path) {
-                let content = std::str::from_utf8(content_file.data.as_ref()).unwrap_or("");
-                return storage::load_prompt_from_str(content, Some(path)).map_err(|e| e.to_string());
-            }
+        // Try current language first
+        let i18n_path = format!("{}/{}", lang_code, logical_path);
+        if let Some(content_file) = BuiltinPrompts::get(&i18n_path) {
+            let content = std::str::from_utf8(content_file.data.as_ref()).unwrap_or("");
+            return storage::load_prompt_from_str(content, Some(path)).map_err(|e| e.to_string());
         }
 
-        if let Some(content_file) = BuiltinPrompts::get(internal_path) {
+        // Try raw path
+        if let Some(content_file) = BuiltinPrompts::get(logical_path) {
             let content = std::str::from_utf8(content_file.data.as_ref()).unwrap_or("");
-            return storage::load_prompt_from_str(content, Some(path))
-                .map_err(|e| e.to_string());
+            return storage::load_prompt_from_str(content, Some(path)).map_err(|e| e.to_string());
         }
         return Err("Builtin prompt not found".to_string());
     }
 
     let root = get_prompt_root(&project_root);
-    
-    // 🚀 i18n File System support
-    if let Some(ref l) = locale {
-        let i18n_full_path = root.join(l).join(&path);
-        if i18n_full_path.exists() {
-            return storage::load_prompt(&i18n_full_path).map_err(|e| e.to_string());
-        }
+    // Local file loading logic
+    let i18n_full_path = root.join(lang_code).join(&path);
+    if i18n_full_path.exists() {
+        return storage::load_prompt(&i18n_full_path).map_err(|e| e.to_string());
     }
-
+    
     let full_path = root.join(&path);
     storage::load_prompt(&full_path).map_err(|e| e.to_string())
 }
@@ -109,24 +106,18 @@ pub async fn get_prompt(project_root: String, path: String, locale: Option<Strin
 #[tauri::command]
 pub async fn update_prompt(project_root: String, path: String, content: String) -> Result<String, String> {
     storage::validate_prompt_content(&content)?;
-
     let final_rel_path = if path.starts_with("builtin://") {
         let internal = &path[10..];
         internal.replace(".md", ".override.md")
     } else {
         path
     };
-
     let root = get_prompt_root(&project_root);
     let full_path = root.join(&final_rel_path);
-    
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-
-    let _ = storage::parse_front_matter(&content).map_err(|e| e.to_string())?;
     fs::write(full_path, &content).map_err(|e| e.to_string())?;
-
     Ok(final_rel_path)
 }
 

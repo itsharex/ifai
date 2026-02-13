@@ -1633,7 +1633,10 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     });
 
     // 🚀 v0.3.6: PIVO 行为准则注入
-    const PIVO_PROMPT = "CRITICAL GUIDELINE: When exploring a project or a new directory, DO NOT call agent_list_dir recursively. You MUST use \"agent_scan_project\" to get a bird-eye view of the project structure and key files in ONE go. Only use agent_read_file for specific implementation details.";
+    const isChinese = i18n.language?.startsWith("zh");
+    const PIVO_PROMPT = isChinese 
+        ? "【关键准则】在探索项目或新目录时，严禁递归调用 agent_list_dir。你必须优先使用 agent_scan_project 指令一次性获取项目拓扑和核心文件摘要。仅在需要深入了解具体实现细节时才使用 agent_read_file。"
+        : "CRITICAL GUIDELINE: When exploring a project or a new directory, DO NOT call agent_list_dir recursively. You MUST use \"agent_scan_project\" to get a bird-eye view of the project structure and key files in ONE go. Only use agent_read_file for specific implementation details.";
     if (!msgHistory.some(m => m.content === PIVO_PROMPT) && msgHistory.length < 5) {
         msgHistory.unshift({ role: "system", content: PIVO_PROMPT });
     }
@@ -2402,7 +2405,13 @@ const patchedApproveToolCall = async (
                     outputContent = await invoke(toolName, tauriArgs);
                 }
 
-                let stringResult = typeof outputContent === "object" ? JSON.stringify(outputContent) : String(outputContent);
+                // 🏆 v0.3.6: 增强型结果解析，防止 undefined 漏洞
+                let stringResult: string;
+                if (outputContent && typeof outputContent === "object" && "content" in outputContent) {
+                    stringResult = String((outputContent as any).content);
+                } else {
+                    stringResult = typeof outputContent === "object" ? JSON.stringify(outputContent) : String(outputContent);
+                }
 
                 coreUseChatStore.setState(s => ({
                     messages: s.messages.map(m => m.id === messageId ? {
