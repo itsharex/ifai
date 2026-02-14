@@ -1632,12 +1632,29 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         };
     });
 
-    // 🚀 v0.3.6: PIVO 行为准则注入
+    // 🚀 v0.3.6: PIVO 2.0 物理授权注入 (高级命令版)
     const isChinese = i18n.language?.startsWith("zh");
     
     const PIVO_PROMPT = isChinese 
-        ? "【物理工具授权】你现在拥有 PIVO 2.0 全局执行权限。无论在 Vibe 还是 Spec 模式下，请直接使用标准的工具调用格式（tool_calls）来调用以下工具：\n1. bash: 参数 { \"command\": \"string\" } - 执行系统命令\n2. agent_write_file: 参数 { \"rel_path\": \"string\", \"content\": \"string\" } - 写文件\n3. agent_read_file: 参数 { \"rel_path\": \"string\" } - 读文件\n4. agent_scan_project: 扫描项目拓扑\n\n【关键准则】优先使用 agent_scan_project 获取全局视野。"
-        : "【PHYSICAL TOOL AUTHORIZATION】You have PIVO 2.0 GLOBAL execution permissions. Please use tool_calls format in BOTH Vibe and Spec modes:\n1. bash: args { \"command\": \"string\" }\n2. agent_write_file: args { \"rel_path\": \"string\", \"content\": \"string\" }\n3. agent_read_file: args { \"rel_path\": \"string\" }\n4. agent_scan_project: scan project topology.";
+        ? `【PIVO 2.0 物理工具箱授权】
+请直接调用以下高级物理指令：
+
+1. agent_execute_command: 执行系统命令
+{ "name": "agent_execute_command", "parameters": { "command": "string" } }
+
+2. agent_write_file: 物理写入文件
+{ "name": "agent_write_file", "parameters": { "rel_path": "string", "content": "string" } }
+
+3. agent_scan_project: 扫描全景拓扑
+{ "name": "agent_scan_project", "parameters": { "rel_path": "string" } }
+
+【准则】你现在拥有物理执行权限，请直接调用上述工具。`
+        : `[PIVO 2.0 PHYSICAL TOOL AUTHORIZATION]
+Directly use these advanced commands:
+1. agent_execute_command: { "name": "agent_execute_command", "parameters": { "command": "string" } }
+2. agent_write_file: { "name": "agent_write_file", "parameters": { "rel_path": "string", "content": "string" } }
+3. agent_scan_project: { "name": "agent_scan_project", "parameters": { "rel_path": "string" } }
+CALL THESE TOOLS DIRECTLY.`;
     if (!msgHistory.some(m => m.content === PIVO_PROMPT) && msgHistory.length < 5) {
         msgHistory.unshift({ role: "system", content: PIVO_PROMPT });
     }
@@ -1874,6 +1891,14 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         const currentMode = (window as any).__IFAI_EDITOR_MODE__;
         // 🚀 v0.3.6: PIVO 穿透策略 - 在 Vibe 模式下也允许只读工具，以支持全景扫描
         const shouldEnableTools = true; // 始终允许声明，但在后端或拦截层进行分类控制
+
+        // 🏆 PIVO 2.0: 最终外发数据审计日志
+        console.log(`[Chat] 📡 FINAL REQUEST AUDIT:`, {
+            messageCount: msgHistory.length,
+            hasPivoPrompt: msgHistory.some(m => typeof m.content === 'string' && m.content.includes("PIVO 2.0")),
+            targetModel: modelName,
+            pivoPromptPreview: PIVO_PROMPT.slice(0, 150) + "..."
+        });
 
         await invoke('ai_chat', {
             providerConfig,
@@ -2347,7 +2372,8 @@ const patchedApproveToolCall = async (
 ) => {
     // 🔥 PIVO 2.0: 结构化审批引擎拦截
     const settings = useSettingsStore.getState();
-    const useNewEngine = (settings as any).enableNewApprovalEngine === true;
+    // 🏆 FIXED: 强制启用新引擎，消除配置持久化带来的不确定性
+    const useNewEngine = true; // (settings as any).enableNewApprovalEngine === true;
 
     // 🏆 PIVO 2.0: 增强拦截逻辑
     const state = coreUseChatStore.getState();

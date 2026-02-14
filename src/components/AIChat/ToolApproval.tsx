@@ -542,13 +542,32 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                             />
                         </div>
 
-                        {/* 🔥 PIVO 2.0: Diff 预览注入 */}
-                        {previewData && (
+                        {/* 🔥 PIVO 2.0: Diff 预览注入 - 仅针对文件写入 */}
+                        {previewData && toolCall.tool === 'agent_write_file' && (
                             <DiffPreview 
                                 oldContent={previewData.oldContent}
                                 newContent={previewData.newContent}
                                 fileName={toolCall.args?.rel_path || toolCall.args?.path || 'unknown'}
                             />
+                        )}
+
+                        {/* 🔥 PIVO 2.0: 目录列表预览 */}
+                        {toolCall.tool === 'agent_list_dir' && (
+                            <div className="mt-3 p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex items-center gap-3">
+                                <FolderOpen className="text-blue-400" size={16} />
+                                <div className="text-[11px] text-blue-300/80 italic">正在扫描目录结构...</div>
+                            </div>
+                        )}
+
+                        {/* 🔥 PIVO 2.0: Bash 风险预警 */}
+                        {previewData && toolCall.tool === 'bash' && previewData.isDestructive && (
+                            <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3">
+                                <AlertTriangle className="text-red-400 shrink-0" size={16} />
+                                <div>
+                                    <div className="text-[10px] font-bold text-red-300 uppercase">高风险操作警示</div>
+                                    <div className="text-[11px] text-red-400/80 mt-0.5">该命令包含敏感操作（如删除或权限修改），执行前请仔细检查。</div>
+                                </div>
+                            </div>
                         )}
 
                     </div>

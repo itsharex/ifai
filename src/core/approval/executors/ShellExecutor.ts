@@ -1,6 +1,10 @@
 import { BaseExecutor } from './BaseExecutor';
 import { ToolCallResult } from '../types';
 
+/**
+ * PhysicalBashExecutor (PIVO v2.0)
+ * 遵循全栈指令开发方法论，实现标准化的物理 Shell 执行
+ */
 export class ShellExecutor extends BaseExecutor {
   type = 'shell';
 
@@ -11,45 +15,65 @@ export class ShellExecutor extends BaseExecutor {
   }
 
   async execute(toolName: string, args: any): Promise<ToolCallResult> {
+    // 1. 参数物理化过程 (Physical Trace)
+    const command = args.command || args.script || args.args || args.cmd || '';
+    
+    // 2. 统一日志输出 (Unified Logging - Guide 8.2)
+    console.log(`[Wrapper] 🐚 Entry - Physical Command: \`${command}\``);
+
     try {
-      // 🏆 修复：后端真实的指令名是 execute_bash_command
-      const command = args.command || args.script || args.args || '';
-      console.log(`[Shell Tool] 🐚 Executing physical command: \`${command}\``);
+      const startTime = performance.now();
       
+      // 3. 物理转发至后端桥接层
       const output = await this.invoker('execute_bash_command', {
-        command: command, // 后端代码预期参数名为 command
+        command: command,
       });
 
-      // 解析输出
-      let content = '';
+      const duration = (performance.now() - startTime).toFixed(2);
+
+      // 4. 结构化结果解析 (Integrated & Verified)
+      let stdout = '';
+      let stderr = '';
+      let exitCode = 0;
+
       if (typeof output === 'string') {
-        content = output;
+        stdout = output;
       } else if (typeof output === 'object') {
-        content = output.output || JSON.stringify(output);
+        stdout = output.stdout || '';
+        stderr = output.stderr || '';
+        exitCode = output.exit_code ?? 0;
       }
+
+      // 遵循 Guide 8.3: 错误透传模式，不静默失败
+      const combinedOutput = stderr 
+        ? `${stdout}\n\n[Error Output]:\n${stderr}` 
+        : stdout;
+
+      console.log(`[FS Tool] ✅ Physical execution finished in ${duration}ms (Exit: ${exitCode})`);
 
       return { 
         success: true, 
-        content,
-        metadata: { exitCode: (output as any).exit_code ?? 0 }
+        content: combinedOutput || `(Command finished with exit code ${exitCode})`,
+        metadata: { exitCode, stdout, stderr, duration }
       };
     } catch (e) {
+      // Guide 8.3: 不要后端静默失败
+      console.error(`[FS Tool] ❌ Physical execution failed:`, e);
       return { success: false, content: '', error: String(e) };
     }
   }
 
   /**
-   * 🚀 Shell 命令通常不可逆，但我们可以提供一些“安全建议”预览
+   * PIVO 预览逻辑：基于风险等级的语义化检查
    */
   async preview(toolName: string, args: any): Promise<any> {
-    return {
-      command: args.command || args.script || args.args,
-      isDestructive: this.detectDestructiveCommand(args.command || '')
-    };
-  }
-
-  private detectDestructiveCommand(cmd: string): boolean {
+    const cmd = args.command || args.script || '';
     const dangerousKeywords = ['rm ', 'sudo', 'chmod', 'chown', 'mv ', '> /dev/null'];
-    return dangerousKeywords.some(k => cmd.includes(k));
+    const isDestructive = dangerousKeywords.some(k => cmd.includes(k));
+
+    return {
+      command: cmd,
+      isDestructive
+    };
   }
 }
