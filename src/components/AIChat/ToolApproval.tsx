@@ -559,6 +559,30 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                             </div>
                         )}
 
+                        {/* 🔥 PIVO 2.0: 搜索意图预览 */}
+                        {previewData && (toolCall.tool === 'agent_search' || toolCall.tool === 'search_semantic') && (
+                            <div className="mt-3 overflow-hidden rounded-xl border border-blue-500/20 bg-blue-500/5">
+                                <div className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border-b border-blue-500/10">
+                                    <Search size={14} className="text-blue-400" />
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-blue-300">
+                                        {previewData.toolType}预览
+                                    </span>
+                                </div>
+                                <div className="p-3">
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                        <span className="text-[10px] text-gray-500 uppercase">关键词:</span>
+                                        <code className="text-[11px] text-blue-300 font-mono bg-blue-900/30 px-1.5 py-0.5 rounded">
+                                            {previewData.query}
+                                        </code>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-gray-500 uppercase">范围:</span>
+                                        <span className="text-[11px] text-gray-300 font-mono">{previewData.scope}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* 🔥 PIVO 2.0: Bash 风险预警 */}
                         {previewData && toolCall.tool === 'bash' && previewData.isDestructive && (
                             <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3">

@@ -2385,7 +2385,8 @@ const patchedApproveToolCall = async (
     const isSupportedByNewEngine = [
         "agent_write_file", "agent_read_file", "agent_list_dir", 
         "agent_delete_file", "agent_list_functions", "agent_scan_project",
-        "bash", "agent_execute_command", "execute_bash_command", "agent_run_shell_command"
+        "bash", "agent_execute_command", "execute_bash_command", "agent_run_shell_command",
+        "agent_search", "search_semantic", "agent_batch_read", "init_rag_index"
     ].includes(toolName);
 
     // 🏆 PIVO 2.0: 仅拦截非 Agent 发起的原生工具调用

@@ -1,6 +1,7 @@
 import { ApprovalCoordinator } from './coordinators/ApprovalCoordinator';
 import { FileSystemExecutor } from './executors/FileSystemExecutor';
 import { ShellExecutor } from './executors/ShellExecutor';
+import { SearchExecutor } from './executors/SearchExecutor';
 import { invoke } from '@tauri-apps/api/core';
 import { useFileStore } from '../../stores/fileStore';
 
@@ -25,8 +26,13 @@ export function getApprovalCoordinator(): ApprovalCoordinator {
     const shellExecutor = new ShellExecutor(invoke);
     const shellTools = ["bash", "agent_execute_command", "execute_bash_command", "agent_run_shell_command"];
     shellTools.forEach(tool => instance!.registerExecutor(tool, shellExecutor));
+
+    // 3. 初始化搜索执行器
+    const searchExecutor = new SearchExecutor(invoke, rootPath);
+    const searchTools = ["agent_search", "search_semantic", "agent_batch_read", "init_rag_index"];
+    searchTools.forEach(tool => instance!.registerExecutor(tool, searchExecutor));
     
-    console.log(`[ApprovalEngine] ✅ Registered ${fsTools.length} FS tools & ${shellTools.length} Shell tools.`);
+    console.log(`[ApprovalEngine] ✅ Registered ${fsTools.length} FS, ${shellTools.length} Shell, & ${searchTools.length} Search tools.`);
   }
   return instance;
 }
