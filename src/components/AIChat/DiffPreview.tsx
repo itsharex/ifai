@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Eye, FileText, ChevronRight } from 'lucide-react';
 
 interface DiffPreviewProps {
@@ -7,12 +7,13 @@ interface DiffPreviewProps {
   fileName: string;
 }
 
-export const DiffPreview: React.FC<DiffPreviewProps> = ({ oldContent, newContent, fileName }) => {
+export const DiffPreview: React.FC<DiffPreviewProps> = memo(({ oldContent, newContent, fileName }) => {
   const isNewFile = oldContent === null;
   
-  // 基础统计
+  // 基础统计与保护
+  const safeNewContent = newContent || '';
   const oldLines = oldContent ? oldContent.split('\n') : [];
-  const newLines = (newContent || '').split('\n');
+  const newLines = safeNewContent.split('\n');
   
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-blue-500/20 bg-blue-500/5 transition-all">
@@ -60,4 +61,4 @@ export const DiffPreview: React.FC<DiffPreviewProps> = ({ oldContent, newContent
       </div>
     </div>
   );
-};
+});

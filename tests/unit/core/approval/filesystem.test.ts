@@ -62,4 +62,24 @@ describe('FileSystemExecutor', () => {
       relPath: 'new.ts'
     }));
   });
+
+  it('应该具备极强的参数鲁棒性 (处理 snake_case 和 冗余数据)', async () => {
+    const executor = new FileSystemExecutor(mockInvoker, '/root');
+    
+    mockInvoker.mockResolvedValue('ok');
+
+    // 模拟 AI 可能输出的各种“不规范”参数
+    await executor.execute('agent_write_file', {
+      rel_path: 'robust.ts',    // snake_case
+      new_content: 'hello',     // 变体名
+      some_garbage: 123         // 冗余数据
+    });
+
+    // 验证物理映射是否准确对齐到 Tauri 期待的键名
+    expect(mockInvoker).toHaveBeenCalledWith('agent_write_file', {
+      rootPath: '/root',
+      relPath: 'robust.ts',
+      content: 'hello'
+    });
+  });
 });

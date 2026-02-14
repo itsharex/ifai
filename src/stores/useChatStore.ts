@@ -2401,12 +2401,31 @@ const patchedApproveToolCall = async (
             const message = state.messages.find(m => m.id === messageId);
             const toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
             
-            if (toolCall) {
+            // 🏆 核心修复：重新从 Store 获取最新的 Message 状态
+            // 防止在流式传输未完全结束时，拦截器拿到了旧的（部分）参数
+            const latestState = coreUseChatStore.getState();
+            const latestMsg = latestState.messages.find(m => m.id === messageId);
+            const latestToolCall = latestMsg?.toolCalls?.find(tc => tc.id === toolCallId);
+            
+            if (latestToolCall) {
                 console.log(`[ApprovalEngine] 🔗 Starting PIVO lifecycle for ${toolName}...`);
+                
+                // 🏆 深度参数回溯：防止某些模型在流结束后 args 仍未正确同步
+                let finalArgs = latestToolCall.args || {};
+                if (Object.keys(finalArgs).length === 0 && (latestToolCall as any).function?.arguments) {
+                    try {
+                        const rawArgs = (latestToolCall as any).function.arguments;
+                        finalArgs = JSON.parse(rawArgs);
+                        console.log(`[ApprovalEngine] 🧠 Deep recovery successful:`, finalArgs);
+                    } catch (e) {
+                        console.warn(`[ApprovalEngine] ⚠️ Failed to recover args from raw string:`, e);
+                    }
+                }
+
                 await coordinator.createApproval(messageId, {
-                    id: toolCall.id,
-                    tool: toolCall.tool,
-                    args: toolCall.args
+                    id: latestToolCall.id,
+                    tool: latestToolCall.tool,
+                    args: finalArgs
                 });
                 
                 const result = await coordinator.approve(toolCallId);
