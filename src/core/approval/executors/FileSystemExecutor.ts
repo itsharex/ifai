@@ -13,9 +13,11 @@ export class FileSystemExecutor extends BaseExecutor {
 
   async execute(toolName: string, args: any): Promise<ToolCallResult> {
     const relPath = args.rel_path || args.path || (toolName === "agent_list_dir" ? "." : "");
+    console.log(`[FS Tool] 📂 Target: ${relPath} | Tool: ${toolName}`);
     
     // 1. 自动备份逻辑 (仅针对写/删操作)
     if (toolName === 'agent_write_file' || toolName === 'agent_delete_file') {
+      console.log(`[FS Tool] 💾 Creating physical snapshot for ${relPath}...`);
       await this.prepareBackup(relPath);
     }
 
@@ -24,6 +26,7 @@ export class FileSystemExecutor extends BaseExecutor {
       const rootPath = this.rootPath;
 
       // 🏆 同步旧版特殊逻辑
+      console.log(`[FS Tool] 🚀 Invoking backend...`, { toolName, rootPath, relPath });
       if (toolName === "agent_scan_project") {
         outputContent = await this.invoker("agent_scan_project", { 
           rootPath, 

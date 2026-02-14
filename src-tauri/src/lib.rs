@@ -577,17 +577,74 @@ async fn ai_chat(
     let has_intercepted_tool = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     // 为云端请求注入 bash 工具定义
-    let mut tools = vec![
+    let tools = vec![
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "agent_write_file",
+                "description": "Create or overwrite a file with specified content.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rel_path": { "type": "string" },
+                        "content": { "type": "string" }
+                    },
+                    "required": ["rel_path", "content"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "agent_read_file",
+                "description": "Read file content.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rel_path": { "type": "string" }
+                    },
+                    "required": ["rel_path"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "agent_scan_project",
+                "description": "Deep scan of project topology. MUST be used at the beginning of a task.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rel_path": { "type": "string" },
+                        "max_depth": { "type": "number", "default": 3 }
+                    },
+                    "required": ["rel_path"]
+                }
+            }
+        }),
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": "agent_list_dir",
+                "description": "List directory contents. Use this to explore folder structures.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rel_path": { "type": "string" }
+                    },
+                    "required": ["rel_path"]
+                }
+            }
+        }),
         serde_json::json!({
             "type": "function",
             "function": {
                 "name": "bash",
-                "description": "Execute a shell command",
+                "description": "Execute a bash/shell command. Use this for system queries (date, uname) or running scripts. Results are returned as text.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "command": { "type": "string", "description": "The command to execute" },
-                        "working_dir": { "type": "string", "description": "Working directory (optional)" }
+                        "command": { "type": "string", "description": "The command line string to execute" }
                     },
                     "required": ["command"]
                 }
@@ -595,17 +652,17 @@ async fn ai_chat(
         })
     ];
 
-    // 🚀 v0.5.0: 双模引擎工具策略 - Vibe 模式下极简化工具集
+    // 🚀 v0.5.0: 双模引擎工具策略
     let mut final_tools = tools;
     if let Some(ref m) = mode {
         if m == "vibe" {
-            println!("[AI Chat] Vibe Mode active: Allowing safe tools for PIVO");
-            // 🚀 v0.3.6: 仅保留只读工具，支持自动化背景探索
+            println!("[AI Chat] Vibe Mode active: Filtering for safe PIVO tools");
             final_tools.retain(|t| {
                 let name = t["function"]["name"].as_str().unwrap_or("");
                 name == "agent_scan_project" || name == "agent_read_file" || name == "agent_list_dir" || name == "bash"
             });
         }
+        // Spec 模式不进行 retain，保持全量 tools
     }
 
     let is_vibe_mode = mode.as_deref() == Some("vibe");
@@ -615,20 +672,17 @@ async fn ai_chat(
         &event_id,
         Some(final_tools),
         Box::new(move |chunk| {
-             // 🔥 v0.9.63: Vibe 模式智能熔断 - 允许安全工具（只读）放行以支持自动化
-                          if is_vibe_mode && chunk.contains("\"tool_calls\"") {
-                 // 🚀 v0.3.6: 鲁棒的流式放行逻辑
-                 // 在数据块极其细碎的情况下，允许 tool_calls 结构先通过，
-                 // 仅当明确检测到破坏性工具名（如 write, delete）时才熔断。
+             // 🔥 v0.9.63: Vibe 模式智能熔断 - 仅在 Vibe 模式下限制破坏性工具
+             if is_vibe_mode && chunk.contains("\"tool_calls\"") {
                  let is_unsafe = chunk.contains("agent_write_file") || 
                                 chunk.contains("agent_delete_file") || 
-                                chunk.contains("execute_bash_command");
+                                chunk.contains("execute_bash_command") ||
+                                chunk.contains("\"name\":\"bash\""); // 🏆 增加对 bash 的检测
                  
                  if is_unsafe {
                      println!("[AI Chat] Vibe Mode: Blocking unsafe destructive tool");
                      return;
                  }
-                 // 默认放行，允许 PIVO 等只读工具在碎裂的 Chunk 中拼装成功
              }
              // 调试：打印 chunk 内容
              // println!("[AI Chat] Streaming chunk: {}", chunk);

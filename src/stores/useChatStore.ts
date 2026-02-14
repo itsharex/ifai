@@ -1634,9 +1634,10 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
     // 🚀 v0.3.6: PIVO 行为准则注入
     const isChinese = i18n.language?.startsWith("zh");
+    
     const PIVO_PROMPT = isChinese 
-        ? "【关键准则】在探索项目或新目录时，严禁递归调用 agent_list_dir。你必须优先使用 agent_scan_project 指令一次性获取项目拓扑和核心文件摘要。仅在需要深入了解具体实现细节时才使用 agent_read_file。"
-        : "CRITICAL GUIDELINE: When exploring a project or a new directory, DO NOT call agent_list_dir recursively. You MUST use \"agent_scan_project\" to get a bird-eye view of the project structure and key files in ONE go. Only use agent_read_file for specific implementation details.";
+        ? "【物理工具授权】你现在拥有 PIVO 2.0 全局执行权限。无论在 Vibe 还是 Spec 模式下，请直接使用标准的工具调用格式（tool_calls）来调用以下工具：\n1. bash: 参数 { \"command\": \"string\" } - 执行系统命令\n2. agent_write_file: 参数 { \"rel_path\": \"string\", \"content\": \"string\" } - 写文件\n3. agent_read_file: 参数 { \"rel_path\": \"string\" } - 读文件\n4. agent_scan_project: 扫描项目拓扑\n\n【关键准则】优先使用 agent_scan_project 获取全局视野。"
+        : "【PHYSICAL TOOL AUTHORIZATION】You have PIVO 2.0 GLOBAL execution permissions. Please use tool_calls format in BOTH Vibe and Spec modes:\n1. bash: args { \"command\": \"string\" }\n2. agent_write_file: args { \"rel_path\": \"string\", \"content\": \"string\" }\n3. agent_read_file: args { \"rel_path\": \"string\" }\n4. agent_scan_project: scan project topology.";
     if (!msgHistory.some(m => m.content === PIVO_PROMPT) && msgHistory.length < 5) {
         msgHistory.unshift({ role: "system", content: PIVO_PROMPT });
     }
@@ -2348,8 +2349,22 @@ const patchedApproveToolCall = async (
     const settings = useSettingsStore.getState();
     const useNewEngine = (settings as any).enableNewApprovalEngine === true;
 
-    if (useNewEngine) {
-        console.log(`[ApprovalEngine] 🛡️ Intercepting tool call: ${toolCallId} (${messageId})`);
+    // 🏆 PIVO 2.0: 增强拦截逻辑
+    const state = coreUseChatStore.getState();
+    const message = state.messages.find(m => m.id === messageId);
+    const toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
+    const toolName = toolCall?.tool || '';
+    const agentId = (toolCall as any)?.agentId; // 🔍 检查是否属于某个 Agent
+
+    const isSupportedByNewEngine = [
+        "agent_write_file", "agent_read_file", "agent_list_dir", 
+        "agent_delete_file", "agent_list_functions", "agent_scan_project",
+        "bash", "agent_execute_command", "execute_bash_command", "agent_run_shell_command"
+    ].includes(toolName);
+
+    // 🏆 PIVO 2.0: 仅拦截非 Agent 发起的原生工具调用
+    if (useNewEngine && isSupportedByNewEngine && !agentId) {
+        console.log(`[ApprovalEngine] 🛡️ INTERCEPTED: ${toolName} | ID: ${toolCallId}`);
         try {
             const { getApprovalCoordinator } = await import('../core/approval');
             const coordinator = getApprovalCoordinator();
@@ -2360,6 +2375,7 @@ const patchedApproveToolCall = async (
             const toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
             
             if (toolCall) {
+                console.log(`[ApprovalEngine] 🔗 Starting PIVO lifecycle for ${toolName}...`);
                 await coordinator.createApproval(messageId, {
                     id: toolCall.id,
                     tool: toolCall.tool,
@@ -2367,8 +2383,10 @@ const patchedApproveToolCall = async (
                 });
                 
                 const result = await coordinator.approve(toolCallId);
+                console.log(`[ApprovalEngine] ✅ PIVO Execution Result:`, result.success ? "SUCCESS" : "FAILED");
                 
                 // 同步状态到旧 Store
+                console.log(`[ApprovalEngine] 📦 Synchronizing back to ChatStore...`);
                 coreUseChatStore.setState(s => ({
                     messages: s.messages.map(m => m.id === messageId ? {
                         ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { 

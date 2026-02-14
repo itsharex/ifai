@@ -17,12 +17,20 @@ export class ApprovalCoordinator {
    * 创建新的审批请求
    */
   async createApproval(messageId: string, toolCall: { id: string, tool: string, args: any }, context?: Partial<RiskContext>) {
+    const editorMode = context?.editorMode || (window as any).__IFAI_EDITOR_MODE__ || 'standard';
     const riskLevel = this.riskPolicy.calculateRisk({
       toolName: toolCall.tool,
       args: toolCall.args,
-      editorMode: (context?.editorMode || (window as any).__IFAI_EDITOR_MODE__ || 'standard') as any
+      editorMode: editorMode as any
     });
     
+    console.log(`[ApprovalEngine] 🆕 Created ApprovalItem:`, {
+      id: toolCall.id,
+      tool: toolCall.tool,
+      risk: riskLevel,
+      mode: editorMode
+    });
+
     useApprovalStore.getState().addItem({
       id: toolCall.id,
       messageId,
@@ -34,8 +42,10 @@ export class ApprovalCoordinator {
     // 🚀 异步生成预览数据
     const executor = this.executors.get(toolCall.tool);
     if (executor && executor.preview) {
+      console.log(`[ApprovalEngine] 🔍 Generating preview for ${toolCall.tool}...`);
       executor.preview(toolCall.tool, toolCall.args).then(data => {
         if (data) {
+          console.log(`[ApprovalEngine] ✨ Preview data ready for ${toolCall.id}`);
           useApprovalStore.getState().updateStatus(toolCall.id, 'preview', undefined, data);
         }
       });
@@ -50,24 +60,37 @@ export class ApprovalCoordinator {
     const item = store.getItem(toolCallId);
 
     if (!item) {
+      console.error(`[ApprovalEngine] ❌ Tool call ${toolCallId} not found in store`);
       throw new Error(`Tool call ${toolCallId} not found in store`);
     }
 
     const executor = this.executors.get(item.toolName);
     if (!executor) {
+      console.error(`[ApprovalEngine] ❌ No executor registered for: ${item.toolName}`);
       const errorResult = { success: false, content: '', error: `No executor registered for tool: ${item.toolName}` };
       store.updateStatus(toolCallId, 'failed', errorResult);
       throw new Error(errorResult.error);
     }
 
+    console.log(`[ApprovalEngine] ⚡ Executing ${item.toolName}...`, { id: toolCallId, args: item.args });
     store.updateStatus(toolCallId, 'executing');
 
     try {
+      const startTime = performance.now();
       const result = await executor.execute(item.toolName, item.args);
+      const duration = (performance.now() - startTime).toFixed(2);
+      
+      console.log(`[ApprovalEngine] ✅ Execution finished in ${duration}ms`, { 
+        id: toolCallId, 
+        success: result.success,
+        outputSize: result.content?.length 
+      });
+
       const status = result.success ? 'completed' : 'failed';
       store.updateStatus(toolCallId, status, result);
       return result;
     } catch (e) {
+      console.error(`[ApprovalEngine] 💥 Critical error during execution:`, e);
       const errorResult = { success: false, content: '', error: String(e) };
       store.updateStatus(toolCallId, 'failed', errorResult);
       throw e;
