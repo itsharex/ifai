@@ -809,117 +809,34 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     }
 
     if (textInput.startsWith('/')) {
-
         const parts = textInput.split(' ');
-
         const command = parts[0].toLowerCase();
-
-        const args = parts.slice(1).join(' ');
-
         const supportedAgents = ['/explore', '/review', '/test', '/doc', '/refactor'];
 
         if (supportedAgents.includes(command)) {
-
-            const agentTypeBase = command.slice(1);
-
-            const agentName = agentTypeBase.charAt(0).toUpperCase() + agentTypeBase.slice(1) + " Agent";
-
+            // 🏆 PIVO 3.0: 废除斜杠命令触发的独立 Agent，回归 Chat-Native
+            console.log('[SlashCommand] 🚀 Intercepted slash command, redirecting to PIVO flow:', command);
+            
             userMsgId = crypto.randomUUID();
-
             addMessage({
-
                 id: userMsgId,
-
                 role: 'user',
-
                 content: textInput,
-
                 multiModalContent: typeof content === 'string' ? [{type: 'text', text: content}] : content
-
             });
+            userMessageAdded = true;
 
-            // 🔥 自动更新线程标题（斜杠命令也触发）
-
+            // 🔥 自动更新线程标题
             const currentThread = threadStore.getThread(activeThreadId!);
-
             if (currentThread) {
-
                 const isDefaultTitle = /^(上午|下午|晚上)(的新对话|的对话 \d+)$/.test(currentThread.title);
-
                 if (isDefaultTitle) {
-
-                    console.log('[ChatStore] Auto-updating thread title from slash command:', textInput);
-
                     threadStore.updateThreadTitleFromMessage(activeThreadId!, textInput);
-
                 }
-
             }
 
-            try {
-
-                const assistantMsgId = crypto.randomUUID();
-
-                addMessage({
-
-                    id: assistantMsgId,
-
-                    role: 'assistant',
-
-                    content: ``,
-
-                    // @ts-ignore - custom property
-
-                    agentId: undefined,
-
-                    isAgentLive: true
-
-                });
-
-                const agentId = await useAgentStore.getState().launchAgent(
-
-                    agentName,
-
-                    args || "No specific task provided",
-
-                    assistantMsgId
-
-                );
-
-                const messages = coreUseChatStore.getState().messages;
-
-                const msg = messages.find(m => m.id === assistantMsgId);
-
-                if (msg) {
-
-                    // @ts-ignore
-
-                    msg.agentId = agentId;
-
-                    coreUseChatStore.setState({ messages: [...messages] });
-
-                }
-
-            } catch (e) {
-
-                addMessage({
-
-                    id: crypto.randomUUID(),
-
-                    role: 'assistant',
-
-                    content: `❌ **Failed to launch agent**\n\nError: ${String(e)}`
-
-                });
-
-            }
-
-            coreUseChatStore.setState({ isLoading: false });
-
-            return;
-
+            // 允许流程继续向下执行，从而触发下方的 AI 请求逻辑
         }
-
     }
 
     // 🔥 v0.3.0 多模态检测：如果当前消息包含图片，跳过意图识别和本地模型预处理
