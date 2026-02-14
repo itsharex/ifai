@@ -52,6 +52,27 @@ export class FileSystemExecutor extends BaseExecutor {
     }
   }
 
+  /**
+   * 🚀 提供预览数据
+   */
+  async preview(toolName: string, args: any): Promise<any> {
+    if (toolName !== 'agent_write_file') return null;
+    
+    const relPath = args.rel_path || args.path;
+    try {
+      const oldContent = await this.invoker('agent_read_file', {
+        rootPath: this.rootPath,
+        relPath
+      });
+      return {
+        oldContent: oldContent?.content || oldContent || null,
+        newContent: args.content
+      };
+    } catch (e) {
+      return { oldContent: null, newContent: args.content };
+    }
+  }
+
   private async prepareBackup(relPath: string) {
     try {
       // 尝试读取现有内容作为备份

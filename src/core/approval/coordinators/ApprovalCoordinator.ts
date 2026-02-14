@@ -30,6 +30,16 @@ export class ApprovalCoordinator {
       args: toolCall.args,
       riskLevel
     });
+
+    // 🚀 异步生成预览数据
+    const executor = this.executors.get(toolCall.tool);
+    if (executor && executor.preview) {
+      executor.preview(toolCall.tool, toolCall.args).then(data => {
+        if (data) {
+          useApprovalStore.getState().updateStatus(toolCall.id, 'preview', undefined, data);
+        }
+      });
+    }
   }
 
   /**

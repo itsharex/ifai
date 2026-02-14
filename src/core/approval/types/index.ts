@@ -23,6 +23,7 @@ export interface IExecutor {
   type: string;
   execute(toolName: string, args: any): Promise<ToolCallResult>;
   undo?(): Promise<boolean>;
+  preview?(toolName: string, args: any): Promise<any>; // 🚀 新增预览支持
 }
 
 export interface ApprovalItem {
@@ -35,6 +36,7 @@ export interface ApprovalItem {
   createdAt: number;
   updatedAt: number;
   result?: ToolCallResult;
+  previewData?: any;      // 🚀 存储 Diff 预览等数据
 }
 
 export interface ApprovalCoordinatorOptions {

@@ -7,7 +7,7 @@ interface ApprovalState {
   
   // Actions
   addItem: (item: Omit<ApprovalItem, 'createdAt' | 'updatedAt' | 'status'>) => void;
-  updateStatus: (id: string, status: ApprovalStatus, result?: ToolCallResult) => void;
+  updateStatus: (id: string, status: ApprovalStatus, result?: ToolCallResult, previewData?: any) => void;
   removeItem: (id: string) => void;
   getItem: (id: string) => ApprovalItem | undefined;
   clear: () => void;
@@ -30,7 +30,7 @@ export const useApprovalStore = create<ApprovalState>()(
         }
       })),
 
-      updateStatus: (id, status, result) => set((state) => {
+      updateStatus: (id, status, result, previewData) => set((state) => {
         const item = state.items[id];
         if (!item) return state;
 
@@ -41,6 +41,7 @@ export const useApprovalStore = create<ApprovalState>()(
               ...item,
               status,
               result: result || item.result,
+              previewData: previewData || item.previewData,
               updatedAt: Date.now(),
             }
           }

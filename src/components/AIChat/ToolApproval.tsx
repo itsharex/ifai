@@ -1,4 +1,6 @@
 import { PivoProjectTree } from "./PivoProjectTree";
+import { useApprovalStore } from '../../core/approval/store/useApprovalStore';
+import { DiffPreview } from './DiffPreview';
 import React, { useState, useLayoutEffect, useMemo } from 'react';
 import { Check, X, Terminal, FilePlus, Eye, FolderOpen, Search, Trash2, ChevronDown, ChevronUp, File, Folder, FileCheck, CheckCircle, XCircle, RotateCcw, Loader2, AlertTriangle } from 'lucide-react';
 import { ToolCall, useChatStore } from '../../stores/useChatStore';
@@ -180,6 +182,10 @@ const FileTreeVisualizer: React.FC<{ paths: string[] }> = ({ paths }) => {
 const MAX_DIFF_SIZE = 5000;
 
 export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool = false, message }: ToolApprovalProps) => {
+    // 🔥 PIVO 2.0: 获取新引擎的审批状态与预览数据
+    const approvalItem = useApprovalStore(state => state.items[toolCall.id]);
+    const previewData = approvalItem?.previewData;
+
     const { t } = useTranslation();
     const settings = useSettingsStore();
     const chatStore = useChatStore();
@@ -212,8 +218,33 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
 
     // 🔥 撤销处理函数
     const handleUndo = async () => {
-      if (!message || !hasRollbackFeature) return;
+      if (!message) return;
 
+      // 🔥 PIVO 2.0: 优先使用新引擎的回滚逻辑
+      const useNewEngine = (settings as any).enableNewApprovalEngine === true;
+      if (useNewEngine && approvalItem) {
+        setIsRollingBack(true);
+        try {
+          const { getApprovalCoordinator } = await import('../../core/approval');
+          const coordinator = getApprovalCoordinator();
+          const executor = coordinator['executors'].get(toolCall.tool);
+          
+          if (executor && executor.undo) {
+            const success = await executor.undo();
+            if (success) {
+              useApprovalStore.getState().updateStatus(toolCall.id, 'undone');
+              toast.success('PIVO: 文件已通过物理快照恢复');
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('[ApprovalEngine] Undo failed:', e);
+        } finally {
+          setIsRollingBack(false);
+        }
+      }
+
+      if (!hasRollbackFeature) return;
       setIsRollingBack(true);
 
       try {
@@ -510,6 +541,15 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                                 streamingKeys={isPartial ? Object.keys(toolCall.args || {}) : []}
                             />
                         </div>
+
+                        {/* 🔥 PIVO 2.0: Diff 预览注入 */}
+                        {previewData && (
+                            <DiffPreview 
+                                oldContent={previewData.oldContent}
+                                newContent={previewData.newContent}
+                                fileName={toolCall.args?.rel_path || toolCall.args?.path || 'unknown'}
+                            />
+                        )}
 
                     </div>
                 )}
