@@ -543,12 +543,17 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                         </div>
 
                         {/* 🔥 PIVO 2.0: Diff 预览注入 - 仅针对文件写入 */}
-                        {previewData && toolCall.tool === 'agent_write_file' && (
+                        {previewData && toolCall.tool === 'agent_write_file' ? (
                             <DiffPreview 
                                 oldContent={previewData.oldContent}
                                 newContent={previewData.newContent}
                                 fileName={toolCall.args?.rel_path || toolCall.args?.path || 'unknown'}
                             />
+                        ) : toolCall.tool === 'agent_write_file' && !isPartial && (
+                            // 🏆 降级保护：如果预览没出来，显示个占位或提示
+                            <div className="mt-3 p-3 bg-gray-800/50 border border-gray-700/30 rounded-xl">
+                                <div className="text-[10px] text-gray-500 italic">正在准备变更预览...</div>
+                            </div>
                         )}
 
                         {/* 🔥 PIVO 2.0: 目录列表预览 */}

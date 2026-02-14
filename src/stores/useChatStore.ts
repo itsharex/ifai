@@ -1632,29 +1632,24 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         };
     });
 
-    // 🚀 v0.3.6: PIVO 2.0 物理授权注入 (高级命令版)
+    // 🚀 v0.3.6: PIVO 2.0 物理授权注入
     const isChinese = i18n.language?.startsWith("zh");
     
     const PIVO_PROMPT = isChinese 
-        ? `【PIVO 2.0 物理工具箱授权】
-请直接调用以下高级物理指令：
+        ? `【物理工具箱授权】
+你现在拥有 PIVO 2.0 全量物理执行权限。请根据需要直接调用以下工具：
+- agent_execute_command: 执行系统命令或查询
+- agent_write_file: 写入或重构代码文件
+- agent_read_file: 读取物理文件内容
+- agent_scan_project: 快速扫描项目全景
 
-1. agent_execute_command: 执行系统命令
-{ "name": "agent_execute_command", "parameters": { "command": "string" } }
-
-2. agent_write_file: 物理写入文件
-{ "name": "agent_write_file", "parameters": { "rel_path": "string", "content": "string" } }
-
-3. agent_scan_project: 扫描全景拓扑
-{ "name": "agent_scan_project", "parameters": { "rel_path": "string" } }
-
-【准则】你现在拥有物理执行权限，请直接调用上述工具。`
+【准则】你是一名资深的物理执行专家，请直接行动，严禁只用文字描述。`
         : `[PIVO 2.0 PHYSICAL TOOL AUTHORIZATION]
-Directly use these advanced commands:
-1. agent_execute_command: { "name": "agent_execute_command", "parameters": { "command": "string" } }
-2. agent_write_file: { "name": "agent_write_file", "parameters": { "rel_path": "string", "content": "string" } }
-3. agent_scan_project: { "name": "agent_scan_project", "parameters": { "rel_path": "string" } }
-CALL THESE TOOLS DIRECTLY.`;
+You have full execution permissions. Directly call:
+- agent_execute_command: execute system commands
+- agent_write_file: write/refactor code
+- agent_read_file: read physical files
+- agent_scan_project: scan project topology.`;
     if (!msgHistory.some(m => m.content === PIVO_PROMPT) && msgHistory.length < 5) {
         msgHistory.unshift({ role: "system", content: PIVO_PROMPT });
     }
@@ -1831,11 +1826,17 @@ CALL THESE TOOLS DIRECTLY.`;
         flushUpdates();
         
         // 🚀 v0.3.6: 状态自愈巡检 (State Self-Healing)
-        // 强制关闭所有残留的 isPartial 状态，防止 UI 永久卡在“生成中”
+        // 强制关闭所有残留的 isPartial 状态，并物理还原 args
         coreUseChatStore.setState(state => ({
             messages: state.messages.map(m => m.id === assistantMsgId ? {
                 ...m,
-                toolCalls: m.toolCalls?.map(tc => ({ ...tc, isPartial: false }))
+                toolCalls: m.toolCalls?.map(tc => {
+                    let finalArgs = tc.args || {};
+                    if (Object.keys(finalArgs).length === 0 && (tc as any).function?.arguments) {
+                        try { finalArgs = JSON.parse((tc as any).function.arguments); } catch (e) {}
+                    }
+                    return { ...tc, isPartial: false, args: finalArgs };
+                })
             } : m)
         }));
 
@@ -2173,23 +2174,41 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
                         const idx = existingCalls.findIndex(tc => (toolCallUpdate.id && tc.id === toolCallUpdate.id) || (toolCallUpdate.id === null && (tc as any).index === toolCallUpdate.index));
 
-                        if (idx !== -1) {
+                                                if (idx !== -1) {
 
-                            const tc = existingCalls[idx];
+                                                    const tc = existingCalls[idx];
 
-                            const argsStr = ((tc as any).function?.arguments || '') + newArgs;
+                                                    const argsStr = ((tc as any).function?.arguments || '') + newArgs;
 
-                            let parsed = { ...tc.args };
+                                                    
 
-                            try { parsed = JSON.parse(argsStr); } catch {
-                                const match = argsStr.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-                                if (match) parsed.content = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-                            }
+                                                    // 🏆 物理加固：确保 arguments 源码被完整保留
 
-                            const updated = [...existingCalls];
-                            updated[idx] = { ...tc, args: parsed, function: { name: toolName, arguments: argsStr }, isPartial: true } as any;
-                            newMsg.toolCalls = updated;
-                        } else {
+                                                    const updated = [...existingCalls];
+
+                                                    let parsed = { ...tc.args };
+
+                                                    try { parsed = JSON.parse(argsStr); } catch (e) { /* 解析中状态 */ }
+
+                                                    
+
+                                                    updated[idx] = { 
+
+                                                        ...tc, 
+
+                                                        args: parsed, 
+
+                                                        function: { name: toolName, arguments: argsStr }, 
+
+                                                        isPartial: true 
+
+                                                    } as any;
+
+                                                    newMsg.toolCalls = updated;
+
+                                                }
+
+                         else {
                             const tid = toolCallUpdate.id || crypto.randomUUID();
                             const tc = { id: tid, type: 'function' as const, tool: toolName, args: {}, function: { name: toolName, arguments: newArgs }, status: 'pending' as const, isPartial: true, index: toolCallUpdate.index } as any;
                             newMsg.toolCalls = [...existingCalls, tc];
@@ -2226,7 +2245,22 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
         console.log("[Chat/GenerateResponse] Stream finished");
 
-        localMessagesBuffer = localMessagesBuffer.map(m => (m.id === assistantMsgId && m.toolCalls) ? { ...m, toolCalls: m.toolCalls.map(tc => ({ ...tc, isPartial: false })) } : m);
+        localMessagesBuffer = localMessagesBuffer.map(m => {
+            if (m.id === assistantMsgId && m.toolCalls) {
+                return {
+                    ...m,
+                    toolCalls: m.toolCalls.map(tc => {
+                        let finalArgs = tc.args || {};
+                        // 🏆 物理还原：防止流结束一瞬间参数丢失
+                        if (Object.keys(finalArgs).length === 0 && (tc as any).function?.arguments) {
+                            try { finalArgs = JSON.parse((tc as any).function.arguments); } catch (e) {}
+                        }
+                        return { ...tc, isPartial: false, args: finalArgs };
+                    })
+                };
+            }
+            return m;
+        });
 
         coreUseChatStore.setState({ messages: [...localMessagesBuffer] });
 
@@ -2374,12 +2408,12 @@ const patchedApproveToolCall = async (
     const settings = useSettingsStore.getState();
     const useNewEngine = settings.enableNewApprovalEngine !== false; // 默认为开启
 
-    // 🏆 PIVO 2.0: 增强拦截逻辑
+    // 🏆 PIVO 2.0: 增强拦截逻辑 (物理级加固版)
     const state = coreUseChatStore.getState();
     const message = state.messages.find(m => m.id === messageId);
     const toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
     const toolName = toolCall?.tool || '';
-    const agentId = (toolCall as any)?.agentId; // 🔍 检查是否属于某个 Agent
+    const agentId = (toolCall as any)?.agentId;
 
     const isSupportedByNewEngine = [
         "agent_write_file", "agent_read_file", "agent_list_dir", 
@@ -2389,82 +2423,55 @@ const patchedApproveToolCall = async (
         "get_file_symbols"
     ].includes(toolName);
 
-    // 🏆 PIVO 2.0: 仅拦截非 Agent 发起的原生工具调用
     if (useNewEngine && isSupportedByNewEngine && !agentId) {
         console.log(`[ApprovalEngine] 🛡️ INTERCEPTED: ${toolName} | ID: ${toolCallId}`);
         try {
             const { getApprovalCoordinator } = await import('../core/approval');
             const coordinator = getApprovalCoordinator();
             
-            // 确保审批项存在 (如果在流式输出时没创建，这里补上)
-            const state = coreUseChatStore.getState();
-            const message = state.messages.find(m => m.id === messageId);
-            const toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
-            
-            // 🏆 核心修复：重新从 Store 获取最新的 Message 状态
-            // 防止在流式传输未完全结束时，拦截器拿到了旧的（部分）参数
+            // 物理双轨抓取：强制读取原始字符串源码
             const latestState = coreUseChatStore.getState();
             const latestMsg = latestState.messages.find(m => m.id === messageId);
             const latestToolCall = latestMsg?.toolCalls?.find(tc => tc.id === toolCallId);
             
             if (latestToolCall) {
-                console.log(`[ApprovalEngine] 🔗 Starting PIVO lifecycle for ${toolName}...`);
-                
-                // 🏆 深度参数回溯：防止某些模型在流结束后 args 仍未正确同步
                 let finalArgs = latestToolCall.args || {};
-                if (Object.keys(finalArgs).length === 0 && (latestToolCall as any).function?.arguments) {
+                const rawArgsStr = (latestToolCall as any).function?.arguments || "";
+                
+                // 🏆 核心逻辑：如果 args 为空，物理强力反序列化源码
+                if (rawArgsStr) {
                     try {
-                        const rawArgs = (latestToolCall as any).function.arguments;
-                        finalArgs = JSON.parse(rawArgs);
-                        console.log(`[ApprovalEngine] 🧠 Deep recovery successful:`, finalArgs);
+                        const parsed = JSON.parse(rawArgsStr);
+                        finalArgs = { ...finalArgs, ...parsed };
+                        console.log(`[ApprovalEngine] 🧠 Physical recovery success for ${toolName}.`);
                     } catch (e) {
-                        console.warn(`[ApprovalEngine] ⚠️ Failed to recover args from raw string:`, e);
+                        const m = rawArgsStr.match(/"rel_path"\s*:\s*"([^"]+)"/);
+                        if (m) finalArgs.rel_path = m[1];
                     }
                 }
 
-                await coordinator.createApproval(messageId, {
-                    id: latestToolCall.id,
-                    tool: latestToolCall.tool,
-                    args: finalArgs
-                });
-                
+                await coordinator.createApproval(messageId, { id: latestToolCall.id, tool: latestToolCall.tool, args: finalArgs });
                 const result = await coordinator.approve(toolCallId);
-                console.log(`[ApprovalEngine] ✅ PIVO Execution Result:`, result.success ? "SUCCESS" : "FAILED");
                 
-                // 同步状态到旧 Store
-                console.log(`[ApprovalEngine] 📦 Synchronizing back to ChatStore...`);
+                // 同步结果
                 coreUseChatStore.setState(s => ({
                     messages: s.messages.map(m => m.id === messageId ? {
                         ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { 
-                            ...tc, 
-                            status: result.success ? "completed" as const : "failed" as const, 
-                            result: result.content || result.error 
+                            ...tc, status: result.success ? "completed" as const : "failed" as const, result: result.content || result.error 
                         } : tc)
                     } : m)
                 }));
 
-                // 添加工具结果消息
-                coreUseChatStore.getState().addMessage({
-                    id: crypto.randomUUID(),
-                    role: "tool",
-                    content: result.content || result.error || "",
-                    tool_call_id: toolCallId
-                });
+                coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: result.content || result.error || "", tool_call_id: toolCallId });
 
-                // 自动续航逻辑保持一致
                 if (!options?.skipContinue && result.success) {
                     const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-                    if (providerConfig) {
-                        setTimeout(async () => {
-                            await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig);
-                        }, 300);
-                    }
+                    if (providerConfig) setTimeout(async () => { await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig); }, 300);
                 }
                 return;
             }
         } catch (e) {
-            console.error('[ApprovalEngine] New engine failed, falling back to legacy:', e);
-            // 失败后继续执行旧逻辑 (降级)
+            console.error('[ApprovalEngine] Critical Failure:', e);
         }
     }
 
