@@ -2344,6 +2344,66 @@ const patchedApproveToolCall = async (
     toolCallId: string,
     options?: { skipContinue?: boolean }
 ) => {
+    // 🔥 PIVO 2.0: 结构化审批引擎拦截
+    const settings = useSettingsStore.getState();
+    const useNewEngine = (settings as any).enableNewApprovalEngine === true;
+
+    if (useNewEngine) {
+        console.log(`[ApprovalEngine] 🛡️ Intercepting tool call: ${toolCallId} (${messageId})`);
+        try {
+            const { getApprovalCoordinator } = await import('../core/approval');
+            const coordinator = getApprovalCoordinator();
+            
+            // 确保审批项存在 (如果在流式输出时没创建，这里补上)
+            const state = coreUseChatStore.getState();
+            const message = state.messages.find(m => m.id === messageId);
+            const toolCall = message?.toolCalls?.find(tc => tc.id === toolCallId);
+            
+            if (toolCall) {
+                await coordinator.createApproval(messageId, {
+                    id: toolCall.id,
+                    tool: toolCall.tool,
+                    args: toolCall.args
+                });
+                
+                const result = await coordinator.approve(toolCallId);
+                
+                // 同步状态到旧 Store
+                coreUseChatStore.setState(s => ({
+                    messages: s.messages.map(m => m.id === messageId ? {
+                        ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { 
+                            ...tc, 
+                            status: result.success ? "completed" as const : "failed" as const, 
+                            result: result.content || result.error 
+                        } : tc)
+                    } : m)
+                }));
+
+                // 添加工具结果消息
+                coreUseChatStore.getState().addMessage({
+                    id: crypto.randomUUID(),
+                    role: "tool",
+                    content: result.content || result.error || "",
+                    tool_call_id: toolCallId
+                });
+
+                // 自动续航逻辑保持一致
+                if (!options?.skipContinue && result.success) {
+                    const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+                    if (providerConfig) {
+                        setTimeout(async () => {
+                            await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig);
+                        }, 300);
+                    }
+                }
+                return;
+            }
+        } catch (e) {
+            console.error('[ApprovalEngine] New engine failed, falling back to legacy:', e);
+            // 失败后继续执行旧逻辑 (降级)
+        }
+    }
+
     return await globalConcurrencyManager.run(async () => {
         console.log(`[useChatStore] patchedApproveToolCall called - messageId: ${messageId}, toolCallId: ${toolCallId}`);
         const state = coreUseChatStore.getState();

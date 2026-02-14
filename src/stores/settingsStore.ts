@@ -84,6 +84,7 @@ export interface SettingsState {
 
   // Agent (保留兼容性)
   agentAutoApprove: boolean;
+  enableNewApprovalEngine: boolean; // 🔥 PIVO 2.0 新引擎开关
   enableNaturalLanguageAgentTrigger: boolean;
   agentTriggerConfidenceThreshold: number;
 
@@ -195,6 +196,7 @@ export const useSettingsStore = create<SettingsState>()(
       trustedSessions: {},
 
       agentAutoApprove: false,
+      enableNewApprovalEngine: false,
       enableNaturalLanguageAgentTrigger: true,
       agentTriggerConfidenceThreshold: 0.6,  // 降低阈值以提高触发敏感度
 
