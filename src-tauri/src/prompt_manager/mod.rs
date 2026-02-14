@@ -138,16 +138,38 @@ pub fn get_agent_prompt(agent_type: &str, project_root: &str, task_description: 
     prompt
 }
 
-fn extract_proposal_context(task: &str) -> (String, Option<String>) {
+pub(crate) fn extract_proposal_context(task: &str) -> (String, Option<String>) {
     use regex::Regex;
-    let re = Regex::new(r"^\\[PROPOSAL:([^\\]]+)\\]\\s*").unwrap();
-    if let Some(caps) = re.captures(task) {
-        if let Some(proposal_id) = caps.get(1) {
-            let clean_task = re.replace(task, "").to_string();
-            return (clean_task, Some(proposal_id.as_str().to_string()));
+    // 🏆 FIXED: 使用原始字符串 r"..." 修复双重转义导致的崩溃
+    if let Ok(re) = Regex::new(r"^\[PROPOSAL:([^\]]+)\]\s*") {
+        if let Some(caps) = re.captures(task) {
+            if let Some(proposal_id) = caps.get(1) {
+                let clean_task = re.replace(task, "").to_string();
+                return (clean_task, Some(proposal_id.as_str().to_string()));
+            }
         }
     }
     (task.to_string(), None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_proposal_context;
+
+    #[test]
+    fn test_extract_proposal_context_valid() {
+        let input = "[PROPOSAL:12345] Refactor core";
+        let (task, id) = extract_proposal_context(input);
+        assert_eq!(id, Some("12345".to_string()));
+        assert_eq!(task, "Refactor core");
+    }
+
+    #[test]
+    fn test_extract_proposal_context_safety() {
+        let input = "[PROPOSAL: incomplete";
+        let (task, id) = extract_proposal_context(input);
+        assert_eq!(id, None);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

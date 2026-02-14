@@ -716,6 +716,7 @@ const multimodalCache = new Map<string, any[]>();
 
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string) => {
 
+    const { addMessage } = coreUseChatStore.getState();
     const callId = crypto.randomUUID().slice(0, 8);
     console.log(`>>> [${callId}] patchedSendMessage called:`, typeof content === 'string' ? content.slice(0, 50) : 'array');
 
@@ -822,8 +823,6 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
             const agentTypeBase = command.slice(1);
 
             const agentName = agentTypeBase.charAt(0).toUpperCase() + agentTypeBase.slice(1) + " Agent";
-
-            const { addMessage } = coreUseChatStore.getState();
 
             userMsgId = crypto.randomUUID();
 
@@ -957,91 +956,57 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         // Log intent recognition result for debugging
         console.log('[NaturalLanguageTrigger] Intent recognized:', intentResult);
 
-        if (shouldTriggerAgent(intentResult, confidenceThreshold)) {
-            const isVibeBlocked = editorMode === "vibe" && (intentResult.category !== 'read' && intentResult.category !== 'demo');
+                if (shouldTriggerAgent(intentResult, confidenceThreshold)) {
 
-            if (isVibeBlocked) {
-                console.log('[NaturalLanguageTrigger] vibe mode: skipping destructive intent');
-            } else {
-                const agentType = intentResult.type;
-                const agentTypeBase = agentType.slice(1); // Remove '/' prefix
+                    const isVibeBlocked = editorMode === "vibe" && (intentResult.category !== 'read' && intentResult.category !== 'demo');
 
-                // 意图类型到 Agent 名称的映射
-                const agentNameMap: Record<string, string> = {
-                    'proposal': 'proposal-generator',
-                };
+        
 
-                const agentName = agentNameMap[agentTypeBase] ||
-                    (agentTypeBase.charAt(0).toUpperCase() + agentTypeBase.slice(1) + " Agent");
+                    if (isVibeBlocked) {
 
-                console.log('[NaturalLanguageTrigger] Mapped agent:', {
-                    intentType: agentType,
-                    agentTypeBase,
-                    agentName,
-                    originalIntent: intentResult
-                });
+                        console.log('[NaturalLanguageTrigger] vibe mode: skipping destructive intent');
 
-                const args = intentResult.args || textInput;
-                const { addMessage } = coreUseChatStore.getState();
+                                        } else {
 
-                // 1. 添加用户消息（如果还没添加）
-                if (!userMessageAdded) {
-                    userMsgId = crypto.randomUUID();
-                    addMessage({
-                        id: userMsgId,
-                        role: 'user',
-                        content: textInput,
-                        multiModalContent: typeof content === 'string' ? [{type: 'text', text: content}] : content
-                    });
-                    userMessageAdded = true;
+                                            // 🏆 PIVO 3.0: 废除独立 Agent 逻辑，回归 Chat-Native
+
+                                            console.log('[NaturalLanguageTrigger] 🚀 Intercepted intent, redirecting to PIVO flow:', intentResult.type);
+
+                                            
+
+                                            // 1. 添加用户消息（如果还没添加）
+
+                                            if (!userMessageAdded) {
+
+                                                userMsgId = crypto.randomUUID();
+
+                                                addMessage({
+
+                                                    id: userMsgId,
+
+                                                    role: 'user',
+
+                                                    content: textInput,
+
+                                                    multiModalContent: typeof content === 'string' ? [{type: 'text', text: content}] : content
+
+                                                });
+
+                                                userMessageAdded = true;
+
+                                            }
+
+                            
+
+                                            // 🏆 FIXED: 不再直接 return，允许流程继续滑入下方的 AI 请求逻辑
+
+                                        }
+
+                    
+
                 }
 
-                try {
-                    const assistantMsgId = crypto.randomUUID();
-                    const isAutoApprovable = editorMode === "vibe" && (intentResult.category === 'read' || intentResult.category === 'demo');
-
-                    // @ts-ignore - custom property
-                    addMessage({
-                        id: assistantMsgId,
-                        role: 'assistant',
-                        content: `_[自动识别意图: ${formatAgentName(agentType)}，置信度: ${(intentResult.confidence * 100).toFixed(0)}%]_\n\n`,
-                        // @ts-ignore - custom property
-                        agentId: undefined,
-                        isAgentLive: true,
-                        // 🔥 为符合条件的 Vibe 意图开启自动批准
-                        autoApproveTools: isAutoApprovable 
-                    });
-
-                    const agentId = await useAgentStore.getState().launchAgent(
-                        agentName,
-                        args,
-                        assistantMsgId,
-                        undefined, // threadId
-                        isAutoApprovable
-                    );
-
-                    const messages = coreUseChatStore.getState().messages;
-                    const msg = messages.find(m => m.id === assistantMsgId);
-                    if (msg) {
-                        // @ts-ignore
-                        msg.agentId = agentId;
-                        coreUseChatStore.setState({ messages: [...messages] });
-                    }
-
-                    console.log('[NaturalLanguageTrigger] Agent launched successfully:', agentId);
-                } catch (e) {
-                    addMessage({
-                        id: crypto.randomUUID(),
-                        role: 'assistant',
-                        content: `❌ **无法启动Agent**\n\n错误: ${String(e)}`
-                    });
-                    console.error('[NaturalLanguageTrigger] Failed to launch agent:', e);
-                }
-
-                coreUseChatStore.setState({ isLoading: false });
-                return;
-            }
-        } else if (intentResult && intentResult.confidence > 0.5) {
+         else if (intentResult && intentResult.confidence > 0.5) {
 
             // Medium confidence: Log for future improvement
 
@@ -1114,8 +1079,6 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         // If local model can handle this
 
         if (preprocessResult && preprocessResult.should_use_local) {
-
-            const { addMessage } = coreUseChatStore.getState();
 
             // 🔥 v0.3.0 修复：先检查是否有实际的本地响应或工具调用
 
