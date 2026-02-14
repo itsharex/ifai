@@ -398,25 +398,6 @@ export const SettingsModal = () => {
                       className="ml-4 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-
-                  <div className="flex items-center justify-between mt-4 p-3 bg-blue-900/10 rounded-lg border border-blue-500/20">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-blue-300">
-                        启用新版审批引擎 (PIVO 2.0)
-                      </label>
-                      <p className="text-xs text-blue-400/70 mt-1">
-                        更稳定的结构化审批流，支持原子化回滚与风险分级。
-                      </p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.enableNewApprovalEngine || false}
-                      onChange={(e) => settings.updateSettings({
-                        enableNewApprovalEngine: e.target.checked
-                      })}
-                      className="ml-4 h-4 w-4 rounded border-blue-500/30 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
                 </div>
               </div>
             )}

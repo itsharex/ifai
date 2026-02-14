@@ -2370,10 +2370,9 @@ const patchedApproveToolCall = async (
     toolCallId: string,
     options?: { skipContinue?: boolean }
 ) => {
-    // 🔥 PIVO 2.0: 结构化审批引擎拦截
+    // 🔥 PIVO 2.0: 结构化审批引擎（标准路径）
     const settings = useSettingsStore.getState();
-    // 🏆 FIXED: 强制启用新引擎，消除配置持久化带来的不确定性
-    const useNewEngine = true; // (settings as any).enableNewApprovalEngine === true;
+    const useNewEngine = settings.enableNewApprovalEngine !== false; // 默认为开启
 
     // 🏆 PIVO 2.0: 增强拦截逻辑
     const state = coreUseChatStore.getState();

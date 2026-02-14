@@ -196,7 +196,7 @@ export const useSettingsStore = create<SettingsState>()(
       trustedSessions: {},
 
       agentAutoApprove: false,
-      enableNewApprovalEngine: false,
+      enableNewApprovalEngine: true, // 🔥 PIVO 2.0 现已成为默认标准
       enableNaturalLanguageAgentTrigger: true,
       agentTriggerConfidenceThreshold: 0.6,  // 降低阈值以提高触发敏感度
 
