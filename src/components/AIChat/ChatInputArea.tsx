@@ -36,6 +36,10 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
   const modelPanelRef = useRef<HTMLDivElement>(null);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const commandListRef = useRef<any>(null);
+  const fileSearchRef = useRef<any>(null);
+  const symbolSearchRef = useRef<any>(null);
+  
   const { sendMessage, messages } = useChatStore();
   const { providers, currentProviderId, currentModel } = useSettingsStore();
   const { allFilePaths, refreshFileTree } = useFileStore();
@@ -188,6 +192,21 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const isPanelOpen = showMention || showSymbol || showCommands;
+
+    // 🏆 v0.4.1: 事件转发机制 - 将键盘事件路由到当前活跃的面板
+    if (isPanelOpen) {
+      let handled = false;
+      if (showCommands && commandListRef.current) {
+        handled = commandListRef.current.handleKeyDown(e);
+      } else if (showMention && fileSearchRef.current) {
+        handled = fileSearchRef.current.handleKeyDown(e);
+      } else if (showSymbol && symbolSearchRef.current) {
+        handled = symbolSearchRef.current.handleKeyDown(e);
+      }
+      
+      if (handled) return;
+    }
+
     if (e.key === 'Enter' && !e.shiftKey && !isPanelOpen) { e.preventDefault(); handleSend(); }
     else if (e.key === 'ArrowUp' && !isPanelOpen && (input === '' || historyIndex !== -1)) {
       if (userHistory.length > 0 && historyIndex < userHistory.length - 1) {
@@ -208,9 +227,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
 
   return (
     <div className="relative group px-1" data-testid="chat-input-area" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} onPaste={handlePaste}>
-      {showMention && <FuzzyFileSearch filter={mentionFilter} onSelect={handleSelectFile} onClose={() => setShowMention(false)} />}
-      {showSymbol && <SymbolSearch filter={symbolFilter} onSelect={handleSelectSymbol} onClose={() => setShowSymbol(false)} />}
-      {showCommands && <SlashCommandList filter={input} onSelect={handleSelectCommand} onClose={() => setShowCommands(false)} />}
+      {showMention && <FuzzyFileSearch ref={fileSearchRef} filter={mentionFilter} onSelect={handleSelectFile} onClose={() => setShowMention(false)} />}
+      {showSymbol && <SymbolSearch ref={symbolSearchRef} filter={symbolFilter} onSelect={handleSelectSymbol} onClose={() => setShowSymbol(false)} />}
+      {showCommands && <SlashCommandList ref={commandListRef} filter={input} onSelect={handleSelectCommand} onClose={() => setShowCommands(false)} />}
 
       <AnimatePresence>
         {isDragging && (

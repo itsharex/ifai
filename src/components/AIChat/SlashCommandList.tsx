@@ -105,6 +105,8 @@ export const SlashCommandList = React.forwardRef<SlashCommandListHandle, Props>(
         {filteredCommands.map((cmd, index) => (
           <div
             key={cmd.id}
+            data-testid={`slash-command-item-${cmd.id}`}
+            data-selected={index === selectedIndex}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-md cursor-pointer transition-all duration-75 group ${
               index === selectedIndex
                 ? 'bg-blue-50 dark:bg-blue-900/20'

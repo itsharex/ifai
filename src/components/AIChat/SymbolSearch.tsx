@@ -19,7 +19,8 @@ interface SymbolSearchProps {
 /**
  * v0.3.5: 顶级符号引用系统 (#) - 模糊搜索列表
  */
-export const SymbolSearch: React.FC<SymbolSearchProps> = ({ filter, onSelect, onClose }) => {
+export const SymbolSearch = React.forwardRef((props: SymbolSearchProps, ref: React.Ref<any>) => {
+  const { filter, onSelect, onClose } = props;
   const [results, setResults] = useState<SymbolInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -37,7 +38,6 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ filter, onSelect, on
       setLoading(true);
 
       try {
-        console.log(`[SymbolSearch] Scanning: ${filePath}`);
         const symbols = await invoke<SymbolInfo[]>('get_file_symbols', { path: filePath });
         const searchStr = filter.toLowerCase();
         
@@ -57,26 +57,31 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ filter, onSelect, on
     fetchSymbols();
   }, [filter, filePath]);
 
-  // 键盘导航
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+  // 🏆 v0.4.1: 通过 Imperative Handle 暴露键盘处理逻辑给父组件
+  React.useImperativeHandle(ref, () => ({
+    handleKeyDown: (e: React.KeyboardEvent | KeyboardEvent) => {
+      if (results.length === 0) return false;
+
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex(prev => (prev + 1) % Math.max(1, results.length));
+        return true;
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setSelectedIndex(prev => (prev - 1 + results.length) % Math.max(1, results.length));
+        return true;
       } else if (e.key === 'Enter' && results.length > 0) {
         e.preventDefault();
         onSelect(results[selectedIndex]);
+        return true;
       } else if (e.key === 'Escape') {
+        e.preventDefault();
         onClose();
+        return true;
       }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [results, selectedIndex, onSelect, onClose]);
+      return false;
+    }
+  }));
 
   return (
     <div 
@@ -122,4 +127,4 @@ export const SymbolSearch: React.FC<SymbolSearchProps> = ({ filter, onSelect, on
       </div>
     </div>
   );
-};
+});

@@ -12,7 +12,8 @@ interface FuzzyFileSearchProps {
 /**
  * v0.3.5: 顶级文件引用系统 - 模糊搜索列表
  */
-export const FuzzyFileSearch: React.FC<FuzzyFileSearchProps> = ({ filter, onSelect, onClose }) => {
+export const FuzzyFileSearch = React.forwardRef((props: FuzzyFileSearchProps, ref: React.Ref<any>) => {
+  const { filter, onSelect, onClose } = props;
   const [results, setResults] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -26,8 +27,6 @@ export const FuzzyFileSearch: React.FC<FuzzyFileSearchProps> = ({ filter, onSele
     // 如果 store 为空，尝试回退到物理全局变量
     const sourceList = allFilePaths.length > 0 ? allFilePaths : ((window as any).__IFAI_ALL_FILES__ || []);
     
-    console.log(`[Mention] Searching "${searchStr}" in ${sourceList.length} files`);
-    
     const filtered = sourceList
       .filter((f: string) => f.toLowerCase().includes(searchStr))
       .slice(0, 10);
@@ -36,26 +35,31 @@ export const FuzzyFileSearch: React.FC<FuzzyFileSearchProps> = ({ filter, onSele
     setSelectedIndex(0);
   }, [filter, allFilePaths]);
 
-  // 处理键盘导航
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+  // 🏆 v0.4.1: 通过 Imperative Handle 暴露键盘处理逻辑给父组件
+  React.useImperativeHandle(ref, () => ({
+    handleKeyDown: (e: React.KeyboardEvent | KeyboardEvent) => {
+      if (results.length === 0) return false;
+
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex(prev => (prev + 1) % Math.max(1, results.length));
+        return true;
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setSelectedIndex(prev => (prev - 1 + results.length) % Math.max(1, results.length));
+        return true;
       } else if (e.key === 'Enter' && results.length > 0) {
         e.preventDefault();
         onSelect(results[selectedIndex]);
+        return true;
       } else if (e.key === 'Escape') {
+        e.preventDefault();
         onClose();
+        return true;
       }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [results, selectedIndex, onSelect, onClose]);
+      return false;
+    }
+  }));
 
   if (results.length === 0 && filter.length > 1) {
     return (
@@ -108,4 +112,4 @@ export const FuzzyFileSearch: React.FC<FuzzyFileSearchProps> = ({ filter, onSele
       </div>
     </div>
   );
-};
+});
