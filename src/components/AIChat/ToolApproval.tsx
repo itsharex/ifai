@@ -583,6 +583,17 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                             </div>
                         )}
 
+                        {/* 🔥 PIVO 2.0: 符号分析预览 */}
+                        {previewData && (toolCall.tool === 'get_file_symbols' || toolCall.tool === 'agent_list_functions') && (
+                            <div className="mt-3 p-3 bg-indigo-500/5 border border-indigo-500/20 rounded-xl flex items-start gap-3">
+                                <Search className="text-indigo-400 shrink-0" size={16} />
+                                <div>
+                                    <div className="text-[10px] font-bold text-indigo-300 uppercase">{previewData.toolType}预览</div>
+                                    <div className="text-[11px] text-indigo-400/80 mt-0.5 italic">正在深度解析代码语义: {previewData.fileName}</div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* 🔥 PIVO 2.0: Bash 风险预警 */}
                         {previewData && toolCall.tool === 'bash' && previewData.isDestructive && (
                             <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3">

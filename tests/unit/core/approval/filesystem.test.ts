@@ -16,8 +16,7 @@ describe('FileSystemExecutor', () => {
     mockInvoker.mockResolvedValueOnce({ content: 'old-content' }) // for backup
                .mockResolvedValueOnce({ content: 'success' });   // for actual write
 
-    const result = await executor.execute({
-      toolName: 'agent_write_file',
+    const result = await executor.execute('agent_write_file', {
       rel_path: 'test.ts',
       content: 'new-content'
     });
@@ -33,7 +32,7 @@ describe('FileSystemExecutor', () => {
     mockInvoker.mockResolvedValueOnce({ content: 'original-text' })
                .mockResolvedValueOnce('ok');
     
-    await executor.execute({ toolName: 'agent_write_file', rel_path: 'todo.md', content: 'v2' });
+    await executor.execute('agent_write_file', { rel_path: 'todo.md', content: 'v2' });
 
     // 2. 执行 Undo
     mockInvoker.mockResolvedValueOnce('ok'); // for undo write
@@ -53,7 +52,7 @@ describe('FileSystemExecutor', () => {
     mockInvoker.mockRejectedValueOnce(new Error('File not found'))
                .mockResolvedValueOnce('ok');
     
-    await executor.execute({ toolName: 'agent_write_file', rel_path: 'new.ts', content: 'init' });
+    await executor.execute('agent_write_file', { rel_path: 'new.ts', content: 'init' });
 
     // 2. 执行 Undo
     mockInvoker.mockResolvedValueOnce('ok');

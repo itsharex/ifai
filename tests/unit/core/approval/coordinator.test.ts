@@ -40,7 +40,7 @@ describe('ApprovalCoordinator', () => {
     
     const updatedItem = useApprovalStore.getState().getItem(toolCallId);
     expect(updatedItem?.status).toBe('completed');
-    expect(mockExecutor.execute).toHaveBeenCalledWith({ input: 'hello' });
+    expect(mockExecutor.execute).toHaveBeenCalledWith('test-tool', { input: 'hello' });
   });
 
   it('当执行器不存在时应该抛出错误', async () => {
