@@ -313,7 +313,7 @@ registerStores(useFileStore.getState, useSettingsStore.getState, useThreadStore.
 // =============================================================================
 
 const originalSendMessage = coreUseChatStore.getState().sendMessage;
-
+const originalAddMessage = coreUseChatStore.getState().addMessage;
 const originalApproveToolCall = coreUseChatStore.getState().approveToolCall;
 
 const originalRejectToolCall = coreUseChatStore.getState().rejectToolCall;
@@ -714,6 +714,59 @@ async function selectMessagesForContext(
 // 将大体积 Base64 图片保留在内存中，不存入受限的持久化存储
 const multimodalCache = new Map<string, any[]>();
 
+/**
+ * 🏆 v0.4.1: 全局消息拦截器 (Store-Level Interceptor)
+ * 
+ * 物理级加固：拦截所有工具消息结果，自动转换特定的工具输出为 UI 元数据。
+ */
+const patchedAddMessage = (message: Message) => {
+    // 1. 物理拦截 agent_list_dir 结果
+    if (message.role === 'tool' && typeof message.content === 'string') {
+        const content = message.content.trim();
+        if (content.startsWith('[') && content.endsWith(']')) {
+            try {
+                const files = JSON.parse(content);
+                if (Array.isArray(files) && files.length > 0) {
+                    const isFileList = files.every(f => typeof f === 'string');
+                    if (isFileList) {
+                        // 注入 ExploreProgress 结构
+                        (message as any).exploreProgress = {
+                            phase: 'completed',
+                            progress: { total: files.length, scanned: files.length, byDirectory: {} },
+                            scannedFiles: files
+                        };
+                        console.log("[ChatStore] 🌳 Global Interceptor: Injected exploreProgress to tool result");
+
+                        // 2. 物理同步：查找并更新父助理消息
+                        // 稍微延迟确保消息已入库或状态已稳定
+                        setTimeout(() => {
+                            const state = coreUseChatStore.getState();
+                            const msgs = state.messages;
+                            const idx = msgs.findIndex(m => m.id === message.id);
+                            if (idx > 0) {
+                                for (let i = idx - 1; i >= 0; i--) {
+                                    if (msgs[i].role === 'assistant') {
+                                        console.log("[ChatStore] 🌳 Proactively syncing exploreProgress to assistant bubble:", msgs[i].id);
+                                        coreUseChatStore.setState(s => ({
+                                            messages: s.messages.map(m => m.id === msgs[i].id ? 
+                                                { ...m, exploreProgress: (message as any).exploreProgress } : m)
+                                        }));
+                                        break;
+                                    }
+                                }
+                            }
+                        }, 50);
+                    }
+                }
+            } catch (e) {
+                // Ignore parse errors
+            }
+        }
+    }
+
+    return originalAddMessage(message);
+};
+
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string) => {
 
     const { addMessage } = coreUseChatStore.getState();
@@ -1015,23 +1068,17 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
                 // 有本地内容，执行本地处理逻辑...
 
-            // Add user message
-
-            const userMsgId = crypto.randomUUID();
-
-            addMessage({
-
-                id: userMsgId,
-
-                role: 'user',
-
-                content: textInput,
-
-                multiModalContent: typeof content === 'string' ? [{type: 'text', text: content}] : content
-
-            });
-
-            userMessageAdded = true;
+            // Add user message (if not already added by slash commands or natural language trigger)
+            if (!userMessageAdded) {
+                const userMsgId = crypto.randomUUID();
+                addMessage({
+                    id: userMsgId,
+                    role: 'user',
+                    content: textInput,
+                    multiModalContent: typeof content === 'string' ? [{type: 'text', text: content}] : content
+                });
+                userMessageAdded = true;
+            }
 
             // 🔥 自动更新线程标题（本地模型路径也触发）
 
@@ -2424,6 +2471,8 @@ const patchedApproveToolCall = async (
                     stringResult = typeof outputContent === "object" ? JSON.stringify(outputContent) : String(outputContent);
                 }
 
+                // 🏆 v0.4.1: 逻辑已迁移至全局 addMessage 拦截器 (patchedAddMessage)
+                // 这里只需简单更新工具状态，UI 元数据注入将自动发生
                 coreUseChatStore.setState(s => ({
                     messages: s.messages.map(m => m.id === messageId ? {
                         ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { ...tc, status: "completed" as const, result: stringResult } : tc)
@@ -2473,6 +2522,7 @@ const patchedRejectToolCall = async (messageId: string, toolCallId: string) => {
 // Apply patches to the store
 coreUseChatStore.setState({
     sendMessage: patchedSendMessage,
+    addMessage: patchedAddMessage,
     generateResponse: patchedGenerateResponse,
     approveToolCall: patchedApproveToolCall,
     rejectToolCall: patchedRejectToolCall,

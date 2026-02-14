@@ -8,6 +8,7 @@ import { ToolApproval } from './ToolApproval';
 import { ToolBatchApproval } from './ToolBatchApproval';
 import { ExploreProgress } from './ExploreProgress';
 import { ExploreProgress as ExploreProgressNew } from './ExploreProgressNew';
+import { PivoProjectTree } from './PivoProjectTree';
 import { TaskSummary } from './TaskSummary';
 import { TaskCompletionBanner } from './TaskCompletionBanner';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +18,30 @@ import { TaskBreakdownViewer } from '../TaskBreakdown/TaskBreakdownViewer';
 import { TaskBreakdown } from '../../types/taskBreakdown';
 import { MarkdownRenderer, SimpleMarkdownRenderer } from './MarkdownRenderer';
 import styles from './MessageItem.module.css';
+/**
+ * 将平铺的文件列表转换为 PivoProjectTree 所需的嵌套对象结构
+ * @param files 文件路径数组
+ * @returns 嵌套结构对象
+ */
+function filesToStructure(files: string[]): any {
+  const structure: any = {};
+  files.forEach(path => {
+    const parts = path.split('/').filter(p => p.length > 0);
+    let current = structure;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isFile = (i === parts.length - 1) && !path.endsWith('/');
+      if (isFile) {
+        current[part] = "file";
+      } else {
+        if (!current[part] || current[part] === "file") current[part] = {};
+        current = current[part];
+      }
+    }
+  });
+  return structure;
+}
+
 /**
  * 工业级消息样式常量
  */
@@ -415,9 +440,17 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         return !text.includes('```');
     }, [isVibeMode, isUser, hasToolCalls, displayContent]);
 
+    // 🏆 v0.4.1: 探索模式判定 (基于是否包含进度/树元数据)
+    const isExploreMessage = !!(message as any).exploreProgress;
+
     // 决定是否隐藏气泡
-    const shouldHideBubble = (!isUser && !hasVisibleContent && hasToolCalls) || isRedundantIntro;
-//...
+    // 1. 如果没有可见内容但有工具调用，隐藏 (交给聚合卡片)
+    // 2. 如果是 Vibe 模式下的冗余引导语，隐藏
+    // 3. 如果是工具角色的消息且已经是探索结果，隐藏 (数据已同步到助理消息的树 UI)
+    const shouldHideBubble = (!isUser && !hasVisibleContent && hasToolCalls) || 
+                            isRedundantIntro || 
+                            (message.role === 'tool' && isExploreMessage);
+
     // 🔥 FIX v0.4.0: 智能内容预处理 - 提取思考内容
     const { thinkingText, contentWithoutThinking } = React.useMemo(() => {
         const content = typeof displayContent === 'string' ? displayContent : '';
@@ -480,6 +513,20 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                 if (seg.content.trim().startsWith('_(') && seg.content.trim().endsWith(')_')) {
                     return false;
                 }
+                
+                // 🏆 v0.4.1: 在探索模式下，过滤掉“分析项目关键文件”等冗余文本，以及本地模型的原始输出
+                if (isExploreMessage) {
+                    const text = seg.content;
+                    const isRedundant = text.includes('分析项目') || 
+                                      text.includes('探索项目') ||
+                                      text.includes('[Local Model] Completed') ||
+                                      text.includes('[OK] agent_list_dir');
+                    if (isRedundant) return false;
+                }
+            }
+            // 🏆 v0.4.1: 物理隐藏所有工具片段（如果已有 UI 元数据）
+            if (isExploreMessage && seg.type === 'tool') {
+                return false;
             }
             return true;
         });
@@ -488,7 +535,8 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
         const trackedIds = new Set(filteredItems.filter(s => s.type === 'tool').map(s => s.toolCallId));
         const untrackedToolCalls = message.toolCalls?.filter(tc => !trackedIds.has(tc.id)) || [];
         
-        const untrackedSegments = untrackedToolCalls.map(tc => ({
+        // 🏆 v0.4.1: 如果已经有 exploreProgress (树形 UI)，物理隐藏所有工具片段
+        const untrackedSegments = isExploreMessage ? [] : untrackedToolCalls.map(tc => ({
             type: 'tool' as const,
             order: 999, 
             timestamp: (tc as any).timestamp || Date.now(),
@@ -837,9 +885,18 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                             </div>
                         )}
 
-                        {/* Explore Agent Progress */}
+                        {/* Explore Agent Progress & Tree UI */}
                         {(message as any).exploreProgress && (
-                            <ExploreProgressNew progress={(message as any).exploreProgress} mode="minimal" />
+                            <div className="space-y-2 my-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                {/* 🏆 v0.4.1: 当探索完成时，物理渲染 PivoProjectTree 项目树 */}
+                                {(message as any).exploreProgress.phase === 'completed' && (message as any).exploreProgress.scannedFiles && (
+                                    <PivoProjectTree 
+                                        structure={filesToStructure((message as any).exploreProgress.scannedFiles)} 
+                                        keyFiles={{}} // 以后可以集成关键文件识别
+                                    />
+                                )}
+                                <ExploreProgressNew progress={(message as any).exploreProgress} mode="minimal" />
+                            </div>
                         )}
 
                         {/* Task Completion Banner */}
