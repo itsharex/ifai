@@ -89,6 +89,7 @@ export function getModelMaxTokens(model: string): number {
     'glm-4-flash': 128000,
     'glm-4.6': 128000,
     'glm-4.7': 128000,
+    'glm-5': 128000,
 
     // DeepSeek (v0.3.5: 统一提升到 128K)
     'deepseek-chat': 128000,

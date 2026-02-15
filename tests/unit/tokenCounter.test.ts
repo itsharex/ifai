@@ -21,6 +21,10 @@ describe('tokenCounter', () => {
       expect(getModelMaxTokens('z-ai/glm4.7')).toBe(128000);
     });
 
+    it('should return correct limit for z-ai/glm5', () => {
+      expect(getModelMaxTokens('z-ai/glm5')).toBe(128000);
+    });
+
     it('should fall back to default for unknown models', () => {
       expect(getModelMaxTokens('unknown-model')).toBe(4096);
     });
