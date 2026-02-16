@@ -1,6 +1,6 @@
 # IfAI
 
-### 🌟 Featured in v0.3.5: Industrial Stability & Vibe 2.0
+### 🌟 Featured in v0.3.6: Industrial Stability & Vibe 2.0
 IfAI now brings industrial-grade stability. Introducing **Concurrency Control (Semaphore)** to prevent 429 errors and **Silent Auto-Approval** in Vibe Mode for a seamless creative flow.
  - AI Code Editor
 
