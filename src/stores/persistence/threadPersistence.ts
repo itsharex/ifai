@@ -416,7 +416,7 @@ class ThreadPersistenceService {
       for (const thread of threads) {
         const messages = await this.loadThreadMessages(thread.id);
         if (messages.length > 0) {
-          setThreadMessages(thread.id, messages);
+          setThreadMessages(thread.id, messages as any);
           totalMessages += messages.length;
         }
       }

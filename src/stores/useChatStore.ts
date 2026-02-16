@@ -10,7 +10,10 @@ if (typeof window !== 'undefined') {
 
 // Handles dependency injection of file and settings stores
 
-import { useChatStore as coreUseChatStore, registerStores, type Message } from 'ifainew-core';
+import { useChatStore as coreUseChatStore, registerStores } from 'ifainew-core';
+import type { Message, ContentPart, ToolCall } from './chatStore';
+
+export type { Message, ContentPart, ToolCall };
 
 import { useFileStore } from './fileStore';
 import { readFileContent } from '../utils/fileSystem';
@@ -268,7 +271,7 @@ export function switchThread(threadId: string): void {
 
     const currentMessages = coreUseChatStore.getState().messages;
 
-    setThreadMessages(currentThreadId, [...currentMessages]);
+    setThreadMessages(currentThreadId, [...currentMessages] as any);
 
   }
 
@@ -1150,7 +1153,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
                 if (currentThreadId) {
 
-                    setThreadMessages(currentThreadId, [...finalMessages]);
+                    setThreadMessages(currentThreadId, [...finalMessages] as any);
 
                 }
 
@@ -1190,7 +1193,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
                 if (currentThreadId) {
 
-                    setThreadMessages(currentThreadId, [...finalMessages]);
+                    setThreadMessages(currentThreadId, [...finalMessages] as any);
 
                     useThreadStore.getState().updateThreadTimestamp(currentThreadId);
 
@@ -1449,7 +1452,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         messagesToSend = await selectMessagesForContext(
 
-            messagesWithoutPlaceholder,
+            messagesWithoutPlaceholder as any,
 
             maxContextMessages,
 
@@ -1485,11 +1488,11 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
             const lastUserMsg = userMessages[userMessages.length - 1];
 
-            if (!messagesToSend.includes(lastUserMsg)) {
+            if (!messagesToSend.includes(lastUserMsg as any)) {
 
                 console.log('[Chat Debug] Force-adding last user message that was filtered');
 
-                messagesToSend.push(lastUserMsg);
+                messagesToSend.push(lastUserMsg as any);
 
             }
 
@@ -1499,7 +1502,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
         // 传统模式：发送所有消息
 
-        messagesToSend = allMessages.slice(0, -1);
+        messagesToSend = allMessages.slice(0, -1) as any;
 
     }
 
@@ -1578,7 +1581,12 @@ You have full execution permissions. Directly call:
 - agent_read_file: read physical files
 - agent_scan_project: scan project topology.`;
     if (!msgHistory.some(m => m.content === PIVO_PROMPT) && msgHistory.length < 5) {
-        msgHistory.unshift({ role: "system", content: PIVO_PROMPT });
+        msgHistory.unshift({ 
+            role: "system", 
+            content: PIVO_PROMPT,
+            tool_calls: [],
+            tool_call_id: ""
+        });
     }
 
     // 5. Setup Listeners
@@ -1609,7 +1617,7 @@ You have full execution permissions. Directly call:
         coreUseChatStore.setState((state) => {
             const updatedMessages = state.messages.map(m => {
                 if (m.id === assistantMsgId) {
-                    const newMsg = { ...m };
+                    const newMsg: Message = { ...m };
                     if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
                     for (const chunk of chunksToProcess) {
                         if (chunk.textChunk) {
@@ -1699,7 +1707,7 @@ You have full execution permissions. Directly call:
                                         batchId = (lastToolCall as any).batchId;
                                     } else if (currentEditorMode === "vibe" || currentEditorMode === "spec") {
                                         const prevAssistantMsg = coreUseChatStore.getState().messages.filter(m => m.role === "assistant" && m.id !== assistantMsgId).pop();
-                                        const prevBatchId = prevAssistantMsg?.toolCalls?.find(tc => (tc as any).batchId)?.batchId;
+                                        const prevBatchId = (prevAssistantMsg?.toolCalls?.find(tc => (tc as any).batchId) as any)?.batchId;
                                         if (prevBatchId && typeof prevBatchId === "string" && prevBatchId.startsWith("batch_")) {
                                             batchId = prevBatchId;
                                         } else {
@@ -1785,7 +1793,7 @@ You have full execution permissions. Directly call:
             });
 
             if (pendingToolCalls.length > 0) {
-                const promises = pendingToolCalls.map(tc => coreUseChatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true }));
+                const promises = pendingToolCalls.map(tc => (coreUseChatStore.getState() as any).approveToolCall(assistantMsgId, tc.id, { skipContinue: true }));
                 await Promise.all(promises);
                 const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
                 if (providerConfig) {
@@ -1888,8 +1896,6 @@ You have full execution permissions. Directly call:
         // Error: cleanup listeners
         if (typeof unlistenStatus === 'function') unlistenStatus();
         if (typeof unlistenStream === 'function') unlistenStream();
-        if (typeof unlistenRefs === 'function') unlistenRefs();
-        if (typeof unlistenCompacted === 'function') unlistenCompacted();
         if (typeof unlistenFinish === 'function') unlistenFinish();
         if (typeof unlistenError === 'function') unlistenError();
 
@@ -2003,7 +2009,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
     let renderRequested = false;
 
-    let localMessagesBuffer: Message[] = [...coreUseChatStore.getState().messages];
+    let localMessagesBuffer: Message[] = [...coreUseChatStore.getState().messages] as any;
 
     const unlistenStatus = await listen<string>(`${assistantMsgId}_status`, (event) => {
 
@@ -2075,7 +2081,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
                 if (m.id === assistantMsgId) {
 
-                    const newMsg = { ...m };
+                    const newMsg: Message = { ...m };
 
                     newMsg.contentSegments = m.contentSegments ? [...m.contentSegments] : [];
 
@@ -2244,7 +2250,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
             if (pendingToolCalls.length > 0) {
                 // 执行所有待处理的工具
                 const promises = pendingToolCalls.map(tc => 
-                    coreUseChatStore.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true })
+                    (coreUseChatStore.getState() as any).approveToolCall(assistantMsgId, tc.id, { skipContinue: true })
                 );
                 
                 // 等待这一批工具全部执行完毕
@@ -2529,8 +2535,8 @@ coreUseChatStore.setState({
     approveAllToolCalls: async (mid: string) => {
         const msg = coreUseChatStore.getState().messages.find(m => m.id === mid);
         if (!msg?.toolCalls) return;
-        for (const tc of msg.toolCalls) if (tc.status === "pending") await coreUseChatStore.getState().approveToolCall(mid, tc.id);
+        for (const tc of msg.toolCalls) if (tc.status === "pending") await (coreUseChatStore.getState() as any).approveToolCall(mid, tc.id);
     }
-});
+} as any);
 
 export const useChatStore = coreUseChatStore;

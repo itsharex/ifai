@@ -73,7 +73,7 @@ export const VirtualMessageList: React.FC<VirtualMessageListProps> = ({
         {visibleMessages.map((message) => (
           <MessageItem
             key={message.id}
-            message={message}
+            message={message as any}
             onApprove={onApprove}
             onReject={onReject}
             onOpenFile={onOpenFile}
@@ -122,7 +122,7 @@ export const VirtualMessageList: React.FC<VirtualMessageListProps> = ({
               }}
             >
               <MessageItem
-                message={message}
+                message={message as any}
                 onApprove={onApprove}
                 onReject={onReject}
                 onOpenFile={onOpenFile}

@@ -13,10 +13,8 @@ export class DiffProvider {
    * 生成简单的行级 Diff
    */
   generateDiff(oldContent: string | null, newContent: string): DiffSummary {
-    const oldLines = oldContent ? oldContent.split('
-') : [];
-    const newLines = newContent.split('
-');
+    const oldLines = oldContent ? oldContent.split('\n') : [];
+    const newLines = newContent.split('\n');
     
     // 基础 Diff 算法 (此处暂用简化的全量对比，后续可引入更复杂的 library)
     const summary: DiffSummary = {

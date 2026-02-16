@@ -5,7 +5,7 @@ export abstract class BaseExecutor implements IExecutor {
   
   protected backupData: any = null;
 
-  abstract execute(args: any): Promise<ToolCallResult>;
+  abstract execute(toolName: string, args: any): Promise<ToolCallResult>;
 
   /**
    * 撤销操作 (由具体执行器实现)

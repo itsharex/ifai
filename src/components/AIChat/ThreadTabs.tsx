@@ -349,7 +349,7 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
     const currentThreadId = useThreadStore.getState().activeThreadId;
     if (currentThreadId) {
       const currentMessages = coreUseChatStore.getState().messages;
-      setThreadMessages(currentThreadId, [...currentMessages]);
+      setThreadMessages(currentThreadId, [...currentMessages] as any);
     }
 
     // Create new thread (this sets activeThreadId)
@@ -377,7 +377,7 @@ export const ThreadTabs: React.FC<ThreadTabsProps> = ({
     const currentThreadId = useThreadStore.getState().activeThreadId;
     if (currentThreadId) {
       const currentMessages = coreUseChatStore.getState().messages;
-      setThreadMessages(currentThreadId, [...currentMessages]);
+      setThreadMessages(currentThreadId, [...currentMessages] as any);
     }
 
     // 执行删除

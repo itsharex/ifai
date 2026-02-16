@@ -4,10 +4,11 @@ export interface ToolCall {
   id: string;
   tool: string;
   args: any;
-  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'failed';
+  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'failed' | 'executing';
   result?: string;
   isPartial?: boolean;
   isLocalModel?: boolean;  // 标记是否为本地模型执行的工具调用
+  batchId?: string;        // v0.3.6: 批处理 ID
 }
 
 // Frontend display message type
@@ -29,6 +30,7 @@ export interface Message {
   references?: string[];
   toolCalls?: ToolCall[];
   tool_call_id?: string;
+  contentSegments?: any[]; // v0.3.6: 用于流式按需渲染
 }
 
 // Backend API message types (must match Rust `ai.rs`)
