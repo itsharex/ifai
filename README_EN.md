@@ -1,7 +1,10 @@
 # IfAI
 
-### 🌟 Featured in v0.3.6: Industrial Stability & Vibe 2.0
-IfAI now brings industrial-grade stability. Introducing **Concurrency Control (Semaphore)** to prevent 429 errors and **Silent Auto-Approval** in Vibe Mode for a seamless creative flow.
+### 🌟 v0.3.6 Highlights: UI Refactor, PIVO 2.0 & Structured Workflow
+- **Industrial UI Refactor**: Introducing the Model Capsule panel and enhanced multi-threading management for a professional coding environment.
+- **PIVO 2.0 Engine**: A risk-aware instruction engine supporting executor decoupling, asynchronous previews, and concurrent batch processing.
+- **Structured Workflow**: Tool results are directly consumed as PivoProjectTree graphical nodes, achieving symbol-level precise context injection.
+- **NVIDIA GLM-5 Support**: Deep adaptation for NIM platform reasoning models and thinking protocols.
  - AI Code Editor
 
 <div align="center">
