@@ -1,8 +1,11 @@
-# Real AI 全链路集成测试方法论 (PIVO 3.0)
+# Real AI 全链路集成测试方法论 (PIVO 3.0 标准)
 
-本方案旨在解决 E2E 环境下调用远程 LLM（如 DeepSeek, Kimi）时存在的响应随机性、UI 渲染延迟及环境负载导致的 Flaky Test 问题。
+**状态：项目强制验收准则 (Mandatory Standard)**
+**生效日期：2026-02-20**
 
-**参考标准实现**：`tests/e2e/integration/real-llm-clean-flow.spec.ts`
+本方案作为 `ifainew` 项目的官方标准，旨在彻底解决 E2E 环境下调用远程 LLM（如 DeepSeek, Kimi）时存在的响应随机性、UI 渲染延迟及环境负载导致的 Flaky Test 问题。所有新增的集成测试必须严格遵循此协议。
+
+**标准参考实现**：`tests/e2e/integration/real-llm-clean-flow.spec.ts`
 
 ---
 
