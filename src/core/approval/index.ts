@@ -19,13 +19,14 @@ export function getApprovalCoordinator(): ApprovalCoordinator {
     const fsTools = [
       "agent_write_file", "agent_read_file", "agent_list_dir", 
       "agent_delete_file", "agent_list_functions", 
-      "agent_read_file_range", "agent_scan_project"
+      "agent_read_file_range", "agent_scan_project",
+      "write_file", "read_file"
     ];
     fsTools.forEach(tool => instance!.registerExecutor(tool, fsExecutor));
 
     // 2. 初始化 Shell 执行器
     const shellExecutor = new ShellExecutor(invoke);
-    const shellTools = ["bash", "agent_execute_command", "execute_bash_command", "agent_run_shell_command"];
+    const shellTools = ["bash", "agent_bash", "agent_execute_command", "execute_bash_command", "agent_run_shell_command"];
     shellTools.forEach(tool => instance!.registerExecutor(tool, shellExecutor));
 
     // 3. 初始化搜索执行器

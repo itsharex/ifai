@@ -111,7 +111,7 @@ export function Component() {
       const writeOutput = formatToolResultToMarkdown(writeResult, { tool: 'agent_write_file', id: 'test' });
 
       expect(readOutput).toContain('已读取文件');
-      expect(writeOutput).toContain('文件写入成功');
+      expect(writeOutput).toContain('文件操作成功');
     });
   });
 

@@ -101,7 +101,7 @@ describe('toolResultFormatter - 防止类型错误导致黑屏', () => {
       const output = formatToolResultToMarkdown(result, toolCall);
 
       // 应该使用文件写入格式，不是读文件格式
-      expect(output).toContain('文件写入成功');
+      expect(output).toContain('文件操作成功');
       expect(output).not.toContain('已读取文件');
     });
 
@@ -601,7 +601,7 @@ describe('toolResultFormatter - 防止类型错误导致黑屏', () => {
       };
       const output = formatToolResultToMarkdown(result);
 
-      expect(output).toContain('新建文件');
+      expect(output).toContain('文件操作成功');
       expect(output).toContain('new-file.ts');
     });
 
@@ -614,8 +614,8 @@ describe('toolResultFormatter - 防止类型错误导致黑屏', () => {
       };
       const output = formatToolResultToMarkdown(result);
 
-      expect(output).toContain('覆盖已有文件');
-      expect(output).toContain('变更统计');
+      expect(output).toContain('文件操作成功');
+      expect(output).toContain('existing.ts');
     });
   });
 

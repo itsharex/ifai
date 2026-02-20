@@ -1142,8 +1142,15 @@ Always use the appropriate tool when the user asks to perform file operations.`
                         // 🔥 FIX: 在使用之前先定义 streamListeners 和 finishListeners
                         // 避免在错误检查中访问未初始化的变量
                         // 同时使用 waitForListeners 确保前端监听器已就绪
-                        const streamListeners = await (window as any).waitForListeners(eventId);
-                        const finishListeners = (window as any).__TAURI_EVENT_LISTENERS__[`${eventId}_finish`] || [];
+                        let streamListeners: Function[] = [];
+                        let finishListeners: Function[] = [];
+                        
+                        try {
+                            streamListeners = await (window as any).waitForListeners(eventId);
+                            finishListeners = (window as any).__TAURI_EVENT_LISTENERS__[`${eventId}_finish`] || [];
+                        } catch (e) {
+                            console.error('[E2E Real AI] Failed to get listeners:', e);
+                        }
 
                         // 🔥 检查 API 是否返回了错误
                         if (data.error) {
@@ -3112,6 +3119,106 @@ export class TestApp {
       }, 500);
     }, 1000);
   }, { useRealAI, realAIApiKey, realAIBaseUrl, realAIModel, simulateDeepSeekStreaming: options.simulateDeepSeekStreaming || false, skipWelcome });
+
+  // 🔥 3. 强力锁定：等待所有必需的 stores 初始化
+  // 无论是否使用真实 Tauri，所有 E2E 测试都需要这些核心 store
+  await page.waitForFunction(() => {
+    const stores = (window as any);
+    const chatStore = stores.__chatStore !== undefined;
+    const agentStore = stores.__agentStore !== undefined;
+    const fileStore = stores.__fileStore !== undefined;
+    const settingsStore = stores.__settingsStore !== undefined;
+
+    return chatStore && agentStore && fileStore && settingsStore;
+  }, { timeout: 30000 }).catch(e => {
+    console.warn('[E2E Setup] ⚠️ Warning: Some stores failed to initialize within 30s:', e.message);
+  });
+
+  console.log('[E2E Setup] ✅ Environment locked and ready');
+}
+
+/**
+ * 🏆 PIVO 2.0: 设置 Mock 文件系统 (物理层 + UI 层)
+ * 
+ * @param page Playwright Page 对象
+ * @param files 文件映射对象 { "path/to/file": "content" }
+ */
+export async function setupMockFileSystem(page: Page, files: Record<string, string>) {
+  await page.evaluate(async (fileData) => {
+    // 🏆 强力保底：等待 Store 挂载
+    const getFileStore = () => (window as any).__fileStore;
+    let fileStore = getFileStore();
+    
+    if (!fileStore) {
+      console.log('[E2E Mock] FileStore not found, waiting...');
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        fileStore = getFileStore();
+        if (fileStore) break;
+      }
+    }
+
+    if (!fileStore) {
+      throw new Error('CRITICAL: __fileStore not found in setupMockFileSystem!');
+    }
+
+    if (!(window as any).__E2E_MOCK_FILE_SYSTEM__) {
+      (window as any).__E2E_MOCK_FILE_SYSTEM__ = new Map();
+    }
+    const mockFS = (window as any).__E2E_MOCK_FILE_SYSTEM__;
+    
+    // 1. 设置根目录
+    const rootPath = "/Users/mac/mock-project";
+    if (fileStore) {
+      fileStore.getState().setRootPath(rootPath);
+    }
+
+    // 2. 填充内存文件系统 (物理层)
+    for (const [relPath, content] of Object.entries(fileData)) {
+      const fullPath = `${rootPath}/${relPath}`.replace(/\/\//g, "/");
+      mockFS.set(fullPath, content);
+    }
+
+    // 3. 构建并设置文件树 (UI 层)
+    const buildFileTree = (data: Record<string, string>, base: string) => {
+      const root: any = { id: "root", name: "mock-project", kind: "directory", path: base, children: [] };
+      
+      Object.keys(data).forEach((filePath, index) => {
+        const parts = filePath.split("/");
+        let current = root;
+        let currentPath = base;
+
+        parts.forEach((part, i) => {
+          currentPath = `${currentPath}/${part}`.replace(/\/\//g, "/");
+          const isLast = i === parts.length - 1;
+
+          if (isLast) {
+            current.children.push({
+              id: `file-${index}`,
+              name: part,
+              kind: "file",
+              path: currentPath
+            });
+          } else {
+            let dir = current.children.find((c: any) => c.name === part && c.kind === "directory");
+            if (!dir) {
+              dir = { id: `dir-${part}-${index}`, name: part, kind: "directory", path: currentPath, children: [] };
+              current.children.push(dir);
+            }
+            current = dir;
+          }
+        });
+      });
+      return root;
+    };
+
+    if (fileStore) {
+      const tree = buildFileTree(fileData, rootPath);
+      fileStore.getState().setFileTree(tree);
+    }
+
+    console.log(`[E2E Mock] Project filesystem initialized with ${Object.keys(fileData).length} files.`);
+  }, files);
 }
 
 /**

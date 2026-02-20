@@ -1,5 +1,6 @@
 import { BaseExecutor } from './BaseExecutor';
 import { ToolCallResult } from '../types';
+import { useFileStore } from '../../../stores/fileStore';
 
 /**
  * PhysicalBashExecutor (PIVO v2.0)
@@ -16,8 +17,16 @@ export class ShellExecutor extends BaseExecutor {
 
   async execute(toolName: string, args: any): Promise<ToolCallResult> {
     // 1. 参数物理化过程 (Physical Trace)
-    const command = args.command || args.script || args.args || args.cmd || '';
+    let command = args.command || args.script || args.args || args.cmd || '';
     
+    // 🏆 PIVO 3.0: 增强命令清洗 (针对中文 AI 引导词如 "运行 " 等进行物理截断)
+    if (typeof command === 'string') {
+        command = command.replace(/^(运行|执行|使用|请运行|请执行)\s*/, '');
+    }
+
+    // 🏆 PIVO 3.0: 路径映射物理化 (将工作区 Root 映射给后端)
+    const workingDir = args.workingDir || args.working_dir || args.cwd || useFileStore.getState().rootPath;
+
     // 2. 统一日志输出 (Unified Logging - Guide 8.2)
     console.log(`[Wrapper] 🐚 Entry - Physical Command: \`${command}\``);
 
@@ -27,6 +36,7 @@ export class ShellExecutor extends BaseExecutor {
       // 3. 物理转发至后端桥接层
       const output = await this.invoker('execute_bash_command', {
         command: command,
+        workingDir: workingDir
       });
 
       const duration = (performance.now() - startTime).toFixed(2);

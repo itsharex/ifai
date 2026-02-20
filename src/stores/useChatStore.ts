@@ -770,7 +770,7 @@ const patchedAddMessage = (message: Message) => {
     return originalAddMessage(message);
 };
 
-const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string) => {
+const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string, options: any = {}) => {
 
     const { addMessage } = coreUseChatStore.getState();
     const callId = crypto.randomUUID().slice(0, 8);
@@ -1691,8 +1691,19 @@ You have full execution permissions. Directly call:
                             } else {
                                 const toolName = deltaName || "unknown";
                                 let initialArgs: any = {};
-                                try { initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {}; }
-                                catch (e) { /* fallback match */ }
+                                try { 
+                                    initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {}; 
+                                } catch (e) { 
+                                    const safeArgsString = String(newArgsChunk);
+                                    const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:\\|"?$)/s);
+                                    if (contentMatch) {
+                                        let content = contentMatch[1];
+                                        content = content.replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+                                        initialArgs.content = content;
+                                    }
+                                    const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"?/);
+                                    if (relPathMatch) initialArgs.rel_path = relPathMatch[1];
+                                }
                                 
                                 const newToolCallId = toolCallUpdate.id || `call_${crypto.randomUUID()}`;
                                 
@@ -1801,7 +1812,7 @@ You have full execution permissions. Directly call:
                         const latestMsg = coreUseChatStore.getState().messages.find(m => m.id === assistantMsgId);
                         if (latestMsg?.toolCalls?.some(tc => tc.status === "approved")) return;
                         unlistenStatus(); unlistenStream(); unlistenFinish(); unlistenError();
-                        await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig);
+                        await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig, { enableTools: (window.__IFAI_EDITOR_MODE__ !== "vibe") });
                     }, 800);
                     return;
                 }
@@ -1820,13 +1831,13 @@ You have full execution permissions. Directly call:
 
 
     // 6. Invoke Backend
-
     try {
         // 🔥 v0.5.0: 增强型模式判定 (SendMessage 路径)
-        // 仅在模式明确为 "spec" 时才启用工具（防御性白名单）
+        // 🚀 v0.5.0: 优先尊重 options.enableTools，否则根据模式判定
         const currentMode = (window as any).__IFAI_EDITOR_MODE__;
-        // 🚀 v0.3.6: PIVO 穿透策略 - 在 Vibe 模式下也允许只读工具，以支持全景扫描
-        const shouldEnableTools = true; // 始终允许声明，但在后端或拦截层进行分类控制
+        const shouldEnableTools = options?.enableTools !== undefined
+            ? options.enableTools
+            : (currentMode !== "vibe");
 
         // 🏆 PIVO 2.0: 最终外发数据审计日志
         console.log(`[Chat] 📡 FINAL REQUEST AUDIT:`, {
@@ -2143,7 +2154,22 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
                          else {
                             const tid = toolCallUpdate.id || crypto.randomUUID();
-                            const tc = { id: tid, type: 'function' as const, tool: toolName, args: {}, function: { name: toolName, arguments: newArgs }, status: 'pending' as const, isPartial: true, index: toolCallUpdate.index } as any;
+                            let initialArgs: any = {};
+                            try {
+                                initialArgs = newArgs ? JSON.parse(newArgs) : {};
+                            } catch (e) {
+                                const safeArgsString = String(newArgs);
+                                const contentMatch = safeArgsString.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:\\|"?$)/s);
+                                if (contentMatch) {
+                                    let content = contentMatch[1];
+                                    content = content.replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+                                    initialArgs.content = content;
+                                }
+                                const relPathMatch = safeArgsString.match(/"rel_path"\s*:\s*"([^"]*)"?/);
+                                if (relPathMatch) initialArgs.rel_path = relPathMatch[1];
+                            }
+                            
+                            const tc = { id: tid, type: 'function' as const, tool: toolName, args: initialArgs, function: { name: toolName, arguments: newArgs }, status: 'pending' as const, isPartial: true, index: toolCallUpdate.index } as any;
                             newMsg.toolCalls = [...existingCalls, tc];
 
                             const order = newMsg.contentSegments.length;
@@ -2351,61 +2377,63 @@ const patchedApproveToolCall = async (
     const isSupportedByNewEngine = [
         "agent_write_file", "agent_read_file", "agent_list_dir", 
         "agent_delete_file", "agent_list_functions", "agent_scan_project",
-        "bash", "agent_execute_command", "execute_bash_command", "agent_run_shell_command",
+        "bash", "agent_bash", "agent_execute_command", "execute_bash_command", "agent_run_shell_command",
         "agent_search", "search_semantic", "agent_batch_read", "init_rag_index",
         "get_file_symbols"
     ].includes(toolName);
 
     if (useNewEngine && isSupportedByNewEngine && !agentId) {
-        console.log(`[ApprovalEngine] 🛡️ INTERCEPTED: ${toolName} | ID: ${toolCallId}`);
-        try {
-            const { getApprovalCoordinator } = await import('../core/approval');
-            const coordinator = getApprovalCoordinator();
-            
-            // 物理双轨抓取：强制读取原始字符串源码
-            const latestState = coreUseChatStore.getState();
-            const latestMsg = latestState.messages.find(m => m.id === messageId);
-            const latestToolCall = latestMsg?.toolCalls?.find(tc => tc.id === toolCallId);
-            
-            if (latestToolCall) {
-                let finalArgs = latestToolCall.args || {};
-                const rawArgsStr = (latestToolCall as any).function?.arguments || "";
+        return await globalConcurrencyManager.run(async () => {
+            console.log(`[ApprovalEngine] 🛡️ INTERCEPTED: ${toolName} | ID: ${toolCallId}`);
+            try {
+                const { getApprovalCoordinator } = await import('../core/approval');
+                const coordinator = getApprovalCoordinator();
                 
-                // 🏆 核心逻辑：如果 args 为空，物理强力反序列化源码
-                if (rawArgsStr) {
-                    try {
-                        const parsed = JSON.parse(rawArgsStr);
-                        finalArgs = { ...finalArgs, ...parsed };
-                        console.log(`[ApprovalEngine] 🧠 Physical recovery success for ${toolName}.`);
-                    } catch (e) {
-                        const m = rawArgsStr.match(/"rel_path"\s*:\s*"([^"]+)"/);
-                        if (m) finalArgs.rel_path = m[1];
+                // 物理双轨抓取：强制读取原始字符串源码
+                const latestState = coreUseChatStore.getState();
+                const latestMsg = latestState.messages.find(m => m.id === messageId);
+                const latestToolCall = latestMsg?.toolCalls?.find(tc => tc.id === toolCallId);
+                
+                if (latestToolCall) {
+                    let finalArgs = latestToolCall.args || {};
+                    const rawArgsStr = (latestToolCall as any).function?.arguments || "";
+                    
+                    // 🏆 核心逻辑：如果 args 为空，物理强力反序列化源码
+                    if (rawArgsStr) {
+                        try {
+                            const parsed = JSON.parse(rawArgsStr);
+                            finalArgs = { ...finalArgs, ...parsed };
+                            console.log(`[ApprovalEngine] 🧠 Physical recovery success for ${toolName}.`);
+                        } catch (e) {
+                            const m = rawArgsStr.match(/"rel_path"\s*:\s*"([^"]+)"/);
+                            if (m) finalArgs.rel_path = m[1];
+                        }
                     }
+
+                    await coordinator.createApproval(messageId, { id: latestToolCall.id, tool: latestToolCall.tool, args: finalArgs });
+                    const result = await coordinator.approve(toolCallId);
+                    
+                    // 同步结果
+                    coreUseChatStore.setState(s => ({
+                        messages: s.messages.map(m => m.id === messageId ? {
+                            ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { 
+                                ...tc, status: result.success ? "completed" as const : "failed" as const, result: result.content || result.error 
+                            } : tc)
+                        } : m)
+                    }));
+
+                    coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: result.content || result.error || "", tool_call_id: toolCallId });
+
+                    if (!options?.skipContinue && result.success) {
+                        const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+                        if (providerConfig) setTimeout(async () => { await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig); }, 300);
+                    }
+                    return;
                 }
-
-                await coordinator.createApproval(messageId, { id: latestToolCall.id, tool: latestToolCall.tool, args: finalArgs });
-                const result = await coordinator.approve(toolCallId);
-                
-                // 同步结果
-                coreUseChatStore.setState(s => ({
-                    messages: s.messages.map(m => m.id === messageId ? {
-                        ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { 
-                            ...tc, status: result.success ? "completed" as const : "failed" as const, result: result.content || result.error 
-                        } : tc)
-                    } : m)
-                }));
-
-                coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: result.content || result.error || "", tool_call_id: toolCallId });
-
-                if (!options?.skipContinue && result.success) {
-                    const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-                    if (providerConfig) setTimeout(async () => { await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig); }, 300);
-                }
-                return;
+            } catch (e) {
+                console.error('[ApprovalEngine] Critical Failure:', e);
             }
-        } catch (e) {
-            console.error('[ApprovalEngine] Critical Failure:', e);
-        }
+        });
     }
 
     return await globalConcurrencyManager.run(async () => {
