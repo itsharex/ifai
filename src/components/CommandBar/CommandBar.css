@@ -113,46 +113,67 @@
   display: none;
 }
 
-/* Markdown 样式支持 */
-.command-bar-feedback h1 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 8px 0;
+/* Markdown 样式适配 */
+.command-bar-markdown {
+  color: #cccccc;
 }
 
-.command-bar-feedback h2 {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 12px 0 6px 0;
+.command-bar-markdown :global(p) {
+  margin-bottom: 8px;
 }
 
-.command-bar-feedback p {
-  margin: 6px 0;
+.command-bar-markdown :global(h1),
+.command-bar-markdown :global(h2),
+.command-bar-markdown :global(h3) {
+  color: #ffffff;
+  margin-top: 12px;
+  margin-bottom: 8px;
 }
 
-.command-bar-feedback code {
+.command-bar-markdown :global(ul),
+.command-bar-markdown :global(ol) {
+  margin-bottom: 8px;
+  padding-left: 20px;
+}
+
+.command-bar-markdown :global(li) {
+  margin-bottom: 4px;
+}
+
+.command-bar-markdown :global(code) {
   background-color: #2d2d2d;
-  padding: 2px 6px;
+  padding: 2px 4px;
   border-radius: 3px;
-  font-family: 'Courier New', monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 12px;
 }
 
-.command-bar-feedback table {
-  border-collapse: collapse;
-  width: 100%;
+.command-bar-markdown :global(pre) {
+  background-color: #1e1e1e;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  padding: 12px;
   margin: 8px 0;
+  overflow-x: auto;
 }
 
-.command-bar-feedback table th,
-.command-bar-feedback table td {
+.command-bar-markdown :global(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+  font-size: 12px;
+}
+
+.command-bar-markdown :global(th),
+.command-bar-markdown :global(td) {
   border: 1px solid #454545;
-  padding: 6px 8px;
+  padding: 6px 10px;
   text-align: left;
 }
 
-.command-bar-feedback table th {
+.command-bar-markdown :global(th) {
   background-color: #2d2d2d;
+  color: #ffffff;
 }
 
 .command-bar-loading {

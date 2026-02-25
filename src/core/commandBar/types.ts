@@ -4,7 +4,7 @@
  * 此文件定义了社区版与商业私有库之间的契约。
  */
 
-export type CommandOutputType = 'text' | 'html' | 'error' | 'toast';
+export type CommandOutputType = 'text' | 'html' | 'markdown' | 'error' | 'toast';
 
 /**
  * Store 操作回调接口

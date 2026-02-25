@@ -394,7 +394,7 @@ export class MockCommandLineCore implements ICommandLineCore {
     return {
       success: true,
       message: helpText,
-      outputType: 'html',
+      outputType: 'markdown',
       timestamp: Date.now(),
     };
   }

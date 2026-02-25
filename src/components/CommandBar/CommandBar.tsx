@@ -15,6 +15,7 @@ import type { CommandResult, CommandSuggestion, CommandContext } from '../../cor
 import { writeFileContent, readFileContent } from '../../utils/fileSystem';
 import { invoke } from '@tauri-apps/api/core';
 import { Command } from '@tauri-apps/plugin-shell';
+import { SimpleMarkdownRenderer } from '../AIChat/MarkdownRenderer';
 import './CommandBar.css';
 
 export const CommandBar = () => {
@@ -485,7 +486,18 @@ export const CommandBar = () => {
             data-test-id="command-feedback"
           >
             {result.outputType === 'html' ? (
-              <div dangerouslySetInnerHTML={{ __html: result.message }} />
+              // 商业版可能错误地将 Markdown 标为 html，如果检测到 Markdown 标记则使用渲染器
+              (result.message.includes('###') || result.message.includes('**')) ? (
+                <div className="command-bar-markdown">
+                  <SimpleMarkdownRenderer content={result.message} />
+                </div>
+              ) : (
+                <div dangerouslySetInnerHTML={{ __html: result.message }} />
+              )
+            ) : (result.outputType === 'markdown' || result.message.includes('###') || result.message.includes('**')) ? (
+              <div className="command-bar-markdown">
+                <SimpleMarkdownRenderer content={result.message} />
+              </div>
             ) : (
               <div className="command-bar-message">{result.message}</div>
             )}
