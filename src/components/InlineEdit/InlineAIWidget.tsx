@@ -26,6 +26,18 @@ export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({
 }) => {
   const [inputValue, setInputValue] = useState('');
 
+  // 快捷键处理：Cmd+Enter 接受修改
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (stage !== 'idle' && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        onSubmit('__ACCEPT_ALL__');
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [stage, onSubmit]);
+
   // PIVO 进度条颜色映射
   const getStageColor = (s: PivoStage) => {
     switch (s) {
@@ -119,26 +131,52 @@ export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({
         {/* 🚪 File Portal (Cross-file Navigation) */}
         {onNavigate && <FilePortal files={modifiedFiles} onNavigate={onNavigate} />}
 
-        {/* Action Footer (Optional placeholder for future multi-step actions) */}
+        {/* Action Footer */}
         <AnimatePresence>
-          {isLoading && (
+          {(isLoading || stage !== 'idle') && (
             <motion.div 
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="mt-3 pt-2 border-t border-white/5 flex items-center gap-3"
+              className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between gap-3"
             >
-              <div className="flex items-center gap-2 px-2 py-1 rounded-full bg-blue-500/10 text-[10px] font-bold text-blue-400">
-                <Loader2 size={10} className="animate-spin" />
-                Processing
-              </div>
-              <div className="h-1 flex-1 bg-white/5 rounded-full overflow-hidden">
-                <motion.div 
-                  animate={{ x: ['-100%', '100%'] }}
-                  transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                  className="h-full w-1/3 bg-blue-500/40 rounded-full"
-                />
-              </div>
+              {isLoading ? (
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-full bg-blue-500/10 text-[10px] font-bold text-blue-400">
+                    <Loader2 size={10} className="animate-spin" />
+                    Processing
+                  </div>
+                  <div className="h-1 flex-1 bg-white/5 rounded-full overflow-hidden">
+                    <motion.div 
+                      animate={{ x: ['-100%', '100%'] }}
+                      transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                      className="h-full w-1/3 bg-blue-500/40 rounded-full"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-[10px] text-white/30 font-medium">
+                    <Zap size={10} />
+                    Changes ready to apply
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={onClose}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/10 text-white/50 hover:text-red-400 text-xs font-bold transition-all border border-white/5"
+                    >
+                      Discard
+                    </button>
+                    <button 
+                      onClick={() => onSubmit('__ACCEPT_ALL__')}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5"
+                    >
+                      <CheckCircle2 size={12} />
+                      Accept <span className="opacity-50 text-[10px]">⌘↵</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

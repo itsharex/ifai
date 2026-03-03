@@ -221,6 +221,11 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     // Convert content to string for display
     // Handle both string and ContentPart[] types
     const displayContent = React.useMemo(() => {
+      // 🔥 v0.3.7: 对于 Inline 任务，只显示简洁的标签
+      if ((message as any).isInlineTask && (message as any).displayLabel) {
+        return (message as any).displayLabel;
+      }
+
       const content = message.content;
       let rawText = '';
       // If content is an array (ContentPart[]), convert to string
@@ -413,7 +418,10 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     };
     // Determine bubble style
     const isAgent = !!(message as any).agentId;
-    const bubbleClass = isUser ? STYLES.userBubble : (isAgent ? STYLES.agentBubble : STYLES.assistantBubble);
+    const isInlineTask = !!(message as any).isInlineTask;
+    const bubbleClass = isInlineTask 
+        ? "bg-gray-800/40 border border-white/5 text-white/40 italic py-1.5 px-3 rounded-lg text-[11px]" 
+        : (isUser ? STYLES.userBubble : (isAgent ? STYLES.agentBubble : STYLES.assistantBubble));
     // 🔥 FIX v0.3.9.3: 更加稳健的内容检测逻辑，支持字符串和数组
     const hasVisibleContent = React.useMemo(() => {
         if (!message.content) return false;

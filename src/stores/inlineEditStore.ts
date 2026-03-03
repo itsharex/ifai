@@ -9,6 +9,8 @@
  */
 
 import { create } from 'zustand';
+import { PivoStage } from './types';
+import { GhostTask } from '../components/InlineEdit/GhostTaskList';
 import { MockInlineEditor } from '../core/mock-core/v0.2.9/MockInlineEditor';
 import { RealInlineEditor } from '../core/real-core/v0.2.9/RealInlineEditor';
 import type { IInlineEditor, InlineEditorRequest } from '../core/interfaces/v0.2.9/IInlineEditor';
@@ -135,6 +137,9 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
   originalCode: '',
   modifiedCode: '',
   currentFilePath: '',
+  pivoStage: 'idle',
+  pivoTasks: [],
+  modifiedFiles: [],
   editHistory: [],
   historyIndex: -1,
   isProcessing: false,
@@ -159,64 +164,44 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
   },
 
   submitInstruction: async (instruction) => {
-    console.log('[inlineEditStore] submitInstruction called with:', instruction);
-    set({ instruction, isProcessing: true });
+    console.log('[inlineEditStore] submitInstruction (Agent 2.0) called:', instruction);
+    set({ instruction, isProcessing: true, pivoStage: 'plan', pivoTasks: [] });
 
-    // 获取当前编辑器内容
     const editor = (window as any).__activeEditor;
     if (!editor) {
-      console.warn('[inlineEditStore] No active editor found');
       set({ isProcessing: false });
       return;
     }
-    console.log('[inlineEditStore] Active editor found, getting content...');
 
-    const originalContent = editor.getValue() || '';
-    const state = get();
+    const model = editor.getModel();
+    const filePath = model?.uri.fsPath || model?.uri.path || 'unknown';
+    
+    // 🔥 调用真正的 AgentStore 开始任务
+    // 注意：我们将通过消息总线进行通信
+    import('./useChatStore').then(({ useChatStore }) => {
+      const { currentProviderId, currentModel } = (window as any).__settingsStore?.getState() || {};
+      
+      // 构造给 AI 看的完整上下文
+      const fullPrompt = `[Inline AI Task] File: ${filePath}\nInstruction: ${instruction}\nContext around current line: \n${getVisibleContext(editor)}`;
+      
+      // 构造给用户看的简洁信息
+      const displayInfo = `🎨 Inline Edit: ${instruction}`;
+      
+      // 发送消息，并标记为 Inline 任务以便 ChatStore 特殊处理
+      useChatStore.getState().sendMessage(fullPrompt, currentProviderId, currentModel, {
+        // @ts-ignore - 自定义属性用于 UI 过滤
+        isInlineTask: true,
+        displayLabel: displayInfo
+      });
+    });
+  },
 
-    // E2E 测试: dispatch 事件
-    window.dispatchEvent(new CustomEvent('inline-edit-submit', {
-      detail: { instruction, originalCode: originalContent }
+  setPivoState: (stage, tasks, files) => {
+    set((state) => ({
+      pivoStage: stage,
+      pivoTasks: tasks || state.pivoTasks,
+      modifiedFiles: files || state.modifiedFiles
     }));
-
-    // 获取当前文件路径
-    const filePath = state.currentFilePath || editor.getModel()?.uri || 'unknown';
-    const language = detectLanguage(filePath);
-
-    // 构建编辑请求
-    const request: InlineEditorRequest = {
-      instruction,
-      code: originalContent,
-      language,
-      filePath: typeof filePath === 'string' ? filePath : String(filePath),
-      selectedCode: state.selectedText || undefined,
-      cursorPosition: state.position ? {
-        line: state.position.lineNumber,
-        column: state.position.column,
-      } : undefined,
-    };
-
-    try {
-      // 调用编辑器服务
-      console.log('[inlineEditStore] Calling editor service...');
-      const response = await editorService.applyEdit(request);
-
-      if (!response.success) {
-        console.error('[inlineEditStore] Editor service failed:', response.error);
-        set({ isProcessing: false });
-        return;
-      }
-
-      const modifiedContent = response.modifiedCode;
-
-      console.log('[inlineEditStore] Editor service returned modified code, length:', modifiedContent.length);
-
-      // 显示 Diff 编辑器
-      get().showDiffEditor(originalContent, modifiedContent, filePath, instruction);
-    } catch (error) {
-      console.error('[inlineEditStore] Error calling editor service:', error);
-      set({ isProcessing: false });
-    }
   },
 
   showDiffEditor: (originalCode, modifiedCode, filePath, instruction) => {
@@ -353,6 +338,27 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
 // ============================================================================
 // 辅助函数
 // ============================================================================
+
+/**
+ * 获取光标附近的上下文代码
+ */
+function getVisibleContext(editor: any): string {
+  const model = editor.getModel();
+  if (!model) return '';
+  
+  const position = editor.getPosition();
+  if (!position) return '';
+
+  const startLine = Math.max(1, position.lineNumber - 50);
+  const endLine = Math.min(model.getLineCount(), position.lineNumber + 50);
+  
+  return model.getValueInRange({
+    startLineNumber: startLine,
+    startColumn: 1,
+    endLineNumber: endLine,
+    endColumn: model.getLineMaxColumn(endLine)
+  });
+}
 
 /**
  * 根据文件路径检测编程语言

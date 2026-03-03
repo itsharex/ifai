@@ -28,6 +28,7 @@ import * as monaco from 'monaco-editor';
 import { debounce } from 'lodash-es';
 import { Skeleton } from '../UI/Skeleton';
 import { AgentDecorationProvider } from './AgentDecorationProvider';
+import { InlineDiffZone } from './InlineDiffZone';
 import { InlineAIWidget } from '../InlineEdit/InlineAIWidget';
 import '../../styles/monaco-decorations.css';
 import { toast } from 'sonner';
@@ -57,7 +58,17 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
   const [debugTasks, setDebugTasks] = useState<any[]>([]);
 
   // v0.2.9: Inline Edit Store
-  const showInlineEdit = useInlineEditStore(state => state.showInlineEdit);
+  const { 
+    isInlineEditVisible, 
+    showInlineEdit, 
+    hideInlineEdit, 
+    submitInstruction,
+    pivoStage,
+    pivoTasks,
+    modifiedFiles,
+    modifiedCode,
+    originalCode
+  } = useInlineEditStore();
 
   // 🔥 优化：使用更具体的选择器，只订阅当前 Pane 的 fileId 和对应的文件
   const pane = useLayoutStore(
@@ -91,6 +102,25 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
   // ⚠️ 必须在所有 useEffect 之前声明所有 hooks
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const decorationProviderRef = useRef<AgentDecorationProvider | null>(null);
+  const diffZoneRef = useRef<InlineDiffZone | null>(null);
+  const contentWidgetRef = useRef<monaco.editor.IContentWidget | null>(null);
+
+  // 组件卸载时的资源释放逻辑
+  useEffect(() => {
+    return () => {
+      const editor = editorRef.current;
+      if (editor) {
+        if (contentWidgetRef.current) {
+          try { editor.removeContentWidget(contentWidgetRef.current); } catch (e) {}
+        }
+        decorationProviderRef.current?.clearAll();
+        diffZoneRef.current?.hide();
+      }
+      contentWidgetRef.current = null;
+      decorationProviderRef.current = null;
+      diffZoneRef.current = null;
+    };
+  }, []);
 
   // 🔥 内联补全防抖 refs - 必须在组件顶层声明
   type CompletionRequest = {
@@ -167,6 +197,28 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
     setEditorInstance(paneId, editor);
     editorRef.current = editor; // 🔥 同时存储到 ref
     decorationProviderRef.current = new AgentDecorationProvider(editor);
+    diffZoneRef.current = new InlineDiffZone(editor);
+
+    // 🔥 v0.3.7: 注册内容小部件，使 Inline AI 面板随光标浮动
+    const contentWidget: monaco.editor.IContentWidget = {
+      getId: () => 'inline.ai.assistant',
+      getDomNode: () => {
+        const node = document.createElement('div');
+        node.id = 'monaco-inline-ai-portal';
+        return node;
+      },
+      getPosition: () => ({
+        position: editor.getPosition(),
+        preference: [monaco.editor.ContentWidgetPositionPreference.BELOW]
+      })
+    };
+    editor.addContentWidget(contentWidget);
+    contentWidgetRef.current = contentWidget;
+    
+    // 监听光标移动，自动更新小部件位置
+    editor.onDidChangeCursorPosition(() => {
+      editor.layoutContentWidget(contentWidget);
+    });
 
     // 🔥 [DEVELOPER PREVIEW] 调试入口：模拟 Agent 2.0 任务流
     (window as any).__DEBUG_AGENT_2 = (lineNumber: number) => {
@@ -218,6 +270,22 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
 
     // 🔥 v0.2.9: 设置全局编辑器实例（用于 Cmd+K 等功能）
     (window as any).__activeEditor = editor;
+
+    // 🔥 v0.3.7: 注册 Cmd+K / Ctrl+K Inline AI 快捷键
+    editor.addAction({
+      id: 'inline-ai-prompt',
+      label: 'Inline AI Assistant',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK],
+      run: (ed) => {
+        const position = ed.getPosition();
+        if (position) {
+          showInlineEdit('', {
+            lineNumber: position.lineNumber,
+            column: position.column
+          });
+        }
+      }
+    });
 
     // Add "Explain Code" Action
     editor.addAction({
@@ -802,6 +870,24 @@ ${textBefore}[CURSOR]${textAfter}
     }
   }, [file?.initialLine, file?.id, paneId]); // 🔥 修复无限循环：移除 getEditorInstance 依赖，使用 ref 代替
 
+  // 🔥 v0.3.7: 监听修改代码的变化，自动展开内联 Diff 区域
+  useEffect(() => {
+    if (isInlineEditVisible && pivoStage === 'implement' && modifiedCode && editorRef.current) {
+      if (!diffZoneRef.current) {
+        diffZoneRef.current = new InlineDiffZone(editorRef.current);
+      }
+      
+      const position = editorRef.current.getPosition();
+      if (position) {
+        // 在当前行展开预览区域
+        // 实际内容可以通过 React Portal 渲染到 Zone 内部，这里先展示占位
+        diffZoneRef.current.show(position.lineNumber, 12, 'Generating optimized code...');
+      }
+    } else {
+      diffZoneRef.current?.hide();
+    }
+  }, [isInlineEditVisible, pivoStage, modifiedCode]);
+
   // 🔥 E2E: 符号级智能补全测试需要真实的 Monaco Editor
   // 只有在没有打开文件时才显示 WelcomeScreen
   // E2E 模式检测用于跳过一些不必要的初始化，但不影响编辑器渲染
@@ -852,24 +938,48 @@ ${textBefore}[CURSOR]${textAfter}
         options={getOptimizedOptions()}
       />
 
-      {/* 🧪 Developer Preview: Inline AI UI (Via Portal) */}
-      {debugWidgetVisible && typeof document !== 'undefined' && createPortal(
-        <div 
-          className="fixed top-1/4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto"
-          style={{ minWidth: '500px' }}
-        >
+      {/* 🧪 Agent 2.0 Inline Assistant Portal */}
+      {(isInlineEditVisible || debugWidgetVisible) && document.getElementById('monaco-inline-ai-portal') && createPortal(
+        <div className="pointer-events-auto">
           <InlineAIWidget 
-            stage={debugStage} 
-            isLoading={debugStage !== 'idle'}
-            tasks={debugTasks}
+            stage={isInlineEditVisible ? pivoStage : debugStage} 
+            isLoading={isInlineEditVisible ? pivoStage !== 'idle' : debugStage !== 'idle'}
+            tasks={isInlineEditVisible ? pivoTasks : debugTasks}
+            modifiedFiles={isInlineEditVisible ? modifiedFiles : []}
             onClose={() => {
+              if (isInlineEditVisible) hideInlineEdit();
               setDebugWidgetVisible(false);
               decorationProviderRef.current?.clearAll();
             }}
-            onSubmit={(v) => toast.success('Submitted: ' + v)}
+            onSubmit={(v) => {
+              if (isInlineEditVisible) {
+                if (v === '__ACCEPT_ALL__') {
+                  // 🔥 执行物理代码替换
+                  const editor = editorRef.current;
+                  if (editor && modifiedCode) {
+                    const selection = editor.getSelection();
+                    const range = selection || editor.getModel()?.getFullModelRange();
+                    if (range) {
+                      editor.executeEdits('inline-ai', [{
+                        range: range,
+                        text: modifiedCode,
+                        forceMoveMarkers: true
+                      }]);
+                      toast.success('代码修改已应用');
+                    }
+                  }
+                  hideInlineEdit();
+                  decorationProviderRef.current?.clearAll();
+                } else {
+                  submitInstruction(v);
+                }
+              } else {
+                toast.success('Submitted (Debug): ' + v);
+              }
+            }}
           />
         </div>,
-        document.body
+        document.getElementById('monaco-inline-ai-portal')!
       )}
 
       {/* v0.2.9: Inline Edit Widget 已移至 App.tsx 全局渲染，避免重复订阅 */}

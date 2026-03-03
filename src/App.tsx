@@ -14,7 +14,6 @@ const APIKeyGuideDialog = React.lazy(() => import('./components/Onboarding').the
 const OnboardingTour = React.lazy(() => import('./components/Onboarding/OnboardingTour').then(m => ({ default: m.OnboardingTour })));
 const CodeReviewModal = React.lazy(() => import('./components/CodeReview').then(m => ({ default: m.CodeReviewModal })));
 const ReviewHistoryPanel = React.lazy(() => import('./components/CodeReview').then(m => ({ default: m.ReviewHistoryPanel })));
-const InlineEditWidget = React.lazy(() => import('./components/InlineEdit').then(m => ({ default: m.InlineEditWidget })));
 const DiffEditorModal = React.lazy(() => import('./components/InlineEdit').then(m => ({ default: m.DiffEditorModal })));
 const ToolClassificationTestPage = React.lazy(() => import('./components/Debug/ToolClassificationTestPage').then(m => ({ default: m.ToolClassificationTestPage })));
 const CodeSmellPanel = React.lazy(() => import('./components/CodeAnalysis/CodeSmellPanel').then(m => ({ default: m.CodeSmellPanel })));
@@ -874,9 +873,6 @@ function App() {
 
         {/* v0.2.9: Review History Panel */}
         <ReviewHistoryPanel isOpen={isHistoryPanelOpen} />
-
-        {/* v0.2.9: Inline Edit Widget (uses useInlineEditStore internally) */}
-        <InlineEditWidget />
 
         {/* v0.2.9: Diff Editor Modal */}
         <DiffEditorModal

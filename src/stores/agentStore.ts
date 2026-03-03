@@ -1361,6 +1361,25 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       });
       unlisteners.push(unlistenStatus);
 
+      // 🔥 v0.3.7: 监听 PIVO 阶段事件
+      const unlistenPivoStage = await listen('pivo_stage', (event: any) => {
+        const { stage, tasks, files } = event.payload;
+        import('./inlineEditStore').then(({ useInlineEditStore }) => {
+          useInlineEditStore.getState().setPivoState(stage, tasks, files);
+        });
+      });
+      unlisteners.push(unlistenPivoStage);
+
+      // 🔥 v0.3.7: 监听 PIVO 任务事件（流式增长）
+      const unlistenPivoTask = await listen('pivo_task', (event: any) => {
+        const { tasks } = event.payload;
+        import('./inlineEditStore').then(({ useInlineEditStore }) => {
+          const currentStage = useInlineEditStore.getState().pivoStage;
+          useInlineEditStore.getState().setPivoState(currentStage, tasks);
+        });
+      });
+      unlisteners.push(unlistenPivoTask);
+
       return () => {
           console.log('[AgentStore] 🛑 Cleaning up global event listeners...');
           unlisteners.forEach(u => u());
