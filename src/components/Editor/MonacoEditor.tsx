@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Editor, { OnMount, loader } from '@monaco-editor/react';
 import { useEditorStore } from '../../stores/editorStore';
 import { useFileStore } from '../../stores/fileStore';
@@ -26,6 +27,11 @@ import { estimateTokens } from '../../utils/tokenCounter';
 import * as monaco from 'monaco-editor';
 import { debounce } from 'lodash-es';
 import { Skeleton } from '../UI/Skeleton';
+import { AgentDecorationProvider } from './AgentDecorationProvider';
+import { InlineAIWidget } from '../InlineEdit/InlineAIWidget';
+import '../../styles/monaco-decorations.css';
+import { toast } from 'sonner';
+import { PivoStage } from '../../stores/types';
 
 // ============================================================================
 // Windows 平台检测 - 用于性能优化
@@ -44,6 +50,11 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
   const { t } = useTranslation();
   const setEditorInstance = useEditorStore(state => state.setEditorInstance);
   const getEditorInstance = useEditorStore(state => state.getEditorInstance);
+
+  // 🧪 [DEVELOPER PREVIEW] Debug States
+  const [debugWidgetVisible, setDebugWidgetVisible] = useState(false);
+  const [debugStage, setDebugStage] = useState<PivoStage>('idle');
+  const [debugTasks, setDebugTasks] = useState<any[]>([]);
 
   // v0.2.9: Inline Edit Store
   const showInlineEdit = useInlineEditStore(state => state.showInlineEdit);
@@ -79,6 +90,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
   // 🔥 修复无限循环：使用 ref 存储编辑器实例，避免依赖 getEditorInstance
   // ⚠️ 必须在所有 useEffect 之前声明所有 hooks
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const decorationProviderRef = useRef<AgentDecorationProvider | null>(null);
 
   // 🔥 内联补全防抖 refs - 必须在组件顶层声明
   type CompletionRequest = {
@@ -154,6 +166,55 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
     // 存储编辑器实例
     setEditorInstance(paneId, editor);
     editorRef.current = editor; // 🔥 同时存储到 ref
+    decorationProviderRef.current = new AgentDecorationProvider(editor);
+
+    // 🔥 [DEVELOPER PREVIEW] 调试入口：模拟 Agent 2.0 任务流
+    (window as any).__DEBUG_AGENT_2 = (lineNumber: number) => {
+      if (!decorationProviderRef.current) return;
+      
+      const updateFocus = (line: number) => {
+        decorationProviderRef.current?.clearAll();
+        decorationProviderRef.current?.updateActiveFocus(line);
+      };
+      
+      setDebugWidgetVisible(true);
+      setDebugStage('plan');
+      updateFocus(lineNumber);
+      
+      setDebugTasks([
+        { id: '1', description: 'Analyzing code structure...', status: 'running', stage: 'plan' }
+      ]);
+
+      // 模拟渐进式任务生长
+      setTimeout(() => {
+        setDebugStage('implement');
+        updateFocus(lineNumber + 1);
+        setDebugTasks(prev => [
+          { ...prev[0], status: 'success' },
+          { id: '2', description: 'Implementing optimized logic', status: 'running', stage: 'implement' }
+        ]);
+      }, 2000);
+
+      setTimeout(() => {
+        setDebugStage('verify');
+        updateFocus(lineNumber + 2);
+        setDebugTasks(prev => [
+          prev[0],
+          { ...prev[1], status: 'success' },
+          { id: '3', description: 'Running unit tests', status: 'running', stage: 'verify' }
+        ]);
+      }, 4500);
+
+      setTimeout(() => {
+        setDebugStage('idle');
+        setDebugTasks(prev => [
+          prev[0],
+          prev[1],
+          { ...prev[2], status: 'success' }
+        ]);
+        toast.success('Agent 2.0 演示任务圆满完成！');
+      }, 7000);
+    };
 
     // 🔥 v0.2.9: 设置全局编辑器实例（用于 Cmd+K 等功能）
     (window as any).__activeEditor = editor;
@@ -777,7 +838,7 @@ ${textBefore}[CURSOR]${textAfter}
   }
 
   return (
-    <div className="relative h-full w-full" data-testid="monaco-editor-container">
+    <div className="flex-1 flex flex-col h-full w-full relative overflow-hidden bg-[#1e1e1e]" data-testid="monaco-editor-container">
       <Editor
         height="100%"
         path={file?.path || `untitled-${paneId}-${file?.id}`} // Guarantee uniqueness
@@ -790,6 +851,27 @@ ${textBefore}[CURSOR]${textAfter}
         onMount={handleEditorDidMount}
         options={getOptimizedOptions()}
       />
+
+      {/* 🧪 Developer Preview: Inline AI UI (Via Portal) */}
+      {debugWidgetVisible && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed top-1/4 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto"
+          style={{ minWidth: '500px' }}
+        >
+          <InlineAIWidget 
+            stage={debugStage} 
+            isLoading={debugStage !== 'idle'}
+            tasks={debugTasks}
+            onClose={() => {
+              setDebugWidgetVisible(false);
+              decorationProviderRef.current?.clearAll();
+            }}
+            onSubmit={(v) => toast.success('Submitted: ' + v)}
+          />
+        </div>,
+        document.body
+      )}
+
       {/* v0.2.9: Inline Edit Widget 已移至 App.tsx 全局渲染，避免重复订阅 */}
       {/* v0.3.0: Code Smell Decoration Provider */}
       <CodeSmellDecorationProvider />

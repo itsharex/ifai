@@ -14,6 +14,16 @@ pub enum AgentStatus {
     Stopped,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PivoStage {
+    Plan,
+    Implement,
+    Verify,
+    Optimize,
+    Idle,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentContext {
     pub project_root: String,

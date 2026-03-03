@@ -48,3 +48,9 @@ export interface WorkspaceRoot {
   isActive: boolean;
   indexedAt: Date | null;
 }
+
+/**
+ * PIVO 工作流阶段
+ * @since v0.3.7
+ */
+export type PivoStage = 'plan' | 'implement' | 'verify' | 'optimize' | 'idle';

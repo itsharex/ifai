@@ -1,0 +1,27 @@
+/* Agent 2.0 Activity Bubble Styles */
+
+.agent-activity-line-decoration {
+    background: rgba(59, 130, 246, 0.1);
+    border-left: 3px solid #3b82f6;
+}
+
+.agent-activity-glyph-decoration {
+    width: 16px !important;
+    height: 16px !important;
+    /* 蓝色闪烁气泡图标 */
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%233b82f6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>');
+    background-repeat: no-repeat;
+    background-position: center;
+    cursor: pointer;
+    animation: agent-pulse 2s infinite ease-in-out;
+}
+
+@keyframes agent-pulse {
+    0% { opacity: 0.4; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.agent-activity-finished-gutter {
+    border-left: 2px solid rgba(16, 185, 129, 0.4);
+}

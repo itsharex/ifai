@@ -1,5 +1,5 @@
 use tauri::{AppHandle, Emitter};
-use crate::agent_system::base::{AgentStatus, AgentContext};
+use crate::agent_system::base::{AgentStatus, AgentContext, PivoStage};
 use crate::agent_system::supervisor::Supervisor;
 use crate::agent_system::tools;
 use crate::prompt_manager;
@@ -44,6 +44,9 @@ pub async fn run_agent_task(
     let mut history: Vec<Message> = Vec::new();
     let mut created_files: Vec<String> = Vec::new();
     let mut last_ai_summary = String::new();
+    let mut pivo_stage = PivoStage::Idle;
+    let mut retry_count = 0;
+    const MAX_RETRY_PER_STEP: usize = 3;
     
     let system_prompt = prompt_manager::get_agent_prompt(&agent_type, &context.project_root, &context.task_description);
     
@@ -279,6 +282,11 @@ pub async fn run_agent_task(
 
     while loop_count < MAX_LOOPS {
         loop_count += 1;
+
+        // 初始进入或重试时处于 Plan 阶段
+        pivo_stage = if retry_count > 0 { PivoStage::Optimize } else { PivoStage::Plan };
+        let _ = app.emit(&event_id, json!({ "type": "pivo_stage", "stage": pivo_stage }));
+
         let _ = app.emit("agent:status", json!({ "id": id, "status": "running", "progress": 0.15 + (loop_count as f32 * 0.05) }));
         let _ = app.emit(&event_id, json!({ "type": "status", "status": "running", "progress": 0.15 + (loop_count as f32 * 0.05) }));
         // 🔥 FIX: Send 'thinking' event instead of 'log' to enable streaming content in message (with line breaks)
@@ -304,6 +312,10 @@ pub async fn run_agent_task(
                 if let Some(tool_calls) = &ai_message.tool_calls {
                     if tool_calls.is_empty() { break; }
                     history.push(ai_message.clone());
+
+                    // 进入 Implement 阶段
+                    pivo_stage = PivoStage::Implement;
+                    let _ = app.emit(&event_id, json!({ "type": "pivo_stage", "stage": pivo_stage }));
 
                     for (idx, tool_call) in tool_calls.iter().enumerate() {
                         let tool_name = &tool_call.function.name;
@@ -364,7 +376,7 @@ pub async fn run_agent_task(
                                     }
 
                                     // Use recursive scan for agent_scan_directory to enable progress callbacks
-                                    let tool_result = if tool_name == "agent_scan_directory" {
+                                    let (tool_result, is_success) = if tool_name == "agent_scan_directory" {
                                         println!("[AgentRunner] Executing scan_directory...");
                                         let rel_path = args["rel_path"].as_str().or_else(|| args["path"].as_str()).unwrap_or(".").to_string();
                                         let pattern = args["pattern"].as_str().map(|s| s.to_string());
@@ -374,22 +386,28 @@ pub async fn run_agent_task(
                                         match crate::commands::core_wrappers::agent_scan_directory_with_progress(
                                             &app, &event_id, context.project_root.clone(), rel_path, pattern, max_depth, max_files
                                         ).await {
-                                            Ok(res) => res,
-                                            Err(e) => format!("Error: {}", e)
+                                            Ok(res) => (res, true),
+                                            Err(e) => (format!("Error: {}", e), false)
                                         }
                                     } else {
                                         println!("[AgentRunner] Calling tools::execute_tool_internal for {}", tool_name);
                                         match tools::execute_tool_internal(tool_name, &args, &context.project_root).await {
-                                            Ok(res) => {
-                                                println!("[AgentRunner] Execution success for {}. Result size: {}", tool_name, res.len());
-                                                res
-                                            },
+                                            Ok(res) => (res, true),
                                             Err(e) => {
                                                 println!("[AgentRunner] Execution FAILED for {}: {}", tool_name, e);
-                                                format!("Error: {}", e)
+                                                (format!("Error: {}", e), false)
                                             }
                                         }
                                     };
+
+                                    // 🔥 增强：处理自愈逻辑
+                                    if !is_success && retry_count < MAX_RETRY_PER_STEP {
+                                        retry_count += 1;
+                                        println!("[AgentRunner] 🛡️ Triggering Self-Healing (Retry {}/{})", retry_count, MAX_RETRY_PER_STEP);
+                                        pivo_stage = PivoStage::Optimize;
+                                    } else if is_success {
+                                        retry_count = 0; 
+                                    }
 
                                     // Send explore_findings event for agent_scan_directory
                                     if tool_name == "agent_scan_directory" {

@@ -6,6 +6,8 @@ pub mod supervisor;
 pub mod runner;
 #[cfg(feature = "commercial")]
 pub mod tools;
+#[cfg(feature = "commercial")]
+pub mod pivo_controller;
 
 #[cfg(feature = "commercial")]
 pub use base::{AgentStatus, AgentContext};
