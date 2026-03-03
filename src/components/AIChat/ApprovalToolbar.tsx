@@ -3,6 +3,7 @@ import { Check, X, Shield, Info, AlertTriangle } from 'lucide-react';
 import { useEditorStore } from '../../stores/editorStore';
 import { useChatStore } from '../../stores/useChatStore';
 import { useApprovalStore } from '../../core/approval/store/useApprovalStore';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { RiskPolicy } from '../../core/approval/policies/RiskPolicy';
 import { toast } from 'sonner';
 
@@ -11,6 +12,7 @@ const riskPolicy = new RiskPolicy();
 export const ApprovalToolbar: React.FC = () => {
   const { approvalPreview, closeApprovalPreview } = useEditorStore();
   const { isVisible, filePath, toolCallId } = approvalPreview;
+  const { editorMode } = useLayoutStore();
 
   if (!isVisible) return null;
 
@@ -18,15 +20,23 @@ export const ApprovalToolbar: React.FC = () => {
   const riskLevel = riskPolicy.calculateRisk({
     toolName: 'agent_write_file', // 默认为写入预览
     args: { rel_path: filePath },
-    editorMode: 'standard'
+    editorMode: editorMode as any
   });
 
   const handleApprove = () => {
     if (toolCallId) {
-      // 触发 chatStore 的审批
       const chatStore = useChatStore.getState();
-      chatStore.approveToolCall(toolCallId);
-      toast.success('已批准变更');
+      // 🔥 修复：查找包含该 toolCall 的 messageId
+      const message = chatStore.messages.find(m => 
+        m.toolCalls?.some(tc => tc.id === toolCallId)
+      );
+      
+      if (message) {
+        chatStore.approveToolCall(message.id, toolCallId);
+        toast.success('已批准变更');
+      } else {
+        toast.error('无法定位原始消息');
+      }
     }
     closeApprovalPreview();
   };
@@ -34,8 +44,16 @@ export const ApprovalToolbar: React.FC = () => {
   const handleReject = () => {
     if (toolCallId) {
       const chatStore = useChatStore.getState();
-      chatStore.rejectToolCall(toolCallId);
-      toast.error('已拒绝变更');
+      const message = chatStore.messages.find(m => 
+        m.toolCalls?.some(tc => tc.id === toolCallId)
+      );
+
+      if (message) {
+        chatStore.rejectToolCall(message.id, toolCallId);
+        toast.error('已拒绝变更');
+      } else {
+        toast.error('无法定位原始消息');
+      }
     }
     closeApprovalPreview();
   };

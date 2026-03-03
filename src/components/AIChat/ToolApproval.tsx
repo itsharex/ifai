@@ -10,6 +10,7 @@ import { readFileContent } from '../../utils/fileSystem';
 import { MonacoDiffView } from '../Editor/MonacoDiffView';
 import { getToolLabel, getToolColor } from 'ifainew-core';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { formatToolResultToMarkdown, FormattedToolResult, extractToolSummary } from '../../utils/toolResultFormatter';
 import { ToolArgsViewer, CompactToolArgsViewer } from './ToolArgsViewer';
 import { StreamingToolArgsViewer } from './StreamingToolArgsViewer';
@@ -192,6 +193,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
 
     const { t } = useTranslation();
     const settings = useSettingsStore();
+    const { editorMode } = useLayoutStore();
     const chatStore = useChatStore();
     const [isExpanded, setIsExpanded] = useState(false);
     const [oldContent, setOldContent] = useState<string | null>(null);
@@ -395,9 +397,9 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
         return riskPolicy.calculateRisk({
             toolName: toolCall.tool || '',
             args: toolCall.args || {},
-            editorMode: settings.editorMode as any || 'standard'
+            editorMode: editorMode as any || 'standard'
         });
-    }, [toolCall.tool, toolCall.args, settings.editorMode]);
+    }, [toolCall.tool, toolCall.args, editorMode]);
 
     // 获取风险图标与颜色
     const getRiskVisuals = (level: RiskLevel) => {

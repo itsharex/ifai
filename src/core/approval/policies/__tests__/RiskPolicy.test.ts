@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach } from 'vitest';
 import { RiskPolicy, RiskContext } from '../RiskPolicy';
 
 describe('RiskPolicy', () => {
