@@ -53,16 +53,42 @@ export const MonacoDiffView: React.FC<MonacoDiffViewProps> = ({
         modified: modifiedModel,
       });
 
+      // 🔥 自动跳转到第一个变更点
+      const timer = setTimeout(() => {
+        // 检查 editor 是否已被释放
+        if (!editorRef.current) return;
+        
+        const changes = diffEditor.getLineChanges();
+        if (changes && changes.length > 0) {
+          const firstChange = changes[0];
+          const lineNumber = firstChange.modifiedStartLineNumber;
+          diffEditor.getModifiedEditor().revealLineInCenter(lineNumber, monaco.editor.ScrollType.Smooth);
+        }
+      }, 100);
+
       editorRef.current = diffEditor;
 
       return () => {
-        // Critical fix: Detach models from editor BEFORE disposing them to prevent "TextModel got disposed" error
-        if (diffEditor) {
-            diffEditor.setModel(null);
+        clearTimeout(timer);
+        const editor = editorRef.current;
+        editorRef.current = null;
+        
+        if (editor) {
+          try {
+            // 1. 断开模型引用
+            editor.setModel(null);
+            // 2. 销毁编辑器
+            editor.dispose();
+          } catch (e) {}
         }
-        originalModel.dispose();
-        modifiedModel.dispose();
-        diffEditor.dispose();
+
+        // 3. 延迟销毁模型，彻底避开内部事件循环冲突
+        setTimeout(() => {
+          try {
+            if (originalModel && !originalModel.isDisposed()) originalModel.dispose();
+            if (modifiedModel && !modifiedModel.isDisposed()) modifiedModel.dispose();
+          } catch (e) {}
+        }, 100); // 增加到 100ms 缓冲区
       };
     }
   }, [oldValue, newValue, language, theme]);

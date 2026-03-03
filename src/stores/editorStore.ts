@@ -7,6 +7,14 @@ interface InlineEditState {
   selection: Selection | null;
 }
 
+interface ApprovalPreviewState {
+  isVisible: boolean;
+  filePath: string;
+  oldContent: string;
+  newContent: string;
+  toolCallId?: string;
+}
+
 interface EditorInstance {
   instance: editor.IStandaloneCodeEditor;
   paneId: string;
@@ -18,6 +26,7 @@ interface EditorState {
   activeEditorId: string | null;
   theme: 'vs-dark' | 'light';
   inlineEdit: InlineEditState;
+  approvalPreview: ApprovalPreviewState;
   activeFileTokenCount: number;
 
   setEditorInstance: (paneId: string, instance: editor.IStandaloneCodeEditor) => void;
@@ -27,6 +36,8 @@ interface EditorState {
   setTheme: (theme: 'vs-dark' | 'light') => void;
   setInlineEdit: (state: Partial<InlineEditState>) => void;
   closeInlineEdit: () => void;
+  setApprovalPreview: (state: Partial<ApprovalPreviewState>) => void;
+  closeApprovalPreview: () => void;
   getActiveEditor: () => editor.IStandaloneCodeEditor | null;
   evictLRU: () => void;
   setActiveFileTokenCount: (count: number) => void;
@@ -42,6 +53,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     isVisible: false,
     position: null,
     selection: null,
+  },
+  approvalPreview: {
+    isVisible: false,
+    filePath: '',
+    oldContent: '',
+    newContent: '',
   },
   activeFileTokenCount: 0,
 
@@ -113,6 +130,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   closeInlineEdit: () => set((state) => ({
     inlineEdit: { ...state.inlineEdit, isVisible: false }
+  })),
+
+  setApprovalPreview: (newState) => set((state) => ({
+    approvalPreview: { ...state.approvalPreview, ...newState }
+  })),
+
+  closeApprovalPreview: () => set((state) => ({
+    approvalPreview: { ...state.approvalPreview, isVisible: false }
   })),
 
   getActiveEditor: () => {

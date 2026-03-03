@@ -596,6 +596,26 @@ export const useFileStore = create<FileState>()(
       openFile: (file) => {
         let fileIdToActivate = file.id;
 
+        // 🔥 处理沉浸式审批预览联动
+        if (file.previewDiff) {
+          import('./editorStore').then(({ useEditorStore }) => {
+            useEditorStore.getState().setApprovalPreview({
+              isVisible: true,
+              filePath: file.path,
+              oldContent: file.previewDiff!.oldContent,
+              newContent: file.previewDiff!.newContent,
+              toolCallId: file.previewDiff!.toolCallId
+            });
+          });
+        } else {
+          // 如果不是预览模式，确保关闭之前的预览（或者由 UI 决定）
+          import('./editorStore').then(({ useEditorStore }) => {
+            if (useEditorStore.getState().approvalPreview.isVisible) {
+              useEditorStore.getState().closeApprovalPreview();
+            }
+          });
+        }
+
         set((state) => {
           const existing = state.openedFiles.find(f => f.path === file.path);
 

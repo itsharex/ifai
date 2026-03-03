@@ -197,8 +197,21 @@ export const DiffEditorModal: React.FC<DiffEditorModalProps> = ({
   const instruction = storeInstruction || propInstruction || '';
 
   const [monaco, setMonaco] = useState<Monaco | null>(null);
+  const editorRef = useRef<any>(null);
   const diffStats = calculateDiffStats(originalCode, modifiedCode);
   const actualLanguage = language || getLanguageFromPath(filePath);
+
+  // 卸载时清理
+  useEffect(() => {
+    return () => {
+      if (editorRef.current) {
+        try {
+          editorRef.current.setModel(null);
+        } catch (e) {}
+        editorRef.current = null;
+      }
+    };
+  }, []);
 
   // 🔥 修复无限循环：使用 useMemo 缓存文件路径字符串，避免每次渲染都重新计算
   const filePathStr = React.useMemo(() => filePathToString(filePath), [filePath]);
@@ -271,7 +284,6 @@ export const DiffEditorModal: React.FC<DiffEditorModalProps> = ({
         {/* Diff Editor */}
         <div className="flex-1 overflow-hidden" data-testid="diff-editor">
           <DiffEditor
-            key={diffEditorKey}
             height="100%"
             language={actualLanguage}
             theme="vs-dark"
@@ -288,6 +300,7 @@ export const DiffEditorModal: React.FC<DiffEditorModalProps> = ({
             }}
             onMount={(editor, monaco) => {
               setMonaco(monaco);
+              editorRef.current = editor;
             }}
           />
         </div>

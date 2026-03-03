@@ -2,8 +2,9 @@ import { PivoProjectTree } from "./PivoProjectTree";
 import { useApprovalStore } from '../../core/approval/store/useApprovalStore';
 import { DiffPreview } from './DiffPreview';
 import React, { useState, useLayoutEffect, useMemo } from 'react';
-import { Check, X, Terminal, FilePlus, Eye, FolderOpen, Search, Trash2, ChevronDown, ChevronUp, File, Folder, FileCheck, CheckCircle, XCircle, RotateCcw, Loader2, AlertTriangle } from 'lucide-react';
+import { Check, X, Terminal, FilePlus, Eye, FolderOpen, Search, Trash2, ChevronDown, ChevronUp, File, Folder, FileCheck, CheckCircle, XCircle, RotateCcw, Loader2, AlertTriangle, Shield, ShieldAlert, ShieldCheck, ExternalLink } from 'lucide-react';
 import { ToolCall, useChatStore } from '../../stores/useChatStore';
+import { useFileStore } from '../../stores/fileStore';
 import { useTranslation } from 'react-i18next';
 import { readFileContent } from '../../utils/fileSystem';
 import { MonacoDiffView } from '../Editor/MonacoDiffView';
@@ -16,6 +17,9 @@ import { ToolExecutionIndicator, StreamingContentLoader } from './ToolExecutionI
 import ReactMarkdown from 'react-markdown';
 import { BashConsoleOutput } from './BashConsoleOutput';
 import { toast } from 'sonner';
+import { RiskPolicy, RiskLevel } from '../../core/approval/policies/RiskPolicy';
+
+const riskPolicy = new RiskPolicy();
 
 interface ToolApprovalProps {
     toolCall: ToolCall;
@@ -386,6 +390,57 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
     const filePath = toolCall.args?.rel_path || toolCall.args?.path || '';
     const newContent = toolCall.args?.content || '';
 
+    // 🔥 风险评估逻辑
+    const riskLevel = useMemo(() => {
+        return riskPolicy.calculateRisk({
+            toolName: toolCall.tool || '',
+            args: toolCall.args || {},
+            editorMode: settings.editorMode as any || 'standard'
+        });
+    }, [toolCall.tool, toolCall.args, settings.editorMode]);
+
+    // 获取风险图标与颜色
+    const getRiskVisuals = (level: RiskLevel) => {
+        switch (level) {
+            case 'high':
+                return {
+                    icon: <ShieldAlert size={14} className="text-red-400" />,
+                    bg: 'from-red-950/40 to-transparent',
+                    border: 'border-red-500/30',
+                    label: '高风险操作',
+                    textColor: 'text-red-400'
+                };
+            case 'low':
+                return {
+                    icon: <ShieldCheck size={14} className="text-green-400" />,
+                    bg: 'from-green-950/20 to-transparent',
+                    border: 'border-green-500/20',
+                    label: '低风险操作',
+                    textColor: 'text-green-400'
+                };
+            default:
+                return {
+                    icon: <Shield size={14} className="text-amber-400" />,
+                    bg: 'from-amber-950/20 to-transparent',
+                    border: 'border-amber-500/20',
+                    label: '中等风险',
+                    textColor: 'text-amber-400'
+                };
+        }
+    };
+
+    const riskVisuals = getRiskVisuals(riskLevel);
+
+    // 路径摘要逻辑
+    const formatFilePath = (path: string) => {
+        if (!path) return '';
+        const parts = path.split('/');
+        if (parts.length <= 2) return path;
+        const fileName = parts.pop();
+        const parent = parts.pop();
+        return `.../${parent}/${fileName}`;
+    };
+
     useLayoutEffect(() => {
         if (isWriteFile && filePath && !isPartial && oldContent === null) {
             const loadOld = async () => {
@@ -418,21 +473,56 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
     }, [isWriteFile, filePath, isPartial, oldContent, toolCall.result]);
 
     return (
-        <div data-testid="file-approval-dialog" data-test-id="tool-approval-card" className="group/tool mt-4 mb-4 rounded-2xl border border-gray-700/40 bg-[#1e1e1e]/80 backdrop-blur-sm shadow-[0_8px_30px_rgb(0,0,0,0.12)] overflow-hidden w-full transition-all duration-300 hover:shadow-blue-500/5">
+        <div data-testid="file-approval-dialog" data-test-id="tool-approval-card" className={`group/tool mt-4 mb-4 rounded-2xl border ${riskVisuals.border} bg-[#1e1e1e]/80 backdrop-blur-sm shadow-[0_8px_30px_rgb(0,0,0,0.12)] overflow-hidden w-full transition-all duration-300 hover:shadow-blue-500/5`}>
                         {/* Elegant Header (Point 2) */}
-                        <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-r from-gray-900/40 to-transparent border-b border-gray-700/30">
+                        <div className={`flex items-center justify-between px-5 py-3 bg-gradient-to-r ${riskVisuals.bg} border-b border-gray-700/30`}>
                             <div className="flex items-center gap-3 pr-12"> {/* Added pr-12 to avoid copy button overlap */}
                                 <div className={`flex items-center justify-center w-8 h-8 rounded-xl ${getToolColor(toolCall.tool)} bg-opacity-10 border border-current opacity-80 shadow-lg shadow-black/20`}>
                                     {getIcon()}
                                 </div>
                                 <div className="flex flex-col">
-                                    <span data-testid="tool-name" className="text-[13px] font-bold text-gray-100 tracking-tight leading-tight">
-                                        {getToolLabel(toolCall.tool)}
-                                    </span>
-                                    {filePath ? (
-                                        <span data-testid="file-path" className="text-[10px] text-gray-500 font-mono font-medium truncate max-w-[220px]" title={filePath}>
-                                            {toolCall.tool?.includes('write') ? 'Writing to' : 'Accessing'} {filePath}
+                                    <div className="flex items-center gap-2">
+                                        <span data-testid="tool-name" className="text-[13px] font-bold text-gray-100 tracking-tight leading-tight">
+                                            {getToolLabel(toolCall.tool)}
                                         </span>
+                                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-800/30 border border-gray-700/50">
+                                            {riskVisuals.icon}
+                                            <span className={`text-[9px] font-bold uppercase tracking-tighter ${riskVisuals.textColor}`}>
+                                                {riskVisuals.label}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {filePath ? (
+                                        <div className="flex items-center gap-2 group/path">
+                                            <span data-testid="file-path" className="text-[10px] text-gray-500 font-mono font-medium truncate max-w-[220px]" title={filePath}>
+                                                {toolCall.tool?.includes('write') ? '写入' : '访问'} <span className="text-gray-300 font-bold">{formatFilePath(filePath)}</span>
+                                            </span>
+                                            {isWriteFile && !isPartial && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        useFileStore.getState().openFile({
+                                                            id: filePath,
+                                                            path: filePath,
+                                                            name: filePath.split('/').pop() || '',
+                                                            content: newContent,
+                                                            isDirty: false,
+                                                            language: detectLanguage(filePath),
+                                                            previewDiff: {
+                                                                oldContent: oldContent || '',
+                                                                newContent: newContent,
+                                                                toolCallId: toolCall.id
+                                                            }
+                                                        });
+                                                        toast.info('已开启编辑器内联预览');
+                                                    }}
+                                                    className="p-1 rounded bg-gray-800 hover:bg-blue-500/20 text-gray-500 hover:text-blue-400 transition-all opacity-0 group-hover/path:opacity-100"
+                                                    title="在主编辑器中预览变更"
+                                                >
+                                                    <ExternalLink size={10} />
+                                                </button>
+                                            )}
+                                        </div>
                                     ) : (
                                         toolCall.args?.command && (
                                             <span className="text-[10px] text-gray-500 font-mono truncate max-w-[220px]">

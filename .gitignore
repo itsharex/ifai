@@ -100,3 +100,5 @@ agent-store-tool-store-analysis.md
 docs/testing/production-feedback-loop.md
 docs/testing/test-coverage-matrix.md
 tests/e2e/fuzzing/chaos-test.example.md
+.gemini
+.ifai/knowledge-base/

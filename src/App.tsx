@@ -26,6 +26,7 @@ import { Statusbar } from './components/Layout/Statusbar';
 import { SplitPaneContainer } from './components/Layout/SplitPaneContainer';
 import { TabBar } from './components/Editor/TabBar';
 import { AIChat } from './components/AIChat/AIChat';
+import { ApprovalToolbar } from './components/AIChat/ApprovalToolbar';
 
 
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
@@ -749,7 +750,9 @@ function App() {
 
         <div className="flex-1 flex flex-col min-w-0 bg-[#1e1e1e] overflow-hidden">
           <TabBar />
+          <ApprovalToolbar />
           <div className="flex-1 relative overflow-hidden">
+
             {isPromptManagerOpen ? (
               <PromptManager />
             ) : (

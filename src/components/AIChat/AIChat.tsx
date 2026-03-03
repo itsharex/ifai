@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Send, Settings, X, ChevronDown, Search } from 'lucide-react';
 import { useChatStore } from '../../stores/useChatStore';
 import { useChatUIStore } from '../../stores/chatUIStore';
@@ -1522,11 +1523,13 @@ ${context}
               console.log('[extractFileChanges] Tool result:', result);
 
               if (result && result.success) {
+                // 🔥 兼容 camelCase 和 snake_case
+                const originalContent = result.originalContent || result.original_content;
                 changes.push({
                   path: relPath,
                   content: args.content,
-                  originalContent: result.originalContent,
-                  changeType: result.originalContent ? 'modified' : 'added',
+                  originalContent: originalContent,
+                  changeType: originalContent ? 'modified' : 'added',
                   applied: false,
                 });
                 console.log('[extractFileChanges] ✓ Change extracted:', relPath);
@@ -1579,11 +1582,13 @@ ${context}
             console.log('[extractFileChanges] Tool result (fallback):', result);
 
             if (result && result.success) {
+              // 🔥 兼容 camelCase 和 snake_case
+              const originalContent = result.originalContent || result.original_content;
               changes.push({
                 path: relPath,
                 content: args.content,
-                originalContent: result.originalContent,
-                changeType: result.originalContent ? 'modified' : 'added',
+                originalContent: originalContent,
+                changeType: originalContent ? 'modified' : 'added',
                 applied: false,
               });
               console.log('[extractFileChanges] ✓ Change extracted (fallback):', relPath);
@@ -1676,16 +1681,26 @@ ${context}
     let refreshedCount = 0;
     for (const file of filesToRefresh) {
       try {
+        // 确保使用绝对路径进行加载
+        const absolutePath = file.path.startsWith(rootPath) 
+          ? file.path 
+          : `${rootPath}/${file.path}`;
+
         // 只刷新没有未保存更改的文件
         if (!file.isDirty) {
-          await fileStore.reloadFileContent(file.id);
+          // 🔥 修复：如果 file.path 是相对路径，reloadFileContent 可能会失败
+          // 我们直接调用 readFileContent 并更新 store
+          const content = await readFileContent(absolutePath);
+          fileStore.updateFileContent(file.id, content);
+          fileStore.setFileDirty(file.id, false);
+          
           refreshedCount++;
-          console.log('[Composer] ✓ Refreshed file:', file.path);
+          console.log(`[Composer] ✓ Refreshed file: ${absolutePath}`);
         } else {
-          console.log('[Composer] ⊘ Skipped dirty file:', file.path);
+          console.log(`[Composer] ⊘ Skipped dirty file: ${absolutePath}`);
         }
       } catch (e) {
-        console.warn('[Composer] Failed to refresh file:', file.path, e);
+        console.warn(`[Composer] Failed to refresh file ${file.path}:`, e);
       }
     }
 
@@ -2297,13 +2312,39 @@ ${suggestion.fixContext.code_context}
       )}
 
       {/* v0.2.6 新增：Token 使用量指示器 */}
-      
+
       <TokenUsageIndicator />
-      
+
       <div className="p-4 bg-[#1e1e1e]/30">
         <ChatInputArea isLoading={isLoading} />
       </div>
 
-    </div>
-  );
-};
+      {/* v0.2.8: Composer 2.0 多文件 Diff 预览 Portal */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {composerOpen && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed inset-0 z-[210] flex items-center justify-center p-4 md:p-8 bg-black/60 backdrop-blur-sm"
+            >
+              <div className="w-full h-full max-w-[1400px] max-h-[900px] shadow-2xl shadow-black/50 border border-white/10 rounded-xl overflow-hidden bg-[#1e1e1e]">
+                <ComposerDiffView
+                  changes={composerChanges}
+                  onAcceptAll={handleComposerAcceptAll}
+                  onRejectAll={handleComposerRejectAll}
+                  onAcceptFile={handleComposerAcceptFile}
+                  onRejectFile={handleComposerRejectFile}
+                  onClose={handleComposerClose}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+      </div>
+      );
+      };

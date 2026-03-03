@@ -112,6 +112,61 @@ fn calibrate_project_root(raw_root: &str) -> String {
     base_path.to_string_lossy().to_string()
 }
 
+/// Check if a path is forbidden for AI agent operations
+fn is_path_forbidden(rel_path: &str) -> bool {
+    let path = rel_path.to_lowercase().replace('\\', "/");
+    let forbidden_prefixes = [
+        ".git/",
+        ".env",
+        ".ifai/",
+        "node_modules/",
+        "dist/",
+        "target/",
+    ];
+
+    // 1. 直接前缀匹配
+    if forbidden_prefixes.iter().any(|prefix| path.starts_with(prefix)) {
+        return true;
+    }
+
+    // 2. 精确匹配敏感文件
+    let forbidden_files = [
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "tauri.conf.json",
+    ];
+    if forbidden_files.iter().any(|file| path == *file) {
+        return true;
+    }
+
+    // 3. 简单的路径遍历检测
+    if path.contains("../") {
+        return true;
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_path_forbidden() {
+        assert!(is_path_forbidden(".git/config"));
+        assert!(is_path_forbidden(".env"));
+        assert!(is_path_forbidden(".env.local"));
+        assert!(is_path_forbidden("node_modules/lodash/index.js"));
+        assert!(is_path_forbidden("package-lock.json"));
+        assert!(is_path_forbidden("src/../.git/config")); // Path traversal
+
+        assert!(!is_path_forbidden("src/main.rs"));
+        assert!(!is_path_forbidden("README.md"));
+        assert!(!is_path_forbidden("docs/index.md"));
+    }
+}
+
 pub async fn execute_tool_internal(
     tool_name: &str,
     args: &Value,
@@ -119,6 +174,19 @@ pub async fn execute_tool_internal(
 ) -> Result<String, String> {
     // 1. Calibrate the project root globally for ALL tools
     let calibrated_root = calibrate_project_root(project_root);
+    
+    // 🔥 Security Sandbox: Check for forbidden paths
+    let rel_path = get_arg_opt_str(args, "rel_path")
+        .or_else(|| get_arg_opt_str(args, "path"))
+        .unwrap_or_default();
+
+    if !rel_path.is_empty() && is_path_forbidden(&rel_path) {
+        // Allow ONLY reading of non-critical parts if necessary, but for now, block all writes/deletes
+        if tool_name.contains("write") || tool_name.contains("delete") || tool_name.contains("replace") {
+            println!("[AgentTools] 🛡️ Security Sandbox: Blocked {} on forbidden path: {}", tool_name, rel_path);
+            return Err(format!("Security Error: Access to '{}' is strictly forbidden for AI safety. Please modify other parts of the project.", rel_path));
+        }
+    }
     
     // Only log if calibration actually changed the path
     if calibrated_root != project_root {

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { MonacoEditor } from '../Editor/MonacoEditor';
 import { MarkdownPreview } from '../Editor/MarkdownPreview';
+import { MonacoDiffView } from '../Editor/MonacoDiffView';
 import { Pane, useLayoutStore } from '../../stores/layoutStore';
 import { useFileStore } from '../../stores/fileStore';
+import { useEditorStore } from '../../stores/editorStore';
 import { useTranslation } from 'react-i18next';
 
 interface PaneViewProps {
@@ -29,6 +31,7 @@ export const PaneView: React.FC<PaneViewProps> = ({
   const { t } = useTranslation();
   const { splitPane, closePane, panes } = useLayoutStore();
   const { openedFiles, previewMode, activeFileId } = useFileStore();
+  const { approvalPreview } = useEditorStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ x: 0, y: 0, visible: false });
 
   // Find the file associated with this pane
@@ -39,8 +42,24 @@ export const PaneView: React.FC<PaneViewProps> = ({
   const isActiveFile = associatedFile?.id === activeFileId;
   const shouldShowPreview = isMarkdownFile && isActiveFile;
 
+  // 🔥 沉浸式审批预览逻辑
+  const isApprovalPreviewActive = approvalPreview.isVisible && associatedFile && (approvalPreview.filePath === associatedFile.path);
+
   // 渲染编辑器区域内容
   const renderEditorContent = () => {
+    if (isApprovalPreviewActive) {
+      return (
+        <div className="h-full w-full">
+          <MonacoDiffView
+            oldValue={approvalPreview.oldContent}
+            newValue={approvalPreview.newContent}
+            language={associatedFile?.language}
+            height="100%"
+          />
+        </div>
+      );
+    }
+
     if (!associatedFile) {
       return <div className="h-full w-full"><MonacoEditor paneId={pane.id} /></div>;
     }

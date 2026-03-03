@@ -29,6 +29,11 @@ export interface OpenedFile {
   isDirty: boolean;
   language: string;
   initialLine?: number;
+  previewDiff?: {
+    oldContent: string;
+    newContent: string;
+    toolCallId?: string;
+  };
 }
 
 /**

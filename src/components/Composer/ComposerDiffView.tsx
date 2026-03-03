@@ -316,12 +316,29 @@ const DiffEditor: React.FC<DiffEditorProps> = ({
   readOnly = true,
 }) => {
   const [isMonacoLoaded, setIsMonacoLoaded] = useState(false);
+  const editorRef = useRef<any>(null);
 
   useEffect(() => {
     // Monaco 需要一点时间来初始化
     const timer = setTimeout(() => setIsMonacoLoaded(true), 100);
-    return () => clearTimeout(timer);
+    
+    return () => {
+      clearTimeout(timer);
+      if (editorRef.current) {
+        try {
+          // 🔥 关键：在卸载前断开模型引用，防止 Monaco 内部事件崩溃
+          editorRef.current.setModel(null);
+        } catch (e) {
+          // 忽略清理过程中的错误
+        }
+        editorRef.current = null;
+      }
+    };
   }, []);
+
+  const handleEditorMount = (editor: any) => {
+    editorRef.current = editor;
+  };
 
   if (!isMonacoLoaded) {
     return (
@@ -347,10 +364,10 @@ const DiffEditor: React.FC<DiffEditorProps> = ({
   return (
     <div className="monaco-diff-editor-wrapper">
       <MonacoDiffEditor
-        key={`${path}-${language}`}
         language={language}
         original={original || ''}
         modified={modified || ''}
+        onMount={handleEditorMount}
         theme="vs-dark"
         options={{
           readOnly: readOnly,

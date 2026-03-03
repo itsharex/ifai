@@ -46,19 +46,43 @@ function extractCompletionInfo(message: Message): CompletionInfo | null {
 
   // 提取文件信息
   const files: string[] = [];
+  const cleanPath = (p: string) => {
+    if (!p || typeof p !== 'string') return '';
+    // 如果字符串包含换行，或者明显是一个 Markdown 区块，那它肯定不是路径
+    if (p.includes('\n') || p.includes('`') || p.length > 255) return '';
+    const cleaned = p.replace(/\\n/g, ' ').replace(/\n/g, ' ').trim();
+    // 再次检查清理后的路径是否包含非法字符
+    if (cleaned.includes(' ') && !cleaned.includes('/') && !cleaned.includes('\\')) return '';
+    return cleaned;
+  };
+
   completedCalls.forEach(tc => {
     // 兼容多种返回格式
     const result: any = tc.result;
     if (typeof result === 'string') {
         // 尝试从字符串中提取路径（启发式）
         if (result.includes('Successfully wrote to ')) {
-            const path = result.replace('Successfully wrote to ', '').trim();
-            files.push(path);
+            const path = result.replace('Successfully wrote to ', '').split('\n')[0].trim();
+            const cp = cleanPath(path);
+            if (cp) files.push(cp);
         }
     } else if (result && typeof result === 'object') {
-        if (result.path) files.push(result.path);
-        if (result.paths) files.push(...result.paths);
-        if (result.files) files.push(...result.files);
+        if (result.path) {
+            const cp = cleanPath(result.path);
+            if (cp) files.push(cp);
+        }
+        if (result.paths && Array.isArray(result.paths)) {
+            result.paths.forEach((p: string) => {
+                const cp = cleanPath(p);
+                if (cp) files.push(cp);
+            });
+        }
+        if (result.files && Array.isArray(result.files)) {
+            result.files.forEach((p: string) => {
+                const cp = cleanPath(p);
+                if (cp) files.push(cp);
+            });
+        }
     }
   });
 
@@ -107,12 +131,13 @@ export const TaskCompletionBanner: React.FC<TaskCompletionBannerProps> = ({
                 .flatMap(tc => {
                   const result: any = tc.result;
                   const files: string[] = [];
+                  const cleanP = (p: string) => p.replace(/\\n/g, ' ').replace(/\n/g, ' ').trim();
                   if (typeof result === 'string' && result.includes('wrote to ')) {
-                      files.push(result.replace('Successfully wrote to ', '').trim());
+                      files.push(cleanP(result.replace('Successfully wrote to ', '').trim()));
                   } else if (result && typeof result === 'object') {
-                      if (result.path) files.push(result.path);
-                      if (result.paths) files.push(...result.paths);
-                      if (result.files) files.push(...result.files);
+                      if (result.path) files.push(cleanP(result.path));
+                      if (result.paths) result.paths.forEach((p: string) => files.push(cleanP(p)));
+                      if (result.files) result.files.forEach((p: string) => files.push(cleanP(p)));
                   }
                   return files;
                 })

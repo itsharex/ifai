@@ -902,7 +902,14 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                         {/* Task Completion Banner */}
                         {!effectivelyStreaming && (
                             <div className="min-h-[24px]">
-                                <TaskCompletionBanner message={message} onOpenFile={(path) => toast.info(`打开文件: ${path}`)} onCopyContent={(content) => { navigator.clipboard.writeText(content); toast.success('内容已复制'); }} />
+                                <TaskCompletionBanner 
+                                    message={message} 
+                                    onOpenFile={onOpenFile} 
+                                    onCopyContent={(content) => { 
+                                        navigator.clipboard.writeText(content); 
+                                        toast.success('内容已复制'); 
+                                    }} 
+                                />
                             </div>
                         )}
 

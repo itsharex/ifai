@@ -437,6 +437,21 @@ export function FormattedToolResult({ result }: { result: any }) {
 }
 
 /**
+ * 清理路径或文本中的转义字符
+ */
+function cleanRawString(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/\\n/g, ' ')
+    .replace(/\\r/g, ' ')
+    .replace(/\\t/g, ' ')
+    .replace(/\n/g, ' ')
+    .replace(/\r/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * 提取工具调用总结信息（用于生成完成后的总结）
  */
 export function extractToolSummary(result: any): {
@@ -449,20 +464,27 @@ export function extractToolSummary(result: any): {
 
   const summary: any = {};
 
+  const addPath = (p: string) => {
+    if (!p || typeof p !== 'string') return;
+    const cleaned = cleanRawString(p);
+    if (!cleaned) return;
+    if (!summary.filesCreated) summary.filesCreated = [];
+    if (!summary.filesCreated.includes(cleaned)) {
+      summary.filesCreated.push(cleaned);
+    }
+  };
+
   // 提取文件路径
   if (result.path) {
-    if (!summary.filesCreated) summary.filesCreated = [];
-    summary.filesCreated.push(result.path);
+    addPath(result.path);
   }
 
   if (result.paths && Array.isArray(result.paths)) {
-    if (!summary.filesCreated) summary.filesCreated = [];
-    summary.filesCreated.push(...result.paths);
+    result.paths.forEach(addPath);
   }
 
   if (result.files && Array.isArray(result.files)) {
-    if (!summary.filesCreated) summary.filesCreated = [];
-    summary.filesCreated.push(...result.files);
+    result.files.forEach(addPath);
   }
 
   // 提取错误信息
