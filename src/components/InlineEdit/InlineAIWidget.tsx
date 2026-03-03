@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, X, CornerDownLeft, Loader2, Zap, ShieldCheck, Search } from 'lucide-react';
+import { Sparkles, X, CornerDownLeft, Loader2, Zap, ShieldCheck, Search, CheckCircle2 } from 'lucide-react';
 import { PivoStage } from '../../stores/types';
 import { GhostTaskList, GhostTask } from './GhostTaskList';
 import { FilePortal } from './FilePortal';
@@ -103,6 +103,7 @@ export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             disabled={isLoading}
+            data-testid="inline-ai-input"
             className="w-full bg-white/5 border border-white/5 rounded-lg px-3 py-2.5 text-sm text-white/90 placeholder:text-white/20 outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 transition-all resize-none overflow-hidden"
             placeholder="Describe changes or ask questions about this code..."
             onKeyDown={(e) => {

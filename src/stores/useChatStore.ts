@@ -44,6 +44,51 @@ import { IS_COMMERCIAL } from '../config/edition';
 // 🔥 工具注册表
 
 import { toolRegistry } from './tool/builtinTools';
+import { toast } from 'sonner';
+
+/**
+ * v0.3.7: 极致预判同步函数 - 将 AI 状态同步至 Inline Assistant
+ */
+function syncToInlineAssistant(name: string, content: string, textChunk?: string) {
+    const inlineStore = (window as any).__inlineEditStore;
+    if (inlineStore && inlineStore.getState().isInlineEditVisible) {
+        // 🔥 核心修复：改用函数式更新，确保拿到最新的 prev 状态，避免高频覆盖
+        inlineStore.setState((state: any) => {
+            const currentTasks = [...(state.pivoTasks || [])];
+            
+            // 1. 文本启发式提取
+            if (textChunk && state.pivoStage === 'plan') {
+                const planMatch = textChunk.match(/(?:我将|首先|接着|然后|最后|开始)\s*(.*?)(?:。| |\n|$)/);
+                if (planMatch && planMatch[1].length > 2) {
+                    const desc = planMatch[1].trim();
+                    if (!currentTasks.some(t => t.description.includes(desc))) {
+                        currentTasks.push({ id: `task_${Date.now()}`, description: desc, status: 'running', stage: 'plan' });
+                    }
+                }
+            }
+
+            // 2. 工具驱动生成
+            if (name) {
+                const toolNameLower = name.toLowerCase();
+                let desc = '';
+                if (toolNameLower.includes('read')) desc = '读取关联上下文';
+                else if (toolNameLower.includes('scan')) desc = '分析项目结构';
+                else if (toolNameLower.includes('write') || toolNameLower.includes('replace')) desc = '正在编写优化代码';
+                
+                if (desc && !currentTasks.some(t => t.description === desc)) {
+                    currentTasks.forEach(t => { if (t.status === 'running') t.status = 'success'; });
+                    currentTasks.push({ id: `tool_${Date.now()}`, description: desc, status: 'running', stage: 'implement' });
+                }
+            }
+
+            return {
+                pivoStage: name ? 'implement' : (textChunk ? 'plan' : state.pivoStage),
+                modifiedCode: (name && content !== undefined) ? content : state.modifiedCode,
+                pivoTasks: currentTasks
+            };
+        });
+    }
+}
 
 // ============================================================================
 
@@ -923,7 +968,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     // 🔥 如果包含图片，跳过意图识别（图片识别应该由云端 LLM 处理）
 
     const editorMode = (window as any).__IFAI_EDITOR_MODE__ || "vibe";
-    if (enableNaturalLanguageTrigger && textInput && !currentContentHasImages) {
+    if (enableNaturalLanguageTrigger && textInput && !currentContentHasImages && !options.isInlineTask) {
         const intentResult = (window as any).recognizeIntent(textInput);
         
         // Log intent recognition result for debugging
@@ -1367,17 +1412,14 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         console.log(`[Chat] Adding user message ${msgId}, storage size: ${JSON.stringify(storageContent).length}`);
 
         const userMsg = {
-
             id: msgId, // 使用 v0.3.6 预生成的 ID
-
             role: 'user' as const,
-
             content: storageContent,  // 使用脱敏后的内容持久化
-
             // @ts-ignore - 添加自动审批标志
-
-            autoApproveTools
-
+            autoApproveTools,
+            // 🔥 v0.3.7: 透传元数据
+            isInlineTask: options.isInlineTask,
+            displayLabel: options.displayLabel
         };
 
         // @ts-ignore
@@ -1413,18 +1455,16 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     const assistantMsgId = crypto.randomUUID();
 
     const assistantMsgPlaceholder = {
-
         id: assistantMsgId,
-
         role: 'assistant' as const,
-
         content: '',
-
         // @ts-ignore - custom property for tracking stream order
-
-        contentSegments: [] as ContentSegment[]
-
+        contentSegments: [] as ContentSegment[],
+        // 🔥 v0.3.7: 透传元数据
+        isInlineTask: options.isInlineTask,
+        displayLabel: options.displayLabel
     };
+
 
     // @ts-ignore
 
@@ -1565,7 +1605,14 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     // 🚀 v0.3.6: PIVO 2.0 物理授权注入
     const isChinese = i18n.language?.startsWith("zh");
     
-    const PIVO_PROMPT = isChinese 
+    // 🔥 v0.3.7: 针对 Inline 任务强化指令
+    const inlineInstruction = options.isInlineTask 
+        ? (isChinese 
+            ? "\n\n【核心要求】你现在正在进行原位(Inline)代码编辑。请直接调用 agent_write_file 或 agent_replace_text 物理修改用户选中的代码。严禁只给出 Markdown 代码块建议。" 
+            : "\n\n[CORE REQUIREMENT] You are performing an In-place (Inline) edit. MUST call agent_write_file or agent_replace_text to physically modify the code. DO NOT just provide code blocks in chat.")
+        : "";
+
+    const PIVO_PROMPT = (isChinese 
         ? `【物理工具箱授权】
 你现在拥有 PIVO 2.0 全量物理执行权限。请根据需要直接调用以下工具：
 - agent_execute_command: 执行系统命令或查询
@@ -1579,7 +1626,7 @@ You have full execution permissions. Directly call:
 - agent_execute_command: execute system commands
 - agent_write_file: write/refactor code
 - agent_read_file: read physical files
-- agent_scan_project: scan project topology.`;
+- agent_scan_project: scan project topology.`) + inlineInstruction;
     if (!msgHistory.some(m => m.content === PIVO_PROMPT) && msgHistory.length < 5) {
         msgHistory.unshift({ 
             role: "system", 
@@ -1623,6 +1670,10 @@ You have full execution permissions. Directly call:
                         if (chunk.textChunk) {
                             const safeTextChunk = typeof chunk.textChunk === "string" ? chunk.textChunk : JSON.stringify(chunk.textChunk);
                             newMsg.content = (newMsg.content || "") + safeTextChunk;
+                            
+                            // 🔥 v0.3.7: 同步文本块以提取 PIVO 计划
+                            syncToInlineAssistant("", "", safeTextChunk);
+
                             const order = ((newMsg as any).contentSegments || []).length;
                             const startPos = (newMsg.content || "").length - safeTextChunk.length;
                             (newMsg as any).contentSegments = [...((newMsg as any).contentSegments || []), {
@@ -1665,6 +1716,20 @@ You have full execution permissions. Directly call:
                                     if (relPathMatch) parsedArgs.rel_path = relPathMatch[1];
                                 }
 
+                                // 🔥 v0.3.7: 实时同步代码到 Inline Widget
+                                if (parsedArgs.content) {
+                                    const inlineStore = (window as any).__inlineEditStore;
+                                    if (inlineStore) {
+                                        const state = inlineStore.getState();
+                                        if (state.isInlineEditVisible) {
+                                            inlineStore.setState({ 
+                                                modifiedCode: parsedArgs.content,
+                                                pivoStage: 'implement'
+                                            });
+                                        }
+                                    }
+                                }
+
                                 updatedCalls[existingIndex] = {
                                     ...existingCall,
                                     id: toolCallUpdate.id || existingCall.id,
@@ -1674,6 +1739,8 @@ You have full execution permissions. Directly call:
                                     isPartial: toolCallUpdate.isPartial ?? existingCall.isPartial,
                                     batchId: (existingCall as any).batchId
                                 } as any;
+
+                                syncToInlineAssistant(updatedName, parsedArgs.content);
 
                                 if (updatedCalls[existingIndex].isPartial === false) {
                                     const tc = updatedCalls[existingIndex];
@@ -1690,6 +1757,10 @@ You have full execution permissions. Directly call:
                                 newMsg.toolCalls = updatedCalls;
                             } else {
                                 const toolName = deltaName || "unknown";
+                                
+                                // 🔥 v0.3.7: 新工具创建时立即触发同步
+                                syncToInlineAssistant(toolName, "");
+
                                 let initialArgs: any = {};
                                 try { 
                                     initialArgs = newArgsChunk ? JSON.parse(newArgsChunk) : {}; 
@@ -1835,8 +1906,9 @@ You have full execution permissions. Directly call:
         // 🔥 v0.5.0: 增强型模式判定 (SendMessage 路径)
         // 🚀 v0.5.0: 优先尊重 options.enableTools，否则根据模式判定
         const currentMode = (window as any).__IFAI_EDITOR_MODE__;
-        const shouldEnableTools = options?.enableTools !== undefined
-            ? options.enableTools
+        // 🔥 v0.3.7: 如果是 Inline 任务，必须开启工具，否则无法物理修改代码
+        const shouldEnableTools = (options.isInlineTask || options?.enableTools !== undefined)
+            ? (options.enableTools ?? true)
             : (currentMode !== "vibe");
 
         // 🏆 PIVO 2.0: 最终外发数据审计日志
@@ -1920,7 +1992,8 @@ You have full execution permissions. Directly call:
 
 };
 
-const patchedGenerateResponse = async (history: any[], providerConfig: any, options?: { enableTools?: boolean }) => {
+const patchedGenerateResponse = async (
+history: any[], providerConfig: any, options?: { enableTools?: boolean }) => {
 
     console.log(">>> patchedGenerateResponse called");
 
@@ -2204,6 +2277,27 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
         console.log("[Chat/GenerateResponse] Stream finished");
 
+        // 🔥 v0.3.7: 处理 Inline 任务的自动收尾
+        const inlineStore = (window as any).__inlineEditStore;
+        if (inlineStore && inlineStore.getState().isInlineEditVisible) {
+            const { modifiedCode, pivoStage } = inlineStore.getState();
+            
+            // 如果生成结束了但没有代码修改，说明 AI 只是给出了文字建议
+            if (!modifiedCode && (pivoStage === 'plan' || pivoStage === 'implement')) {
+                toast.warning('AI 仅提供了文字建议，已在侧边栏显示。');
+                setTimeout(() => inlineStore.getState().hideInlineEdit(), 1000);
+            } else {
+                // 🔥 强制清理：将所有进行的任务标记为成功，不留尾巴
+                const tasks = [...inlineStore.getState().pivoTasks];
+                tasks.forEach(t => { 
+                    if (t.status === 'running' || t.status === 'pending') {
+                        t.status = 'success'; 
+                    }
+                });
+                inlineStore.setState({ pivoTasks: tasks });
+            }
+        }
+
         localMessagesBuffer = localMessagesBuffer.map(m => {
             if (m.id === assistantMsgId && m.toolCalls) {
                 return {
@@ -2211,8 +2305,14 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
                     toolCalls: m.toolCalls.map(tc => {
                         let finalArgs = tc.args || {};
                         // 🏆 物理还原：防止流结束一瞬间参数丢失
-                        if (Object.keys(finalArgs).length === 0 && (tc as any).function?.arguments) {
-                            try { finalArgs = JSON.parse((tc as any).function.arguments); } catch (e) {}
+                        if ((tc as any).function?.arguments) {
+                            try { 
+                                // 🔥 只有解析成功时才更新，解析失败保持原有 args
+                                const parsed = JSON.parse((tc as any).function.arguments);
+                                finalArgs = { ...finalArgs, ...parsed };
+                            } catch (e) {
+                                console.warn('[ChatStore] Final JSON parse failed, using incremental args:', e);
+                            }
                         }
                         return { ...tc, isPartial: false, args: finalArgs };
                     })

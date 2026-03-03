@@ -63,6 +63,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
     showInlineEdit, 
     hideInlineEdit, 
     submitInstruction,
+    rejectDiff,
     pivoStage,
     pivoTasks,
     modifiedFiles,
@@ -201,16 +202,26 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
 
     // 🔥 v0.3.7: 注册内容小部件，使 Inline AI 面板随光标浮动
     const contentWidget: monaco.editor.IContentWidget = {
-      getId: () => 'inline.ai.assistant',
+      getId: () => 'inline.ai.assistant.v2', // 使用新 ID 避免缓存冲突
       getDomNode: () => {
-        const node = document.createElement('div');
-        node.id = 'monaco-inline-ai-portal';
+        let node = document.getElementById('monaco-inline-ai-portal');
+        if (!node) {
+          node = document.createElement('div');
+          node.id = 'monaco-inline-ai-portal';
+          node.style.zIndex = '10000'; // 确保在最顶层
+        }
         return node;
       },
-      getPosition: () => ({
-        position: editor.getPosition(),
-        preference: [monaco.editor.ContentWidgetPositionPreference.BELOW]
-      })
+      getPosition: () => {
+        const state = useInlineEditStore.getState();
+        if (!state.isInlineEditVisible && !(window as any).__DEBUG_AGENT_ACTIVE) {
+          return null;
+        }
+        return {
+          position: editor.getPosition(),
+          preference: [monaco.editor.ContentWidgetPositionPreference.BELOW]
+        };
+      }
     };
     editor.addContentWidget(contentWidget);
     contentWidgetRef.current = contentWidget;
@@ -272,19 +283,27 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
     (window as any).__activeEditor = editor;
 
     // 🔥 v0.3.7: 注册 Cmd+K / Ctrl+K Inline AI 快捷键
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+      console.log('[MonacoEditor] Cmd+K command triggered!');
+      const position = editor.getPosition();
+      const selection = editor.getSelection();
+      const selectedText = selection ? editor.getModel()?.getValueInRange(selection) : '';
+      
+      if (position) {
+        console.log('[MonacoEditor] Calling showInlineEdit with:', { selectedText, position });
+        showInlineEdit(selectedText || '', {
+          lineNumber: position.lineNumber,
+          column: position.column
+        });
+      }
+    });
+
+    // 同时保留 Action 供右键菜单使用
     editor.addAction({
       id: 'inline-ai-prompt',
       label: 'Inline AI Assistant',
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK],
-      run: (ed) => {
-        const position = ed.getPosition();
-        if (position) {
-          showInlineEdit('', {
-            lineNumber: position.lineNumber,
-            column: position.column
-          });
-        }
-      }
+      contextMenuGroupId: 'modification',
+      run: () => editor.trigger('keyboard', monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, {})
     });
 
     // Add "Explain Code" Action
@@ -870,9 +889,19 @@ ${textBefore}[CURSOR]${textAfter}
     }
   }, [file?.initialLine, file?.id, paneId]); // 🔥 修复无限循环：移除 getEditorInstance 依赖，使用 ref 代替
 
+  // 🔥 v0.3.7: 监听面板可见性，通知 Monaco 更新布局
+  useEffect(() => {
+    if (editorRef.current && contentWidgetRef.current) {
+      editorRef.current.layoutContentWidget(contentWidgetRef.current);
+    }
+  }, [isInlineEditVisible]);
+
   // 🔥 v0.3.7: 监听修改代码的变化，自动展开内联 Diff 区域
   useEffect(() => {
-    if (isInlineEditVisible && pivoStage === 'implement' && modifiedCode && editorRef.current) {
+    // 🚀 阶段+内容双驱动：进入实施阶段或已有内容时，立即展开
+    const isImplementing = pivoStage === 'implement' || pivoStage === 'optimize';
+    
+    if (isInlineEditVisible && (isImplementing || modifiedCode) && editorRef.current) {
       if (!diffZoneRef.current) {
         diffZoneRef.current = new InlineDiffZone(editorRef.current);
       }
@@ -880,8 +909,12 @@ ${textBefore}[CURSOR]${textAfter}
       const position = editorRef.current.getPosition();
       if (position) {
         // 在当前行展开预览区域
-        // 实际内容可以通过 React Portal 渲染到 Zone 内部，这里先展示占位
-        diffZoneRef.current.show(position.lineNumber, 12, 'Generating optimized code...');
+        const codeLines = modifiedCode ? modifiedCode.split('\n').length : 0;
+        // 如果代码还没出来，给个基础高度显示加载中
+        const lineCount = Math.min(Math.max(codeLines + 2, 6), 25);
+        const displayContent = modifiedCode || '✨ AI 正在构思并生成代码...';
+        
+        diffZoneRef.current.show(position.lineNumber, lineCount, displayContent);
       }
     } else {
       diffZoneRef.current?.hide();
@@ -947,7 +980,7 @@ ${textBefore}[CURSOR]${textAfter}
             tasks={isInlineEditVisible ? pivoTasks : debugTasks}
             modifiedFiles={isInlineEditVisible ? modifiedFiles : []}
             onClose={() => {
-              if (isInlineEditVisible) hideInlineEdit();
+              if (isInlineEditVisible) rejectDiff();
               setDebugWidgetVisible(false);
               decorationProviderRef.current?.clearAll();
             }}

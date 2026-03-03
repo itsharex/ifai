@@ -165,9 +165,18 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
 
   submitInstruction: async (instruction) => {
     console.log('[inlineEditStore] submitInstruction (Agent 2.0) called:', instruction);
-    set({ instruction, isProcessing: true, pivoStage: 'plan', pivoTasks: [] });
-
+    
     const editor = (window as any).__activeEditor;
+    const originalCode = editor?.getValue() || '';
+    
+    set({ 
+      instruction, 
+      isProcessing: true, 
+      pivoStage: 'plan', 
+      pivoTasks: [],
+      originalCode // 🔥 记录快照
+    });
+
     if (!editor) {
       set({ isProcessing: false });
       return;
@@ -181,8 +190,16 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
     import('./useChatStore').then(({ useChatStore }) => {
       const { currentProviderId, currentModel } = (window as any).__settingsStore?.getState() || {};
       
-      // 构造给 AI 看的完整上下文
-      const fullPrompt = `[Inline AI Task] File: ${filePath}\nInstruction: ${instruction}\nContext around current line: \n${getVisibleContext(editor)}`;
+      // 构造给 AI 看的完整上下文 (Markdown 格式)
+      const language = detectLanguage(filePath);
+      const fullPrompt = `### 🤖 Inline AI Task
+**File:** \`${filePath}\`
+**Instruction:** ${instruction}
+
+**Context around current line:**
+\`\`\`${language}
+${getVisibleContext(editor)}
+\`\`\``;
       
       // 构造给用户看的简洁信息
       const displayInfo = `🎨 Inline Edit: ${instruction}`;
@@ -273,8 +290,24 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
   },
 
   rejectDiff: () => {
+    const state = get();
+    console.log('[inlineEditStore] rejectDiff (Undo) called, originalCode length:', state.originalCode.length);
+    
+    // 🔥 物理还原
+    if (state.originalCode) {
+      window.dispatchEvent(new CustomEvent('inline-edit-undo', {
+        detail: {
+          code: state.originalCode,
+          filePath: state.currentFilePath,
+        },
+      }));
+    }
+
     set({
       isDiffEditorVisible: false,
+      pivoStage: 'idle',
+      pivoTasks: [],
+      isInlineEditVisible: false
     });
   },
 

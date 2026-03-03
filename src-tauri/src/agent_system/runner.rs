@@ -285,7 +285,7 @@ pub async fn run_agent_task(
 
         // 初始进入或重试时处于 Plan 阶段
         pivo_stage = if retry_count > 0 { PivoStage::Optimize } else { PivoStage::Plan };
-        let _ = app.emit(&event_id, json!({ "type": "pivo_stage", "stage": pivo_stage }));
+        let _ = app.emit("pivo_stage", json!({ "id": id, "stage": pivo_stage }));
 
         let _ = app.emit("agent:status", json!({ "id": id, "status": "running", "progress": 0.15 + (loop_count as f32 * 0.05) }));
         let _ = app.emit(&event_id, json!({ "type": "status", "status": "running", "progress": 0.15 + (loop_count as f32 * 0.05) }));
@@ -315,7 +315,7 @@ pub async fn run_agent_task(
 
                     // 进入 Implement 阶段
                     pivo_stage = PivoStage::Implement;
-                    let _ = app.emit(&event_id, json!({ "type": "pivo_stage", "stage": pivo_stage }));
+                    let _ = app.emit("pivo_stage", json!({ "id": id, "stage": pivo_stage }));
 
                     for (idx, tool_call) in tool_calls.iter().enumerate() {
                         let tool_name = &tool_call.function.name;

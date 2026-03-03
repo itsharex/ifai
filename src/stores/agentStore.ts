@@ -1350,7 +1350,22 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
       // We still keep global status listener as a fallback or for other UI parts
       const unlistenStatus = await listen('agent:status', (event: any) => {
-        const { id, status, progress } = event.payload;
+        const { id, status, progress, tool } = event.payload;
+        
+        // 🔥 v0.3.7: 自动推断 PIVO 阶段
+        // 如果发现正在执行写入类工具，自动同步到 inlineEditStore
+        if (status === 'waiting_for_tool' || status === 'running') {
+          const toolName = tool || '';
+          if (toolName.includes('write') || toolName.includes('replace') || toolName.includes('delete')) {
+            import('./inlineEditStore').then(({ useInlineEditStore }) => {
+              const currentStage = useInlineEditStore.getState().pivoStage;
+              if (currentStage === 'plan' || currentStage === 'idle') {
+                useInlineEditStore.getState().setPivoState('implement');
+              }
+            });
+          }
+        }
+
         set(state => {
             const agent = state.runningAgents.find(a => a.id === id);
             if (agent && (agent.status !== status || agent.progress !== progress)) {
