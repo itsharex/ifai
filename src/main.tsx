@@ -89,21 +89,30 @@ const exposeDebugStores = () => {
         import('./stores/settingsStore'),
         import('./stores/layoutStore'),
         import('./stores/editorStore'),
-        import('./utils/tokenCounter')
-      ]).then(([skill, file, chat, settings, layout, editor, tokens]) => {
-        (window as any).__DEBUG__ = {
-          ...(window as any).__DEBUG__,
+        import('./utils/tokenCounter'),
+        import('./stores/pivoStore')
+      ]).then(([skill, file, chat, settings, layout, editor, tokens, pivo]) => {
+        const stores = {
           skillStore: skill.useSkillStore,
           fileStore: file.useFileStore,
           chatStore: chat.useChatStore,
           settingsStore: settings.useSettingsStore,
           layoutStore: layout.useLayoutStore,
           editorStore: editor.useEditorStore,
+          pivoStore: pivo.usePivoStore,
           utils: {
             ...((window as any).__DEBUG__?.utils || {}),
             tokenCounter: tokens
           }
         };
+        (window as any).__DEBUG__ = { ...(window as any).__DEBUG__, ...stores };
+        
+        // 🔥 为 E2E 测试直接暴露
+        if ((window as any).__E2E__ || (window as any).process?.env?.NODE_ENV === 'test') {
+          (window as any).__chatStore = chat.useChatStore;
+          (window as any).__pivoStore = pivo.usePivoStore;
+        }
+        
         console.log('[Main] 🛠️  Core Stores and Utils exposed to window.__DEBUG__ (Idle)');
       });
     };

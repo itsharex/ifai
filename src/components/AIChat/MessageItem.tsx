@@ -16,6 +16,8 @@ import { parseToolCalls } from 'ifainew-core';
 import ifaiLogo from '../../../imgs/ifai.png';
 import { TaskBreakdownViewer } from '../TaskBreakdown/TaskBreakdownViewer';
 import { TaskBreakdown } from '../../types/taskBreakdown';
+import { PivoTreeList } from './PivoTreeList';
+import { usePivoStore } from '../../stores/pivoStore';
 import { MarkdownRenderer, SimpleMarkdownRenderer } from './MarkdownRenderer';
 import styles from './MessageItem.module.css';
 /**
@@ -148,6 +150,9 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     const { t } = useTranslation();
     const isUser = message.role === 'user';
     const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+
+    // 🔥 v0.3.7: 订阅 PIVO 任务树状态
+    const pivoTasks = usePivoStore(state => state.taskTrees[message.id]);
     // PERFORMANCE: State for managing code block folding (for >50 line blocks)
     const [expandedBlocks, setExpandedBlocks] = useState<Set<number>>(new Set());
     // Force re-render counter for isStreaming changes
@@ -751,6 +756,13 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                     <div className="space-y-3">
                         {/* 如果内容为空且正在流式传输，显示骨架屏 */}
                         {effectivelyStreaming && !contentWithoutThinking && !hasToolCalls && renderSkeleton()}
+
+                        {/* v0.3.7 新增：PIVO 极简任务列表 */}
+                        {pivoTasks && pivoTasks.length > 0 && (
+                            <div className="mb-4">
+                                <PivoTreeList tasks={pivoTasks} />
+                            </div>
+                        )}
 
                         {/* 🔥 FIX v0.4.1: 将任务总结 (TaskSummary) 提升到最上方 (Cursor-like Experience) */}
                         {!effectivelyStreaming && message.toolCalls && message.toolCalls.length > 0 && (

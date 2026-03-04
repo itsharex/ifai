@@ -5,6 +5,7 @@ use log::LevelFilter;
 use ifainew_core;
 use std::sync::Arc;
 
+mod ai; // v0.3.7 新增：PIVO 任务拆解与自愈引擎
 mod file_walker;
 mod search;
 mod symbol_engine;
@@ -1017,6 +1018,10 @@ pub fn run() {
             commands::atomic_commands::atomic_write_rollback,
             commands::atomic_commands::atomic_file_hash,
             commands::atomic_commands::atomic_check_conflict,
+            // v0.3.7 新增：PIVO 任务拆解与自愈引擎
+            ai::pivo::commands::pivo_generate_tasks,
+            ai::pivo::commands::pivo_execute_task,
+            ai::pivo::commands::pivo_init_assets,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

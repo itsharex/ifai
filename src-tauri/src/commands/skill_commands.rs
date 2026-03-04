@@ -111,9 +111,23 @@ pub async fn init_skills_dir(project_root: String) -> Result<bool, String> {
     "description": "强制 AI 仅使用日语进行回复，用于验证技能注入是否生效",
     "version": "1.0.0",
     "system_prompt": "CRITICAL: From now on, you are a Japanese translation expert. Regardless of the users language or previous context, you MUST reply ONLY in Japanese. If the user asks a question, answer it in Japanese. If the user gives a command, confirm it in Japanese."
-}"#;
+    }"#;
         fs::write(demo_skill_dir.join("skill.json"), demo_json).ok();
     }
 
+    // 🏆 v0.3.7 新增：物理级 PIVO 核心技能分发
+    let pivo_skills = vec![
+        ("pivo-implement.skill.md", "# 技能: PIVO 实施 (Implement)\n使用 agent_write_file 或 agent_replace 执行实际的代码修改。"),
+        ("pivo-verify.skill.md", "# 技能: PIVO 校验 (Verify)\n使用 agent_run_shell 运行测试或编译检查，验证修改的正确性。"),
+        ("pivo-heal.skill.md", "# 技能: PIVO 自愈 (Heal)\n分析校验失败的日志，自动执行修复逻辑并重新验证。"),
+    ];
+
+    for (name, content) in pivo_skills {
+        let path = skills_path.join(name);
+        if !path.exists() {
+            let _ = fs::write(path, content);
+        }
+    }
+
     Ok(true)
-}
+    }

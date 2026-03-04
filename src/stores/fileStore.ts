@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { invoke } from '@tauri-apps/api/core';
 import { v4 as uuidv4 } from 'uuid';
 import { debounce } from 'lodash-es';
 import { FileNode, OpenedFile, GitStatus, WorkspaceRoot } from './types';
@@ -493,6 +494,10 @@ export const useFileStore = create<FileState>()(
 
         // Load project config asynchronously (don't block or fail on error)
         if (newRootPath) {
+          // 🔥 v0.3.7 新增：物理级 PIVO 资产检查与补全 (针对打包后分发)
+          invoke('pivo_init_assets', { projectRoot: newRootPath })
+            .catch(e => console.error('[PIVO] Asset init failed:', e));
+
           useProjectConfigStore.getState().loadConfig(newRootPath)
             .then(() => console.log('[FileStore] Config loaded successfully'))
             .catch((e) => console.error('[FileStore] Failed to load config:', e));

@@ -98,6 +98,17 @@ function syncToInlineAssistant(name: string, content: string, textChunk?: string
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
+// 🏆 v0.4.1: 物理级 E2E 挂载 - 确保测试脚本能第一时间锁定 ChatStore
+if (typeof window !== 'undefined') {
+  const isE2E = (window as any).__E2E__ || 
+                location.search.includes('e2e=true') || 
+                (window as any).process?.env?.NODE_ENV === 'test';
+  
+  if (isE2E || import.meta.env.DEV) {
+    (window as any).__chatStore = coreUseChatStore;
+  }
+}
+
 type LogCategory = 'Chat' | 'Thread' | 'Tool' | 'Agent' | 'Context' | 'Stream' | 'LocalModel' | 'Intent';
 
 const LOG_EMOJIS: Record<LogLevel, string> = {
@@ -2702,6 +2713,77 @@ coreUseChatStore.subscribe((state, prevState) => {
                     }
                 }
             }, 2000); // 2秒防抖
+        }
+    }
+});
+
+// 🏆 v0.3.7: PIVO 自动触发与状态同步引擎 (Chat-Native Observer)
+coreUseChatStore.subscribe((state, prevState) => {
+    const lastMessage = state.messages[state.messages.length - 1];
+    const prevLastMessage = prevState.messages[prevState.messages.length - 1];
+
+    if (!lastMessage || lastMessage.role !== 'assistant') return;
+
+    // --- 逻辑 A: 初始触发 (仅在消息刚创建时) ---
+    if (!prevLastMessage || prevLastMessage.id !== lastMessage.id) {
+        const userMessage = state.messages.slice().reverse().find(m => m.role === 'user');
+        if (userMessage) {
+            const textInput = typeof userMessage.content === 'string' ? userMessage.content : 
+                             (userMessage.multiModalContent?.find(p => p.type === 'text')?.text || '');
+            
+            const intentResult = recognizeIntent(textInput);
+            if (intentResult && (intentResult.category === 'write' || intentResult.confidence > 0.8)) {
+                invoke('pivo_generate_tasks', { intent: textInput })
+                    .then((tasks: any) => {
+                        const { usePivoStore } = (window as any).__pivoStore ? { usePivoStore: (window as any).__pivoStore } : { usePivoStore: null };
+                        if (usePivoStore && tasks?.length > 0) {
+                            usePivoStore.getState().setTaskTree(lastMessage.id, tasks);
+                        }
+                    }).catch(() => {});
+            }
+        }
+    }
+
+    // --- 逻辑 B: 状态实时同步 (监听工具调用结果) ---
+    const { usePivoStore } = (window as any).__pivoStore ? { usePivoStore: (window as any).__pivoStore } : { usePivoStore: null };
+    if (!usePivoStore) return;
+
+    const currentTasks = usePivoStore.getState().taskTrees[lastMessage.id];
+    if (!currentTasks || currentTasks.length === 0) return;
+
+    // 1. 映射 Implement 任务
+    const hasSuccessfulWrite = lastMessage.toolCalls?.some(tc => 
+        (tc.tool === 'agent_write_file' || tc.tool === 'agent_replace') && 
+        (tc.status === 'completed' || tc.status === 'executed')
+    );
+    if (hasSuccessfulWrite) {
+        const implTask = currentTasks.find(t => t.task_type === 'Implement' && t.status !== 'success');
+        if (implTask) usePivoStore.getState().updateTaskStatus(lastMessage.id, implTask.id, 'success');
+    }
+
+    // 2. 映射 Verify 任务
+    const hasSuccessfulVerify = lastMessage.toolCalls?.some(tc => 
+        tc.tool === 'agent_run_shell' && (tc.status === 'completed' || tc.status === 'executed')
+    );
+    if (hasSuccessfulVerify) {
+        const verifyTask = currentTasks.find(t => t.task_type === 'Verify' && t.status !== 'success');
+        if (verifyTask) usePivoStore.getState().updateTaskStatus(lastMessage.id, verifyTask.id, 'success');
+    }
+
+    // 3. 兜底逻辑：如果 AI 回复结束，且内容表达了肯定或结束的语义
+    if (!lastMessage.isStreaming) {
+        const content = lastMessage.content;
+        const completionKeywords = ['成功', '完成', '好了', '完善', '完毕', '结束', 'done', 'complete', 'success', 'ready'];
+        const hasCompletionKeyword = completionKeywords.some(k => content.includes(k));
+        const isLengthyEnough = content.length > 30; // 避免太短的无意义回复触发
+
+        if (hasCompletionKeyword || isLengthyEnough) {
+            console.log('[PIVO Observer] 🏁 检测到 AI 回复结束且语义完整，强制同步任务状态');
+            currentTasks.forEach(t => {
+                if (t.status === 'pending' || t.status === 'running') {
+                    usePivoStore.getState().updateTaskStatus(lastMessage.id, t.id, 'success');
+                }
+            });
         }
     }
 });
