@@ -9,43 +9,82 @@ interface PivoTreeListProps {
 }
 
 const TaskItem: React.FC<{ task: TaskNode; level: number }> = ({ task, level }) => {
-  const getIcon = () => {
+  const getStatusConfig = () => {
     switch (task.status) {
       case 'running':
-        return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
+        return {
+          icon: <Loader2 className="w-3.5 h-3.4 animate-spin text-blue-400" />,
+          color: "text-blue-100",
+          bg: "bg-blue-500/10",
+          border: "border-blue-500/30"
+        };
       case 'success':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+        return {
+          icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />,
+          color: "text-gray-400",
+          bg: "bg-emerald-500/5",
+          border: "border-transparent"
+        };
       case 'failed':
-        return <XCircle className="w-4 h-4 text-red-500" />;
+        return {
+          icon: <XCircle className="w-3.5 h-3.5 text-rose-400" />,
+          color: "text-rose-200",
+          bg: "bg-rose-500/10",
+          border: "border-rose-500/30"
+        };
       case 'healing':
-        return <AlertTriangle className="w-4 h-4 text-amber-500 animate-pulse" />;
+        return {
+          icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-400 animate-pulse" />,
+          color: "text-amber-100",
+          bg: "bg-amber-500/10",
+          border: "border-amber-500/30"
+        };
       default:
-        return <Circle className="w-4 h-4 text-gray-400" />;
+        return {
+          icon: <Circle className="w-3.5 h-3.5 text-gray-600" />,
+          color: "text-gray-300",
+          bg: "transparent",
+          border: "border-transparent"
+        };
     }
   };
 
+  const config = getStatusConfig();
+
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col w-full">
       <div 
         className={clsx(
-          "flex items-center gap-2 py-1 px-2 rounded-md hover:bg-gray-100/50 transition-colors",
-          task.status === 'success' && "opacity-60"
+          "group flex items-center gap-3 py-1.5 px-3 rounded-lg transition-all duration-300 border mb-0.5",
+          config.bg,
+          config.border,
+          task.status === 'running' && "shadow-[0_0_15px_rgba(59,130,246,0.1)] ring-1 ring-blue-500/20"
         )}
-        style={{ paddingLeft: `${level * 16 + 8}px` }}
+        style={{ marginLeft: `${level * 12}px` }}
       >
-        <div className="flex-shrink-0">{getIcon()}</div>
+        <div className="flex-shrink-0">{config.icon}</div>
         <span className={clsx(
-          "text-sm font-medium truncate",
-          task.status === 'success' && "line-through"
+          "text-[13px] font-medium tracking-tight truncate",
+          config.color,
+          task.status === 'success' && "line-through opacity-50"
         )}>
           {task.label}
         </span>
-        <span className="text-[10px] uppercase px-1 rounded bg-gray-100 text-gray-500 ml-auto">
+        
+        {task.status === 'running' && (
+            <div className="ml-auto flex gap-1">
+                <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.3s]"></span>
+                <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce [animation-delay:-0.15s]"></span>
+                <span className="w-1 h-1 rounded-full bg-blue-400 animate-bounce"></span>
+            </div>
+        )}
+
+        <span className="opacity-0 group-hover:opacity-100 text-[9px] font-black uppercase tracking-tighter text-gray-500 ml-auto transition-opacity">
           {task.task_type}
         </span>
       </div>
       {task.children.length > 0 && (
-        <div className="flex flex-col">
+        <div className="flex flex-col border-l border-white/5 ml-4">
           {task.children.map((child) => (
             <TaskItem key={child.id} task={child} level={level + 1} />
           ))}
@@ -59,10 +98,18 @@ export const PivoTreeList: React.FC<PivoTreeListProps> = ({ tasks, level = 0 }) 
   if (!tasks || tasks.length === 0) return null;
 
   return (
-    <div className="my-2 border border-gray-100 rounded-lg bg-gray-50/30 p-1 space-y-0.5 max-w-full overflow-hidden">
-      {tasks.map((task) => (
-        <TaskItem key={task.id} task={task} level={level} />
-      ))}
+    <div className="my-4 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-500">
+      <div className="relative p-2 rounded-xl bg-black/20 backdrop-blur-xl border border-white/10 ring-1 ring-black/50">
+        <div className="flex items-center gap-2 mb-2 px-2 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
+            <div className="w-1 h-3 bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6]"></div>
+            Mission Execution Plan
+        </div>
+        <div className="space-y-1">
+          {tasks.map((task) => (
+            <TaskItem key={task.id} task={task} level={level} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 };

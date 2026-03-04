@@ -11,13 +11,16 @@ export interface TaskNode {
 
 interface PivoState {
   taskTrees: Record<string, TaskNode[]>; // messageId -> tasks
+  activeMessageId: string | null; // 当前正在“持有”任务列表的消息 ID
   setTaskTree: (messageId: string, tasks: TaskNode[]) => void;
   updateTaskStatus: (messageId: string, taskId: string, status: TaskNode['status']) => void;
+  setActiveMessageId: (messageId: string | null) => void;
   initEventListener: () => Promise<() => void>;
 }
 
 export const usePivoStore = create<PivoState>((set, get) => ({
   taskTrees: {},
+  activeMessageId: null,
 
   setTaskTree: (messageId, tasks) => {
     set((state) => ({
@@ -25,8 +28,11 @@ export const usePivoStore = create<PivoState>((set, get) => ({
         ...state.taskTrees,
         [messageId]: tasks,
       },
+      activeMessageId: messageId, // 设为最新的持有者
     }));
   },
+
+  setActiveMessageId: (messageId) => set({ activeMessageId: messageId }),
 
   updateTaskStatus: (messageId, taskId, status) => {
     set((state) => {

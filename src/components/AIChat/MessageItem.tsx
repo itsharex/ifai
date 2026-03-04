@@ -151,8 +151,10 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     const isUser = message.role === 'user';
     const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
 
-    // 🔥 v0.3.7: 订阅 PIVO 任务树状态
+    // 🔥 v0.3.7: 订阅 PIVO 任务树状态与活动的持有者 ID
     const pivoTasks = usePivoStore(state => state.taskTrees[message.id]);
+    const activePivoMessageId = usePivoStore(state => state.activeMessageId);
+    const isPivoEscort = message.id === activePivoMessageId;
     // PERFORMANCE: State for managing code block folding (for >50 line blocks)
     const [expandedBlocks, setExpandedBlocks] = useState<Set<number>>(new Set());
     // Force re-render counter for isStreaming changes
@@ -757,8 +759,8 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                         {/* 如果内容为空且正在流式传输，显示骨架屏 */}
                         {effectivelyStreaming && !contentWithoutThinking && !hasToolCalls && renderSkeleton()}
 
-                        {/* v0.3.7 新增：PIVO 极简任务列表 */}
-                        {pivoTasks && pivoTasks.length > 0 && (
+                        {/* v0.3.7 新增：PIVO 极简任务列表 (随行渲染模式) */}
+                        {isPivoEscort && pivoTasks && pivoTasks.length > 0 && (
                             <div className="mb-4">
                                 <PivoTreeList tasks={pivoTasks} />
                             </div>
