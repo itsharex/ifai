@@ -4,6 +4,33 @@ import App from "./App";
 import "./App.css";
 import './i18n/config';
 
+// 🔥 v0.3.7: 物理级全局存储溢出保护 (Monkey Patch)
+// 根治 QuotaExceededError 导致的 Promise Rejection 和 UI 中断
+if (typeof window !== 'undefined') {
+  const originalSetItem = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = (key, value) => {
+    try {
+      originalSetItem(key, value);
+    } catch (e) {
+      if (e instanceof Error && (e.name === 'QuotaExceededError' || e.message.includes('quota'))) {
+        console.error('[Storage Sentinel] 🚨 LocalStorage Full! Blocking write for:', key);
+        // 1. 静默拦截报错，防止程序崩溃
+        // 2. 异步触发清理程序（复用 threadStore 里的逻辑，或者直接清理缓存）
+        setTimeout(() => {
+          console.warn('[Storage Sentinel] Attempting emergency cleanup...');
+          Object.keys(localStorage).forEach(k => {
+            if (k.includes('cache') || k.includes('tmp') || k.includes('search')) {
+              localStorage.removeItem(k);
+            }
+          });
+        }, 0);
+      } else {
+        throw e; // 其他错误照常抛出
+      }
+    }
+  };
+}
+
 // v0.3.0: 启动调试日志
 console.log('[Main] 🚀 App starting...');
 console.log('[Main] Mode:', import.meta.env.MODE);

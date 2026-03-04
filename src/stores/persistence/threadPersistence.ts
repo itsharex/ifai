@@ -84,18 +84,27 @@ function messageToStored(message: Message, threadId: string): StoredMessage | nu
   }
 
   // 🔥 v0.3.7: 存储空间优化
-  // 移除冗余的 contentSegments（仅在流式生成时有用，持久化无需保留全量历史片段）
-  // 裁剪极其庞大的 multiModalContent 或 references
+  // 1. 移除冗余的 contentSegments
+  // 2. 物理截断超大内容 (防止 QuotaExceededError)
+  let finalContent = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+  const MAX_STORAGE_SIZE = 50 * 1024; // 50KB
+  if (finalContent.length > MAX_STORAGE_SIZE) {
+    console.warn(`[Persistence] Truncating large message (${Math.round(finalContent.length/1024)}KB) for storage`);
+    finalContent = finalContent.substring(0, 20 * 1024) + 
+                   '\n\n... [CONTENT TRUNCATED DUE TO SIZE] ...\n\n' + 
+                   finalContent.substring(finalContent.length - 20 * 1024);
+  }
+
   const cleanMessage = {
     ...message,
-    contentSegments: undefined, // 彻底移除，节省空间
+    contentSegments: undefined,
   };
 
   return {
     id: message.id,
     threadId,
     role: message.role,
-    content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+    content: finalContent,
     toolCalls: message.toolCalls,
     tool_call_id: message.tool_call_id,
     timestamp: Date.now(),
@@ -177,6 +186,22 @@ class ThreadPersistenceService {
       console.log(`[ThreadPersistence] Saved ${threads.length} threads`);
     } catch (error) {
       console.error('[ThreadPersistence] Failed to save threads:', error);
+    }
+  }
+
+  /**
+   * Delete a thread and all its messages (Physical cleanup)
+   */
+  async deleteThreadPhysical(threadId: string): Promise<void> {
+    if (!this.initialized) return;
+    try {
+      await Promise.all([
+        indexedDBHelper.deleteThread(threadId),
+        indexedDBHelper.deleteThreadMessages(threadId)
+      ]);
+      console.log(`[ThreadPersistence] Physically deleted thread and messages: ${threadId}`);
+    } catch (error) {
+      console.error('[ThreadPersistence] Physical delete failed:', error);
     }
   }
 

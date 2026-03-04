@@ -816,8 +816,8 @@ const patchedAddMessage = (message: Message) => {
 };
 
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string, options: any = {}) => {
-
     const { addMessage } = coreUseChatStore.getState();
+        // ... 原有逻辑 ...
     const callId = crypto.randomUUID().slice(0, 8);
     console.log(`>>> [${callId}] patchedSendMessage called:`, typeof content === 'string' ? content.slice(0, 50) : 'array');
 
@@ -2675,21 +2675,30 @@ coreUseChatStore.setState({
     }
 } as any);
 
-// 🔥 v0.3.7: 建立全局自动持久化订阅（带防抖和异常保护）
+// 🔥 v0.3.7: 建立全局自动持久化订阅（带防抖和物理清理保护）
 let persistenceTimeout: any = null;
 coreUseChatStore.subscribe((state, prevState) => {
     if (state.messages !== prevState.messages) {
         const threadId = useThreadStore.getState().activeThreadId;
         if (threadId) {
             if (persistenceTimeout) clearTimeout(persistenceTimeout);
-            persistenceTimeout = setTimeout(() => {
+            persistenceTimeout = setTimeout(async () => {
                 try {
                     // 仅在空闲或重要节点同步，减少压力
                     setThreadMessages(threadId, state.messages as any);
                 } catch (e) {
-                    if (e instanceof Error && e.name === 'QuotaExceededError') {
-                        console.error('[Persistence] Storage quota exceeded, clearing old threads...');
-                        useThreadStore.getState().autoArchiveOldThreads(7);
+                    if (e instanceof Error && (e.name === 'QuotaExceededError' || e.message.includes('quota'))) {
+                        console.error('[Persistence] Storage quota exceeded! Emergency cleanup initiated...');
+                        // 物理级强力清理：获取所有线程，删除最旧的 5 个
+                        const threads = useThreadStore.getState().getAllThreads();
+                        const oldestThreads = threads.slice(-5);
+                        for (const t of oldestThreads) {
+                            const { threadPersistence } = await import('./persistence/threadPersistence');
+                            await threadPersistence.deleteThreadPhysical(t.id);
+                            useThreadStore.getState().deleteThread(t.id);
+                        }
+                        // 清理完重试一次保存当前线程
+                        try { setThreadMessages(threadId, state.messages as any); } catch {}
                     }
                 }
             }, 2000); // 2秒防抖
