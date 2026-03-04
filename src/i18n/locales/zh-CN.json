@@ -44,7 +44,18 @@
         "title": "AI 编辑",
         "placeholder": "使用若爱编辑 (例如 '添加注释')...",
         "submit": "提交",
-        "cancel": "取消"
+        "cancel": "取消",
+        "prompt": {
+            "title": "内联 AI 任务",
+            "selectedCode": "用户选中的目标代码:",
+            "surroundingContext": "周围上下文 (供参考):",
+            "cursorContext": "光标周围上下文:",
+            "directive1": "你是一个行内编辑代理。你的目标是直接修改文件中的代码。",
+            "directive2": "你必须使用合适的工具（如 `agent_write_file` 或 `agent_replace_content`）来应用所请求的更改。",
+            "directive3": "不要只在聊天回复中提供建议或代码块。你的回复应侧重于你正在使用工具进行的操作。",
+            "directive4": "手术刀式修改：你必须严格仅修改用户选中的代码块。严禁修改选中范围之外的任何字符，包括空格、缩进或其他方法。",
+            "directive5": "保持完整性：如果需要读取更多文件来理解上下文，请先执行读取，然后再应用更改。但在应用更改时，禁止对未请求修改的区域产生任何副作用。"
+        }
     },
     "splitPane": "分屏",
     "closePane": "关闭分屏",

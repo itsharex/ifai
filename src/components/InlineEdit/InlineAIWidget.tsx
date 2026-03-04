@@ -13,6 +13,8 @@ interface InlineAIWidgetProps {
   isLoading?: boolean;
   tasks?: GhostTask[];
   modifiedFiles?: string[];
+  selectedText?: string;
+  currentFilePath?: string;
 }
 
 export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({ 
@@ -22,9 +24,22 @@ export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({
   stage = 'idle',
   isLoading = false,
   tasks = [],
-  modifiedFiles = []
+  modifiedFiles = [],
+  selectedText = '',
+  currentFilePath = ''
 }) => {
   const [inputValue, setInputValue] = useState('');
+
+  // 初始化输入框：如果有选中代码，预填充
+  useEffect(() => {
+    if (selectedText && stage === 'idle' && !inputValue) {
+      // 仅在初始空闲状态且没有输入时填充
+      // 限制字数以避免输入框过载
+      if (selectedText.length < 500) {
+        setInputValue(selectedText);
+      }
+    }
+  }, [selectedText, stage]);
 
   // 快捷键处理：Cmd+Enter 接受修改
   useEffect(() => {
@@ -70,7 +85,7 @@ export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({
       <div className="absolute top-0 left-0 right-0 h-[2px] overflow-hidden bg-white/5">
         <motion.div 
           initial={{ x: '-100%' }}
-          animate={{ x: stage === 'idle' ? '-100%' : '0%' }}
+          animate={{ x: (stage === 'idle' && !isLoading) ? '-100%' : '0%' }}
           transition={{ type: 'spring', damping: 20, stiffness: 100 }}
           className={`h-full w-full ${getStageColor(stage)} shadow-[0_0_8px_rgba(0,0,0,0.5)]`}
         />
@@ -86,6 +101,16 @@ export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({
             <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">
               {stage !== 'idle' ? getStageLabel(stage) : 'Inline Assistant'}
             </span>
+            
+            {/* 🔥 显示当前操作文件 */}
+            {currentFilePath && (
+              <div className="flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded bg-white/5 border border-white/5">
+                <span className="text-[9px] text-white/30">Target:</span>
+                <span className="text-[9px] text-blue-400/60 font-mono truncate max-w-[120px]">
+                  {currentFilePath.split('/').pop()}
+                </span>
+              </div>
+            )}
           </div>
           <button 
             onClick={onClose}
@@ -94,6 +119,19 @@ export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({
             <X size={14} />
           </button>
         </div>
+
+        {/* 选中的代码预览 (仅在空闲且有选中时显示) */}
+        {selectedText && stage === 'idle' && (
+          <div className="mb-3 p-2 rounded-lg bg-black/40 border border-white/5 overflow-hidden">
+            <div className="flex items-center gap-1.5 mb-1 text-[9px] text-white/20 font-bold uppercase tracking-tighter">
+              <Search size={10} />
+              Current Context
+            </div>
+            <pre className="text-[10px] text-white/50 font-mono leading-relaxed truncate whitespace-pre">
+              {selectedText.length > 200 ? selectedText.substring(0, 200) + '...' : selectedText}
+            </pre>
+          </div>
+        )}
 
         {/* Input Area */}
         <div className="relative group">
@@ -105,7 +143,7 @@ export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({
             disabled={isLoading}
             data-testid="inline-ai-input"
             className="w-full bg-white/5 border border-white/5 rounded-lg px-3 py-2.5 text-sm text-white/90 placeholder:text-white/20 outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 transition-all resize-none overflow-hidden"
-            placeholder="Describe changes or ask questions about this code..."
+            placeholder="Optimize this, add comments, or ask questions..."
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -128,6 +166,32 @@ export const InlineAIWidget: React.FC<InlineAIWidgetProps> = ({
 
         {/* 👻 Ghost Task List */}
         <GhostTaskList tasks={tasks} />
+
+        {/* 🔥 v0.3.7: 验证阶段交互增强 */}
+        <AnimatePresence>
+          {stage === 'verify' && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2 text-[10px] text-emerald-400/80 font-medium">
+                <CheckCircle2 size={12} />
+                Changes applied successfully
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={onClose}
+                  className="px-3 py-1 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs font-bold transition-all border border-emerald-500/20 flex items-center gap-1.5"
+                >
+                  <Zap size={12} />
+                  Accept & Close
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* 🚪 File Portal (Cross-file Navigation) */}
         {onNavigate && <FilePortal files={modifiedFiles} onNavigate={onNavigate} />}

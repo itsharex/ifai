@@ -1423,10 +1423,14 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         };
 
         // @ts-ignore
-
         coreUseChatStore.getState().addMessage(userMsg);
-
         userMessageAdded = true;
+
+        // 🔥 v0.3.7: 强制同步到持久化层
+        if (activeThreadId) {
+            setThreadMessages(activeThreadId, coreUseChatStore.getState().messages as any);
+        }
+
 
         // 🔥 自动更新线程标题（类似豆包，使用首条消息内容作为标题）
 
@@ -1467,8 +1471,12 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
 
     // @ts-ignore
-
     coreUseChatStore.getState().addMessage(assistantMsgPlaceholder);
+
+    // 🔥 v0.3.7: 强制同步到持久化层
+    if (activeThreadId) {
+        setThreadMessages(activeThreadId, coreUseChatStore.getState().messages as any);
+    }
 
     // 4. Prepare History with Smart Context Selection
 
@@ -2666,5 +2674,27 @@ coreUseChatStore.setState({
         for (const tc of msg.toolCalls) if (tc.status === "pending") await (coreUseChatStore.getState() as any).approveToolCall(mid, tc.id);
     }
 } as any);
+
+// 🔥 v0.3.7: 建立全局自动持久化订阅（带防抖和异常保护）
+let persistenceTimeout: any = null;
+coreUseChatStore.subscribe((state, prevState) => {
+    if (state.messages !== prevState.messages) {
+        const threadId = useThreadStore.getState().activeThreadId;
+        if (threadId) {
+            if (persistenceTimeout) clearTimeout(persistenceTimeout);
+            persistenceTimeout = setTimeout(() => {
+                try {
+                    // 仅在空闲或重要节点同步，减少压力
+                    setThreadMessages(threadId, state.messages as any);
+                } catch (e) {
+                    if (e instanceof Error && e.name === 'QuotaExceededError') {
+                        console.error('[Persistence] Storage quota exceeded, clearing old threads...');
+                        useThreadStore.getState().autoArchiveOldThreads(7);
+                    }
+                }
+            }, 2000); // 2秒防抖
+        }
+    }
+});
 
 export const useChatStore = coreUseChatStore;

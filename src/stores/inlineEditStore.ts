@@ -143,20 +143,39 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
   editHistory: [],
   historyIndex: -1,
   isProcessing: false,
+showInlineEdit: (selectedText = '', position) => {
+  console.log('[inlineEditStore] showInlineEdit called, setting isInlineEditVisible to true');
 
-  showInlineEdit: (selectedText = '', position) => {
-    console.log('[inlineEditStore] showInlineEdit called, setting isInlineEditVisible to true');
-    set({
-      isInlineEditVisible: true,
-      selectedText,
-      position: position || null,
-    });
-    console.log('[inlineEditStore] After set, state:', get());
-  },
+  // 🔥 v0.3.7: 唤起保底清理，确保每次都是全新开始
+  set({
+    pivoStage: 'idle',
+    pivoTasks: [],
+    modifiedFiles: [],
+    isLoading: false,
+    selectedText,
+    position: position || null,
+  });
+
+  const editor = (window as any).__activeEditor;
+  const model = editor?.getModel();
+  const filePath = model?.uri.fsPath || model?.uri.path || '';
+
+  set({
+    isInlineEditVisible: true,
+    currentFilePath: filePath, 
+  });
+  console.log('[inlineEditStore] After set, state:', get());
+},
 
   hideInlineEdit: () => {
-    set({
+    console.log('[inlineEditStore] hideInlineEdit called');
+    set({ 
       isInlineEditVisible: false,
+      // 🔥 v0.3.7: 彻底重置状态，防止重开时残留
+      pivoStage: 'idle',
+      pivoTasks: [],
+      modifiedFiles: [],
+      isLoading: false,
       instruction: '',
       selectedText: '',
       position: null, // 🔥 修复无限循环：隐藏时重置 position
@@ -185,24 +204,77 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
     const model = editor.getModel();
     const filePath = model?.uri.fsPath || model?.uri.path || 'unknown';
     
-    // 🔥 调用真正的 AgentStore 开始任务
-    // 注意：我们将通过消息总线进行通信
-    import('./useChatStore').then(({ useChatStore }) => {
+    // 🔥 v0.3.7: 优化上下文构造逻辑 (基于本地模板和 i18n)
+    import('./useChatStore').then(async ({ useChatStore }) => {
       const { currentProviderId, currentModel } = (window as any).__settingsStore?.getState() || {};
-      
-      // 构造给 AI 看的完整上下文 (Markdown 格式)
+      const { selectedText } = get();
       const language = detectLanguage(filePath);
-      const fullPrompt = `### 🤖 Inline AI Task
-**File:** \`${filePath}\`
-**Instruction:** ${instruction}
+      
+      // 1. 获取国际化指令 (从 i18next)
+      // 注意：我们在 App.tsx 已经将 i18n 暴露到 window.i18n
+      const i18n = (window as any).i18n;
+      const t = (key: string) => i18n?.t(key) || key;
 
-**Context around current line:**
+      // 2. 构造上下文块
+      let contextSection = '';
+      if (selectedText) {
+        contextSection = `**${t('editor.inlineWidget.prompt.selectedCode')} (TARGET FOR MODIFICATION):**
+      \`\`\`${language}
+      ${selectedText}
+      \`\`\`
+
+      **${t('editor.inlineWidget.prompt.surroundingContext')} (READ-ONLY REFERENCE, DO NOT MODIFY):**
+      \`\`\`${language}
+      ${getVisibleContext(editor, 20)}
+      \`\`\``;
+      }
+ else {
+        contextSection = `**${t('editor.inlineWidget.prompt.cursorContext')}**
 \`\`\`${language}
-${getVisibleContext(editor)}
+${getVisibleContext(editor, 50)}
 \`\`\``;
+      }
+
+      // 3. 读取本地 Prompt 模板
+      let template = '';
+      try {
+        const { readFileContent } = await import('../utils/fileSystem');
+        template = await readFileContent('.ifai/prompts/inline-edit.md');
+      } catch (e) {
+        console.warn('[inlineEditStore] Failed to load local prompt template, using fallback');
+        // 回退模板 (与文件内容一致)
+        template = `### 🤖 {{title}}
+**File:** \`{{filePath}}\`
+**Instruction:** {{instruction}}
+
+{{contextSection}}
+
+**CRITICAL DIRECTIVE:**
+1. {{directive1}}
+2. {{directive2}}
+3. {{directive3}}
+4. {{directive4}}
+5. {{directive5}}`;
+      }
+
+      // 4. 填充占位符
+      const fullPrompt = template
+        .replace('{{title}}', t('editor.inlineWidget.prompt.title'))
+        .replace('{{filePath}}', filePath)
+        .replace('{{instruction}}', instruction)
+        .replace('{{contextSection}}', contextSection)
+        .replace('{{directive1}}', t('editor.inlineWidget.prompt.directive1'))
+        .replace('{{directive2}}', t('editor.inlineWidget.prompt.directive2'))
+        .replace('{{directive3}}', t('editor.inlineWidget.prompt.directive3'))
+        .replace('{{directive4}}', t('editor.inlineWidget.prompt.directive4'))
+        .replace('{{directive5}}', t('editor.inlineWidget.prompt.directive5'));
       
       // 构造给用户看的简洁信息
-      const displayInfo = `🎨 Inline Edit: ${instruction}`;
+      const selectionPreview = selectedText 
+        ? `\n\n**${t('editor.inlineWidget.prompt.selectedCode')}**\n\`\`\`${language}\n${selectedText.length > 500 ? selectedText.substring(0, 500) + '...' : selectedText}\n\`\`\``
+        : '';
+      
+      const displayInfo = `🎨 ${t('editor.inlineWidget.prompt.title')}: ${instruction}${selectionPreview}`;
       
       // 发送消息，并标记为 Inline 任务以便 ChatStore 特殊处理
       useChatStore.getState().sendMessage(fullPrompt, currentProviderId, currentModel, {
@@ -374,16 +446,18 @@ ${getVisibleContext(editor)}
 
 /**
  * 获取光标附近的上下文代码
+ * @param editor 编辑器实例
+ * @param range 范围（前后行数，默认 50）
  */
-function getVisibleContext(editor: any): string {
+function getVisibleContext(editor: any, range: number = 50): string {
   const model = editor.getModel();
   if (!model) return '';
   
   const position = editor.getPosition();
   if (!position) return '';
 
-  const startLine = Math.max(1, position.lineNumber - 50);
-  const endLine = Math.min(model.getLineCount(), position.lineNumber + 50);
+  const startLine = Math.max(1, position.lineNumber - range);
+  const endLine = Math.min(model.getLineCount(), position.lineNumber + range);
   
   return model.getValueInRange({
     startLineNumber: startLine,

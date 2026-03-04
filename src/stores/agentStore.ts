@@ -1353,21 +1353,58 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         const { id, status, progress, tool } = event.payload;
         
         // 🔥 v0.3.7: 自动推断 PIVO 阶段
-        // 如果发现正在执行写入类工具，自动同步到 inlineEditStore
-        if (status === 'waiting_for_tool' || status === 'running') {
+        if (status === 'waiting_for_tool' || status === 'running' || status === 'completed' || status === 'executed') {
           const toolName = tool || '';
-          if (toolName.includes('write') || toolName.includes('replace') || toolName.includes('delete')) {
-            import('./inlineEditStore').then(({ useInlineEditStore }) => {
-              const currentStage = useInlineEditStore.getState().pivoStage;
-              if (currentStage === 'plan' || currentStage === 'idle') {
+          
+          import('./inlineEditStore').then(({ useInlineEditStore }) => {
+            const currentStage = useInlineEditStore.getState().pivoStage;
+            
+            // 写入类工具
+            if (toolName.includes('write') || toolName.includes('replace') || toolName.includes('delete')) {
+              if (status === 'completed' || status === 'executed') {
+                // 执行完成 -> 验证阶段
+                const store = useInlineEditStore.getState();
+                
+                // 🔥 物理加固：不仅标记为 verify，还要标记为成功并确保 UI 可被关闭
+                const updatedTasks = store.pivoTasks.map(t => ({ ...t, status: 'success' as const }));
+                useInlineEditStore.getState().setPivoState('verify', updatedTasks);
+                
+                // 如果是静默自动审批模式，直接标记为 idle 以便自动关闭
+                const settings = (window as any).__settingsStore?.getState();
+                if (settings?.agentAutoApprove) {
+                   // setTimeout(() => useInlineEditStore.getState().hideInlineEdit(), 2000);
+                }
+              } else if (currentStage === 'plan' || currentStage === 'idle') {
+                // 开始执行 -> 实施阶段
                 useInlineEditStore.getState().setPivoState('implement');
               }
-            });
-          }
+            }
+            
+            // 读取/搜索类工具 -> 规划/搜索阶段
+            else if (toolName.includes('read') || toolName.includes('list') || toolName.includes('grep')) {
+              if (currentStage === 'idle' && (status === 'running' || status === 'waiting_for_tool')) {
+                useInlineEditStore.getState().setPivoState('plan');
+              }
+            }
+          });
         }
 
         set(state => {
             const agent = state.runningAgents.find(a => a.id === id);
+            
+            // 🔥 v0.3.7: 整体 Agent 完成检测保底
+            if (status === 'completed' || status === 'stopped') {
+              import('./inlineEditStore').then(({ useInlineEditStore }) => {
+                const inlineStore = useInlineEditStore.getState();
+                // 如果当前还在“实施中”或“规划中”，且此时 Agent 已经结束，强制进入 verify
+                if (inlineStore.isInlineEditVisible && (inlineStore.pivoStage === 'implement' || inlineStore.pivoStage === 'plan')) {
+                  console.log('[AgentStore] Agent session completed, auto-syncing inline stage to verify');
+                  const updatedTasks = inlineStore.pivoTasks.map(t => ({ ...t, status: 'success' as const }));
+                  inlineStore.setPivoState('verify', updatedTasks);
+                }
+              });
+            }
+
             if (agent && (agent.status !== status || agent.progress !== progress)) {
                 return { runningAgents: state.runningAgents.map(a => a.id === id ? { ...a, status: status as any, progress } : a) };
             }

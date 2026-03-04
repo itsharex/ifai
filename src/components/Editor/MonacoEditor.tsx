@@ -204,11 +204,12 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
     const contentWidget: monaco.editor.IContentWidget = {
       getId: () => 'inline.ai.assistant.v2', // 使用新 ID 避免缓存冲突
       getDomNode: () => {
+        // 🔥 修复 E2E 渲染竞态：优先获取 App.tsx 预置的全局 Portal 容器
         let node = document.getElementById('monaco-inline-ai-portal');
         if (!node) {
+          // 容错：如果 App.tsx 还没渲染出此 ID，临时创建一个
           node = document.createElement('div');
           node.id = 'monaco-inline-ai-portal';
-          node.style.zIndex = '10000'; // 确保在最顶层
         }
         return node;
       },
@@ -979,6 +980,8 @@ ${textBefore}[CURSOR]${textAfter}
             isLoading={isInlineEditVisible ? pivoStage !== 'idle' : debugStage !== 'idle'}
             tasks={isInlineEditVisible ? pivoTasks : debugTasks}
             modifiedFiles={isInlineEditVisible ? modifiedFiles : []}
+            selectedText={isInlineEditVisible ? useInlineEditStore.getState().selectedText : ''}
+            currentFilePath={isInlineEditVisible ? useInlineEditStore.getState().currentFilePath : ''}
             onClose={() => {
               if (isInlineEditVisible) rejectDiff();
               setDebugWidgetVisible(false);

@@ -42,10 +42,22 @@
     },
     "inlineWidget": {
         "title": "AI Edit",
-        "placeholder": "Edit with IfAI (e.g., 'add comments')...",
+        "placeholder": "Edit with IfAI (e.g. 'Add comments')...",
         "submit": "Submit",
-        "cancel": "Cancel"
+        "cancel": "Cancel",
+        "prompt": {
+            "title": "Inline AI Task",
+            "selectedCode": "User Selected Code to Modify:",
+            "surroundingContext": "Surrounding Context (for reference):",
+            "cursorContext": "Context around cursor:",
+            "directive1": "You are an INLINE EDIT agent. Your goal is to DIRECTLY MODIFY the code in the file.",
+            "directive2": "You MUST use appropriate tools (e.g., `agent_write_file` or `agent_replace_content`) to apply the requested changes.",
+            "directive3": "DO NOT just provide suggestions or code blocks in the chat response. Your response should focus on what you are doing with the tools.",
+            "directive4": "SURGICAL MODIFICATION: You must strictly modify ONLY the user-selected code block. Do not touch any characters, spaces, or surrounding methods outside the selection.",
+            "directive5": "NO SIDE EFFECTS: Maintain the integrity of the rest of the file. If using tools to write, ensure zero collateral damage to unrelated code areas."
+        }
     },
+
     "splitPane": "Split Pane",
     "closePane": "Close Pane",
     "splitRight": "Split Right",

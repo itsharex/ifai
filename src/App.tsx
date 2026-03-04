@@ -880,6 +880,9 @@ function App() {
           onReject={rejectDiff}
         />
 
+        {/* 🧪 Agent 2.0 Inline Assistant Global Portal Container */}
+        <div id="monaco-inline-ai-portal" className="fixed inset-0 pointer-events-none z-[280]" />
+
         {/* v0.2.9: Git Commit Button (shows when files are staged) */}
         {showCommitButton && (
           <div className="fixed bottom-20 right-8 z-[200]">

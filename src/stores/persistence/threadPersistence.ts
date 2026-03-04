@@ -83,6 +83,14 @@ function messageToStored(message: Message, threadId: string): StoredMessage | nu
     return null;  // Return null to indicate this message should be skipped
   }
 
+  // 🔥 v0.3.7: 存储空间优化
+  // 移除冗余的 contentSegments（仅在流式生成时有用，持久化无需保留全量历史片段）
+  // 裁剪极其庞大的 multiModalContent 或 references
+  const cleanMessage = {
+    ...message,
+    contentSegments: undefined, // 彻底移除，节省空间
+  };
+
   return {
     id: message.id,
     threadId,
@@ -92,12 +100,14 @@ function messageToStored(message: Message, threadId: string): StoredMessage | nu
     tool_call_id: message.tool_call_id,
     timestamp: Date.now(),
     // Copy all other properties
-    multiModalContent: (message as any).multiModalContent,
-    references: (message as any).references,
-    agentId: (message as any).agentId,
-    isAgentLive: (message as any).isAgentLive,
-    // ✅ FIX: Preserve contentSegments for streaming message order tracking
-    contentSegments: (message as any).contentSegments,
+    multiModalContent: (cleanMessage as any).multiModalContent,
+    references: (cleanMessage as any).references,
+    agentId: (cleanMessage as any).agentId,
+    isAgentLive: (cleanMessage as any).isAgentLive,
+    // 🔥 v0.3.7: 确保内联编辑元数据持久化
+    isInlineTask: (cleanMessage as any).isInlineTask,
+    displayLabel: (cleanMessage as any).displayLabel,
+    exploreProgress: (cleanMessage as any).exploreProgress,
   };
 }
 
