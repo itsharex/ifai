@@ -18,8 +18,9 @@ const isCommercial = () => {
   const mode = (import.meta as any).env?.MODE;
   const edition = (import.meta as any).env?.APP_EDITION;
   const isE2E = (import.meta as any).env?.VITE_TEST_ENV === 'e2e';
-  // E2E 环境强制使用社区模式
-  return (mode === 'commercial' || edition === 'commercial') && !isE2E;
+  const useRealCore = (import.meta as any).env?.USE_REAL_CORE === 'true';
+  // E2E 环境默认使用社区模式，除非显式开启 USE_REAL_CORE
+  return (mode === 'commercial' || edition === 'commercial') && (!isE2E || useRealCore);
 };
 
 /**

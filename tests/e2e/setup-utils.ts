@@ -117,8 +117,25 @@ export async function setupE2ETestEnvironment(
     const realAIBaseUrl = options.realAIBaseUrl ?? process.env.E2E_AI_BASE_URL ?? fileConfig.E2E_AI_BASE_URL;
     const realAIModel = options.realAIModel ?? process.env.E2E_AI_MODEL ?? fileConfig.E2E_AI_MODEL;
 
-    // 在真实 Tauri 模式下，只进行最小化的页面初始化
+    // 🔥 FIX v0.3.8: 在真实 Tauri 模式下，只进行最小化的页面初始化
     // 不设置任何 mock，让应用使用真实的 Tauri API
+    // 在加载页面前设置 InitScript 来处理 E2E 标志和新手引导跳过
+    await page.addInitScript((opts: any) => {
+      (window as any).__E2E_SKIP_STABILIZER__ = true;
+      if (opts.skipWelcome !== false) {
+        localStorage.setItem('tour_completed', 'true');
+        localStorage.setItem('tour_skipped', 'true');
+        localStorage.setItem('onboarding_done', 'true');
+        localStorage.setItem('ifai_onboarding_state', JSON.stringify({
+          completed: true,
+          skipped: true,
+          remindCount: 0,
+          lastRemindDate: null
+        }));
+        console.log('[E2E Init] Welcome dialog and Onboarding Tour skipped for E2E tests (Real Tauri)');
+      }
+    }, { skipWelcome: options.skipWelcome !== false });
+
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // 🔥 FIX v0.3.8: 等待所有必需的 stores 初始化
@@ -252,12 +269,17 @@ export async function setupE2ETestEnvironment(
     // 🔥 跳过欢迎对话框（E2E 测试环境）- 根据 skipWelcome 配置
     if ((realAIConfigParam as any).skipWelcome !== false) {
       localStorage.setItem('ifai_onboarding_state', JSON.stringify({
-        completed: false,
+        completed: true,
         skipped: true,
         remindCount: 0,
         lastRemindDate: null
       }));
-      console.log('[E2E Init] Welcome dialog skipped for E2E tests');
+      // 🔥 v0.3.0: 额外设置 OnboardingTour 使用的新 Key
+      localStorage.setItem('tour_completed', 'true');
+      localStorage.setItem('tour_skipped', 'true');
+      localStorage.setItem('onboarding_done', 'true');
+      
+      console.log('[E2E Init] Welcome dialog and Onboarding Tour skipped for E2E tests');
     } else {
       console.log('[E2E Init] Welcome dialog enabled (skipWelcome = false)');
     }
