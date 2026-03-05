@@ -46,7 +46,18 @@ export interface ContentSegment {
 
 const threadMessages: Map<string, Message[]> = new Map();
 export function getThreadMessages(threadId: string): Message[] { return threadMessages.get(threadId) || []; }
-export function setThreadMessages(threadId: string, messages: Message[]): void { threadMessages.set(threadId, messages); autoSaveThread(threadId); }
+export function setThreadMessages(threadId: string, messages: Message[]): void { 
+    threadMessages.set(threadId, messages); 
+    
+    // 🏆 PIVO 3.0: 实时同步活跃线程数据
+    const activeThreadId = useThreadStore.getState().activeThreadId;
+    if (activeThreadId === threadId) {
+        console.log(`[ChatStore] 🔄 Syncing active thread messages for: ${threadId}`);
+        coreUseChatStore.setState({ messages: [...messages] });
+    }
+    
+    autoSaveThread(threadId); 
+}
 export function clearThreadMessages(): void { threadMessages.clear(); }
 
 export function switchThread(threadId: string): void {
