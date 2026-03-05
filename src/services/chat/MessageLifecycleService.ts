@@ -131,6 +131,34 @@ export class MessageLifecycleService {
     return { enrichedContent, userMsgId, userMessageAdded, shouldStop: false };
   }
 
+  /**
+   * 🏆 PIVO 3.0: 响应式任务拆解引擎服务化
+   * 监听消息变化并在合适时机触发 Pivo 任务生成
+   */
+  static triggerTaskBreakdown(lastMessage: Message, history: Message[]) {
+    if (lastMessage.role !== 'assistant' || (lastMessage as any).hasTriggeredBreakdown) return;
+
+    const userMessage = history.slice().reverse().find(m => m.role === 'user');
+    if (userMessage) {
+        const textInput = typeof userMessage.content === 'string' ? userMessage.content : 
+                         ((userMessage as any).multiModalContent?.find((p: any) => p.type === 'text')?.text || '');
+        
+        const intentResult = recognizeIntent(textInput);
+        // 如果意图明确为“重构”、“修改”或置信度极高，则触发 PIVO 任务拆解
+        if (intentResult && (intentResult.category === 'write' || intentResult.confidence > 0.8)) {
+            (lastMessage as any).hasTriggeredBreakdown = true;
+            invoke('pivo_generate_tasks', { intent: textInput })
+                .then((tasks: any) => {
+                    const pivoStore = (window as any).__pivoStore;
+                    if (pivoStore && tasks?.length > 0) {
+                        console.log(`[Lifecycle] 🌳 PIVO Task Breakdown triggered for: ${lastMessage.id}`);
+                        pivoStore.getState().setTaskTree(lastMessage.id, tasks);
+                    }
+                }).catch(() => {});
+        }
+    }
+  }
+
   static async prepareContext(messages: Message[], maxMessages: number, model: string, maxTokens: number): Promise<Message[]> {
     return await selectMessagesForContext(messages, maxMessages, model, maxTokens);
   }

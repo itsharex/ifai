@@ -106,18 +106,21 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
         api_key: providerData?.apiKey || "", base_url: providerData?.baseUrl || "", models: [modelName]
     };
 
+    const displayContent = typeof content === 'string' ? content.replace(/^\[(CHAT|TASK-EXECUTION)\]\s*/, '').replace(/\[TASK-EXECUTION\]\s*/g, '') : content;
+
+    // 🏆 PIVO 3.0: 物理标题同步 - 确保所有路径（包括拦截路径）都能更新标题
+    const currentThread = threadStore.getThread(activeThreadId!);
+    if (currentThread && /^(上午|下午|晚上)(的新对话|的对话 \d+)$/.test(currentThread.title)) {
+        threadStore.updateThreadTitleFromMessage(activeThreadId!, displayContent as any);
+    }
+
     if (!userMessageAdded) {
-        const displayContent = typeof content === 'string' ? content.replace(/^\[(CHAT|TASK-EXECUTION)\]\s*/, '').replace(/\[TASK-EXECUTION\]\s*/g, '') : content;
         const autoApproveTools = typeof content === 'string' && content.includes('[TASK-EXECUTION]');
         coreUseChatStore.getState().addMessage({
             id: userMsgId, role: 'user', content: displayContent,
             // @ts-ignore
             autoApproveTools, isInlineTask: options.isInlineTask, displayLabel: options.displayLabel
         });
-        const currentThread = threadStore.getThread(activeThreadId!);
-        if (currentThread && /^(上午|下午|晚上)(的新对话|的对话 \d+)$/.test(currentThread.title)) {
-            threadStore.updateThreadTitleFromMessage(activeThreadId!, displayContent);
-        }
     }
     await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig, { ...options, userMsgId, enrichedContent: lifecycleResult.enrichedContent, originalContent: content });
 };
@@ -258,6 +261,67 @@ coreUseChatStore.subscribe((state, prevState) => {
             persistenceTimeout = setTimeout(async () => { setThreadMessages(threadId, state.messages as any); }, 2000);
         }
     }
+});
+
+// 🏆 v0.3.7: PIVO 自动触发与状态同步引擎 (Chat-Native Observer)
+coreUseChatStore.subscribe((state, prevState) => {
+    const lastMessage = state.messages[state.messages.length - 1];
+    if (!lastMessage || lastMessage.role !== 'assistant') return;
+
+    // 1. 触发任务拆解 (PIVO 3.0 服务化版本)
+    MessageLifecycleService.triggerTaskBreakdown(lastMessage, state.messages);
+
+    // 2. 任务状态同步
+    const pivoStore = (window as any).__pivoStore;
+    if (!pivoStore) return;
+
+    const currentTasks = pivoStore.getState().taskTrees[lastMessage.id];
+    if (!currentTasks || currentTasks.length === 0) return;
+
+    const hasSuccessfulWrite = lastMessage.toolCalls?.some(tc => 
+        (tc.tool === 'agent_write_file' || tc.tool === 'agent_replace') && 
+        (tc.status === 'completed' || tc.status === 'executed')
+    );
+    if (hasSuccessfulWrite) {
+        const implTask = currentTasks.find((t: any) => t.task_type === 'Implement' && t.status !== 'success');
+        if (implTask) pivoStore.getState().updateTaskStatus(lastMessage.id, implTask.id, 'success');
+    }
+
+    const hasSuccessfulVerify = lastMessage.toolCalls?.some(tc => 
+        tc.tool === 'agent_run_shell' && (tc.status === 'completed' || tc.status === 'executed')
+    );
+    if (hasSuccessfulVerify) {
+        const verifyTask = currentTasks.find((t: any) => t.task_type === 'Verify' && t.status !== 'success');
+        if (verifyTask) pivoStore.getState().updateTaskStatus(lastMessage.id, verifyTask.id, 'success');
+    }
+
+    if (!lastMessage.isStreaming) {
+        const content = typeof lastMessage.content === 'string' ? lastMessage.content : '';
+        const completionKeywords = ['成功', '完成', '好了', '完善', '完毕', '结束', 'done', 'complete', 'success', 'ready'];
+        const hasCompletionKeyword = completionKeywords.some(k => content.includes(k));
+        if (hasCompletionKeyword || content.length > 30) {
+            currentTasks.forEach((t: any) => {
+                if (t.status === 'pending' || t.status === 'running') {
+                    pivoStore.getState().updateTaskStatus(lastMessage.id, t.id, 'success');
+                }
+            });
+        }
+    }
+});
+
+// 🏆 v0.3.8: Inline Sync Service Observer - 监听工具状态变更
+coreUseChatStore.subscribe((state, prevState) => {
+    const lastMessage = state.messages[state.messages.length - 1];
+    if (!lastMessage || lastMessage.role !== 'assistant' || !lastMessage.toolCalls) return;
+
+    const prevLastMessage = prevState.messages.find(m => m.id === lastMessage.id);
+
+    lastMessage.toolCalls.forEach(tc => {
+        const prevTc = prevLastMessage?.toolCalls?.find(ptc => ptc.id === tc.id);
+        if (tc.status !== prevTc?.status) {
+            InlineSyncService.updateToolStatus(tc.tool, tc.status);
+        }
+    });
 });
 
 export const useChatStore = coreUseChatStore;
