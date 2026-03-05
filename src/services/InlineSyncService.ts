@@ -7,9 +7,6 @@ import { IInlineEditStore, IStoreInstance } from '../interfaces/ICoreChatStore';
 export class InlineSyncService {
   /**
    * Synchronizes AI progress to the Inline Edit Store
-   * @param toolName Name of the tool being called (if any)
-   * @param content Code content being generated (if any)
-   * @param textChunk Text description being generated (if any)
    */
   static syncState(toolName: string, content: string, textChunk?: string) {
     if (typeof window === 'undefined') return;
@@ -24,9 +21,7 @@ export class InlineSyncService {
       const currentTasks = [...(prev.pivoTasks || [])];
       let pivoStage = prev.pivoStage;
 
-      // 1. Text-based heuristic task extraction (Planning stage)
       if (textChunk && (prev.pivoStage === 'plan' || prev.pivoStage === 'idle')) {
-        // Improved regex to strip common planning prefixes
         const planMatch = textChunk.match(/(?:我将|首先|接着|然后|最后|开始)\s*(?:我将)?\s*(.*?)(?:。| |\n|$)/);
         if (planMatch && planMatch[1].length > 2) {
           const desc = planMatch[1].trim();
@@ -42,22 +37,16 @@ export class InlineSyncService {
         }
       }
 
-      // 2. Tool-driven task generation (Implementation stage)
       if (toolName) {
         pivoStage = 'implement';
         const toolNameLower = toolName.toLowerCase();
         let desc = '';
-        
         if (toolNameLower.includes('read')) desc = '读取关联上下文';
         else if (toolNameLower.includes('scan') || toolNameLower.includes('list')) desc = '分析项目结构';
         else if (toolNameLower.includes('write') || toolNameLower.includes('replace')) desc = '正在编写优化代码';
         
         if (desc && !currentTasks.some(t => t.description === desc)) {
-          // Mark previous running tasks as success
-          currentTasks.forEach(t => { 
-            if (t.status === 'running') t.status = 'success'; 
-          });
-          
+          currentTasks.forEach(t => { if (t.status === 'running') t.status = 'success'; });
           currentTasks.push({ 
             id: `tool_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, 
             description: desc, 
@@ -77,8 +66,6 @@ export class InlineSyncService {
 
   /**
    * Updates the status of an ongoing task based on tool call completion
-   * @param toolName Name of the tool
-   * @param status New status of the tool call
    */
   static updateToolStatus(toolName: string, status: string) {
     if (typeof window === 'undefined') return;
@@ -89,58 +76,76 @@ export class InlineSyncService {
       inlineStore.setState((prev: IInlineEditStore) => {
         const currentTasks = [...(prev.pivoTasks || [])];
         const toolNameLower = toolName.toLowerCase();
-        
         const taskIndex = currentTasks.findIndex(t => {
           if (toolNameLower.includes('read') && t.description === '读取关联上下文') return true;
           if ((toolNameLower.includes('scan') || toolNameLower.includes('list')) && t.description === '分析项目结构') return true;
           if ((toolNameLower.includes('write') || toolNameLower.includes('replace')) && t.description === '正在编写优化代码') return true;
           return false;
         });
-
         if (taskIndex !== -1 && currentTasks[taskIndex].status === 'running') {
           currentTasks[taskIndex].status = 'success';
         }
-
         return { pivoTasks: currentTasks };
       });
     }
   }
 
   /**
-   * Handles the end of an AI response, providing visual feedback
+   * 🏆 PIVO 3.0: 增强版收尾与自洁逻辑
+   * @param options.isRealFinish 是否是真正的全链路结束。如果是 false（如触发了自动批准），则不启动关闭定时器。
    */
-  static handleResponseFinish() {
+  static handleResponseFinish(options: { isRealFinish?: boolean } = { isRealFinish: true }) {
     if (typeof window === 'undefined') return;
-    const inlineStore = (window as any).__inlineEditStore as any;
-    if (!inlineStore) return;
-
-    const { isInlineEditVisible, modifiedCode, pivoStage, pivoTasks } = inlineStore.getState();
-    if (!isInlineEditVisible) return;
-
-    // 如果生成结束了但没有代码修改，说明 AI 只是给出 了文字建议
-    if (!modifiedCode && (pivoStage === 'plan' || pivoStage === 'implement')) {
-        const { toast } = require('sonner');
-        toast.warning('AI 仅提供了文字建议，已在侧边栏显示。');
-        setTimeout(() => inlineStore.getState().hideInlineEdit(), 1000);
-    } else {
-        // 强制清理：将所有进行的任务标记为成功
-        const updatedTasks = pivoTasks.map((t: any) => 
-          t.status === 'running' ? { ...t, status: 'success' as const } : t
-        );
-        inlineStore.setState({ 
-          pivoTasks: updatedTasks,
-          pivoStage: 'complete'
+    const { isRealFinish } = options;
+    
+    // 1. 同步旧版 InlineEditStore
+    const inlineStore = (window as any).__inlineEditStore;
+    if (inlineStore) {
+        inlineStore.setState((state: any) => {
+            const updatedTasks = (state.pivoTasks || []).map((t: any) => 
+                (t.status === 'running' || t.status === 'pending') ? { ...t, status: 'success' as const } : t
+            );
+            return { pivoTasks: updatedTasks, pivoStage: isRealFinish ? 'complete' : state.pivoStage };
         });
+
+        if (isRealFinish) {
+            setTimeout(() => {
+                const s = inlineStore.getState();
+                if (s.hideInlineEdit) s.hideInlineEdit();
+                inlineStore.setState({ pivoTasks: [], modifiedCode: '', pivoStage: 'idle' });
+            }, 3000); // 延长到 3s 给用户确认
+        }
+    }
+
+    // 2. 物理同步 PivoStore (Pivo 3.0 新版)
+    const pivoStore = (window as any).__pivoStore;
+    if (pivoStore) {
+        const state = pivoStore.getState();
+        const activeId = state.activeMessageId;
+        if (activeId) {
+            console.log(`[InlineSync] Processing finish for ${activeId}, isRealFinish: ${isRealFinish}`);
+            const tasks = state.taskTrees[activeId] || [];
+            tasks.forEach((t: any) => {
+                if (t.status === 'pending' || t.status === 'running') {
+                    state.updateTaskStatus(activeId, t.id, 'success');
+                }
+            });
+            
+            if (isRealFinish) {
+                if (state.setPivoState) state.setPivoState('verify');
+                setTimeout(() => {
+                    pivoStore.setState((s: any) => {
+                        const newTrees = { ...s.taskTrees };
+                        delete newTrees[activeId]; 
+                        return { activeMessageId: null, taskTrees: newTrees, pivoStage: 'idle' };
+                    });
+                }, 3000);
+            }
+        }
     }
   }
 
-  /**
-   * Finalizes the inline edit session
-   */
   static finalize() {
-    const inlineStore = (window as any).__inlineEditStore;
-    if (inlineStore) {
-      inlineStore.setState({ pivoStage: 'complete' });
-    }
+    this.handleResponseFinish({ isRealFinish: true });
   }
 }

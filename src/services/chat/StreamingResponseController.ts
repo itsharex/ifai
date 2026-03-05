@@ -25,10 +25,12 @@ export class StreamingResponseController {
     return StreamingResponseController.instance;
   }
 
+  // 🏆 PIVO 3.0: 哨兵权威判定接口
   isStreamStuck(id: string): boolean {
     const s = this.activeStreams.get(id);
     if (!s) return false;
-    return (Date.now() - s.lastHeartbeat) > 5000;
+    // 宽限期延长至 8s，给慢速模型留足物理空间
+    return (Date.now() - s.lastHeartbeat) > 8000;
   }
 
   async initSession(assistantMsgId: string, initialMessages: Message[]) {
@@ -36,7 +38,7 @@ export class StreamingResponseController {
     const sessionData = { 
         renderRequested: false, 
         unlistenFns: [] as UnlistenFn[], 
-        buffer: JSON.parse(JSON.stringify(initialMessages)), // 🏆 物理隔离初始数据，防止引用污染
+        buffer: JSON.parse(JSON.stringify(initialMessages)),
         threadId,
         hasReceivedChunk: false,
         lastHeartbeat: Date.now()
@@ -72,7 +74,6 @@ export class StreamingResponseController {
         sessionData.buffer = sessionData.buffer.map((m: any) => {
           if (m.id === assistantMsgId) {
             const newMsg: Message = { ...m, isStreaming: true };
-            // 🏆 物理保护 contentSegments 不被重置
             if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
             
             if (textChunk) {
@@ -142,7 +143,6 @@ export class StreamingResponseController {
       msg.toolCalls = updated;
       if (parsed.content) InlineSyncService.syncState(toolName, parsed.content);
       
-      // 🏆 物理幂等保护：如果已经存在该 ToolCall 的渲染分段，严禁重复 push
       const segments = (msg as any).contentSegments || [];
       const hasSegment = segments.some((seg: any) => seg.toolCallId === updated[idx].id);
       if (!hasSegment) {
@@ -185,9 +185,12 @@ export class StreamingResponseController {
 
     const updatedState = coreUseChatStore.getState();
     const finalizedMsg = updatedState.messages.find(m => m.id === id);
+    let hasFollowUp = false;
+
     if (finalizedMsg?.toolCalls) {
         const pendingTCs = finalizedMsg.toolCalls.filter((tc: any) => tc.status === 'pending');
         if (pendingTCs.length > 0) {
+            hasFollowUp = true; // 🏆 关键：检测到有自动执行工具，标记为非终结态
             pendingTCs.forEach((tc: any) => {
                 ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: tc.tool, isSandbox: true, userMessageHasAutoApprove: (finalizedMsg as any).autoApproveTools || false }, () => {
                     coreUseChatStore.getState().approveToolCall(id, tc.id, { skipContinue: true });
@@ -206,7 +209,9 @@ export class StreamingResponseController {
         }
     }
 
-    InlineSyncService.handleResponseFinish();
+    // 🏆 PIVO 3.0: 物理闭环
+    // 只有在没有后续任务且流真正结束时，才允许启动 UI 自洁
+    InlineSyncService.handleResponseFinish({ isRealFinish: !hasFollowUp });
     this.cleanup(id);
   }
 
