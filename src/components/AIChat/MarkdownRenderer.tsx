@@ -31,6 +31,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   onToggleExpand,
   index = 0,
 }) => {
+  // 🏆 PIVO 3.0: 物理级渲染防护
+  if (content === null || content === undefined || typeof content !== 'string') {
+    console.warn('[PIVO-Defense] 🛡️ Blocked non-string content from rendering:', content);
+    return null;
+  }
+
   // 检查是否需要折叠
   const shouldCollapse = !isStreaming && content.split('\n').length > maxLinesBeforeCollapse;
 
@@ -169,6 +175,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
  * 不使用语法高亮，减少渲染开销
  */
 export const SimpleMarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+  // 🏆 PIVO 3.0: 物理级渲染防护
+  if (content === null || content === undefined || typeof content !== 'string') {
+    return null;
+  }
+
   const markdownComponents = {
     p: ({ node, ...props }: any) => (
       <div {...props} className="mb-2 last:mb-0 text-gray-300" />

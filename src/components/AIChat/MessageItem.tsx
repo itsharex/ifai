@@ -810,7 +810,9 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 {mergedSegments.map((segment: any, index: number) => {
                                     if (segment.type === 'text') {
                                         const content = segment.content;
-                                        if (!content) return null;
+                                        // 🏆 PIVO 3.0: 物理级渲染防护 - 拒绝非字符串对象进入 React Tree
+                                        if (!content || typeof content !== 'string') return null;
+                                        
                                         if (effectivelyStreaming) return renderMarkdownWithoutHighlight(content, `streaming-text-${index}`);
                                         return renderContentPart({ type: 'text', text: content }, index, effectivelyStreaming);
                                     } else if (segment.type === 'tool' && segment.toolCallId) {

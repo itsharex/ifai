@@ -26,10 +26,20 @@ if (typeof window !== 'undefined' && (import.meta.env.VITE_TEST_ENV === 'e2e' ||
     return id;
   };
 
+  const unregisterListener = async (id: number) => {
+    console.log(`[PIVO3-Mock] 🧹 Unregistering listener: ${id}`);
+    delete (window as any).__TAURI_EVENT_LISTENERS__?.[`callback_${id}`];
+  };
+
   (window as any).__TAURI_INTERNALS__ = {
     transformCallback,
     invoke,
-    metadata: { app: { name: 'IfAI', version: '0.3.8' }, os: { name: 'darwin' } }
+    unregisterListener,
+    metadata: { app: { name: 'IfAI', version: '0.3.8' }, os: { name: 'darwin' } },
+    window: {
+        label: 'main',
+        currentWindow: () => (window as any).__TAURI_INTERNALS__.window
+    }
   };
   
   (window as any).__TAURI__ = {

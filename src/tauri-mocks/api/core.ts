@@ -1,15 +1,15 @@
 /**
- * 🏆 PIVO 3.0: Tauri v2 Protocol Fidelity Layer
+ * 🏆 PIVO 3.0: Tauri v2 Protocol Fidelity Layer (Enhanced)
  * 
- * 此模块不仅是 Mock，它通过伪造 window.__TAURI_INTERNALS__ 协议层，
- * 能够欺骗真实的 @tauri-apps/api/v2 库在 Playwright 环境下正常运行。
+ * 全面补全 Tauri v2 的内部契约，防止 React 生命周期中的清理函数报错。
  */
 
-console.log('[PIVO3-Mock] 🛡️ Initializing Tauri v2 Protocol Fidelity Layer...');
+console.log('[PIVO3-Mock] 🛡️ Initializing Enhanced Tauri v2 Protocol Fidelity Layer...');
+
+export const SERIALIZE_TO_IPC_FN = Symbol('SERIALIZE_TO_IPC_FN');
 
 /**
  * 核心：模拟 Tauri v2 的 transformCallback
- * 这是 @tauri-apps/api 内部调用的关键函数
  */
 export function transformCallback<T = unknown>(callback?: (response: T) => void, once?: boolean): number {
     const id = Math.floor(Math.random() * 1000000);
@@ -29,41 +29,55 @@ export async function invoke<T = any>(cmd: string, args?: any): Promise<T> {
     const handler = (window as any).__E2E_INVOKE_HANDLER__;
     if (handler) return handler(cmd, args);
     
-    // 默认兜底：有些命令需要特定的物理返回
+    // 基础物理返回兜底
+    if (cmd.includes('get_config')) return { providers: [] } as any;
     if (cmd === 'get_git_statuses') return [] as any;
     return {} as T;
 }
 
+/**
+ * 核心：模拟 Tauri v2 的 unregisterListener (关键修复)
+ */
+export async function unregisterListener(id: number): Promise<void> {
+    console.log(`[PIVO3-Mock] 🧹 Unregistering listener: ${id}`);
+    if (typeof window !== 'undefined') {
+        delete (window as any).__TAURI_EVENT_LISTENERS__?.[`callback_${id}`];
+    }
+}
+
 // 🏆 物理欺骗层 (Environment Spoofing)
 if (typeof window !== 'undefined') {
-    // 1. 伪造 Tauri Internals (针对 v2)
     (window as any).__TAURI_INTERNALS__ = {
         transformCallback,
         invoke,
+        unregisterListener, // 注入关键方法
         metadata: {
             app: { name: 'IfAI', version: '0.3.8' },
-            os: { name: 'darwin', version: '15.0' }
+            os: { name: 'darwin' }
+        },
+        // 伪造 currentWindow
+        window: {
+            label: 'main',
+            currentWindow: () => (window as any).__TAURI_INTERNALS__.window
         }
     };
 
-    // 2. 伪造 Tauri Namespace (兼容旧版或第三方库)
     (window as any).__TAURI__ = {
-        core: { invoke, transformCallback },
+        core: { invoke, transformCallback, unregisterListener },
+        window: (window as any).__TAURI_INTERNALS__.window,
         event: {
             listen: (event: string, handler: any) => {
                 const listeners = (window as any).__TAURI_EVENT_LISTENERS__ || {};
                 if (!listeners[event]) listeners[event] = [];
                 listeners[event].push(handler);
                 (window as any).__TAURI_EVENT_LISTENERS__ = listeners;
-                return Promise.resolve(() => {});
+                return Promise.resolve(() => unregisterListener(0));
             }
         }
     };
     
-    console.log('[PIVO3-Mock] ✅ window.__TAURI_INTERNALS__ and __TAURI__ spoofed.');
+    console.log('[PIVO3-Mock] ✅ window.__TAURI_INTERNALS__ full spoofing complete.');
 }
-
-export const SERIALIZE_TO_IPC_FN = Symbol('SERIALIZE_TO_IPC_FN');
 
 export class Channel<T = unknown> {
     id: number;
@@ -72,5 +86,5 @@ export class Channel<T = unknown> {
     toJSON(): string { return String(this.id); }
 }
 
-export function isTauri(): boolean { return true; } // 欺骗库认为这是 Tauri 环境
+export function isTauri(): boolean { return true; }
 export function convertFileSrc(p: string): string { return p; }
