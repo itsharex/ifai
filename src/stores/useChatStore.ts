@@ -38,62 +38,14 @@ import { countMessagesTokens, getModelMaxTokens, calculateTokenUsagePercentage }
 import i18n from '../i18n/config';
 
 // 🔥 版本区分:根据版本显示不同的提示
-
 import { IS_COMMERCIAL } from '../config/edition';
 
-// 🔥 工具注册表
-
-import { toolRegistry } from './tool/builtinTools';
-import { toast } from 'sonner';
-
-/**
- * v0.3.7: 极致预判同步函数 - 将 AI 状态同步至 Inline Assistant
- */
-function syncToInlineAssistant(name: string, content: string, textChunk?: string) {
-    const inlineStore = (window as any).__inlineEditStore;
-    if (inlineStore && inlineStore.getState().isInlineEditVisible) {
-        // 🔥 核心修复：改用函数式更新，确保拿到最新的 prev 状态，避免高频覆盖
-        inlineStore.setState((state: any) => {
-            const currentTasks = [...(state.pivoTasks || [])];
-            
-            // 1. 文本启发式提取
-            if (textChunk && state.pivoStage === 'plan') {
-                const planMatch = textChunk.match(/(?:我将|首先|接着|然后|最后|开始)\s*(.*?)(?:。| |\n|$)/);
-                if (planMatch && planMatch[1].length > 2) {
-                    const desc = planMatch[1].trim();
-                    if (!currentTasks.some(t => t.description.includes(desc))) {
-                        currentTasks.push({ id: `task_${Date.now()}`, description: desc, status: 'running', stage: 'plan' });
-                    }
-                }
-            }
-
-            // 2. 工具驱动生成
-            if (name) {
-                const toolNameLower = name.toLowerCase();
-                let desc = '';
-                if (toolNameLower.includes('read')) desc = '读取关联上下文';
-                else if (toolNameLower.includes('scan')) desc = '分析项目结构';
-                else if (toolNameLower.includes('write') || toolNameLower.includes('replace')) desc = '正在编写优化代码';
-                
-                if (desc && !currentTasks.some(t => t.description === desc)) {
-                    currentTasks.forEach(t => { if (t.status === 'running') t.status = 'success'; });
-                    currentTasks.push({ id: `tool_${Date.now()}`, description: desc, status: 'running', stage: 'implement' });
-                }
-            }
-
-            return {
-                pivoStage: name ? 'implement' : (textChunk ? 'plan' : state.pivoStage),
-                modifiedCode: (name && content !== undefined) ? content : state.modifiedCode,
-                pivoTasks: currentTasks
-            };
-        });
-    }
-}
+import { ApprovalPipeline } from '../utils/approvalPipeline';
+import { SentinelService } from '../services/SentinelService';
+import { InlineSyncService } from '../services/InlineSyncService';
 
 // ============================================================================
-
 // 统一日志工具 - 规范化日志格式，便于调试和问题追踪
-
 // ============================================================================
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
@@ -1691,7 +1643,7 @@ You have full execution permissions. Directly call:
                             newMsg.content = (newMsg.content || "") + safeTextChunk;
                             
                             // 🔥 v0.3.7: 同步文本块以提取 PIVO 计划
-                            syncToInlineAssistant("", "", safeTextChunk);
+                            InlineSyncService.syncState("", "", safeTextChunk);
 
                             const order = ((newMsg as any).contentSegments || []).length;
                             const startPos = (newMsg.content || "").length - safeTextChunk.length;
@@ -1735,20 +1687,6 @@ You have full execution permissions. Directly call:
                                     if (relPathMatch) parsedArgs.rel_path = relPathMatch[1];
                                 }
 
-                                // 🔥 v0.3.7: 实时同步代码到 Inline Widget
-                                if (parsedArgs.content) {
-                                    const inlineStore = (window as any).__inlineEditStore;
-                                    if (inlineStore) {
-                                        const state = inlineStore.getState();
-                                        if (state.isInlineEditVisible) {
-                                            inlineStore.setState({ 
-                                                modifiedCode: parsedArgs.content,
-                                                pivoStage: 'implement'
-                                            });
-                                        }
-                                    }
-                                }
-
                                 updatedCalls[existingIndex] = {
                                     ...existingCall,
                                     id: toolCallUpdate.id || existingCall.id,
@@ -1759,26 +1697,33 @@ You have full execution permissions. Directly call:
                                     batchId: (existingCall as any).batchId
                                 } as any;
 
-                                syncToInlineAssistant(updatedName, parsedArgs.content);
+                                InlineSyncService.syncState(updatedName, parsedArgs.content);
 
                                 if (updatedCalls[existingIndex].isPartial === false) {
                                     const tc = updatedCalls[existingIndex];
                                     const latestEditorMode = (window as any).__IFAI_EDITOR_MODE__ || "standard";
                                     const settings = useSettingsStore.getState();
-                                    const shouldAuto = checkAutoApprove({
-                                        settings, editorMode: latestEditorMode as any,
-                                        isSessionTrusted: false, toolName: tc.tool, isSandbox: true, userMessageHasAutoApprove: false
-                                    });
-                                    if (shouldAuto) {
-                                        setTimeout(() => { (window as any).__chatStore?.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true }); }, 0);
-                                    }
+                                    
+                                    ApprovalPipeline.processAutoApproval(
+                                        {
+                                            settings, 
+                                            editorMode: latestEditorMode as any,
+                                            isSessionTrusted: false, 
+                                            toolName: tc.tool, 
+                                            isSandbox: true, 
+                                            userMessageHasAutoApprove: false
+                                        },
+                                        () => {
+                                            (window as any).__chatStore?.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
+                                        }
+                                    );
                                 }
                                 newMsg.toolCalls = updatedCalls;
                             } else {
                                 const toolName = deltaName || "unknown";
                                 
                                 // 🔥 v0.3.7: 新工具创建时立即触发同步
-                                syncToInlineAssistant(toolName, "");
+                                InlineSyncService.syncState(toolName, "");
 
                                 let initialArgs: any = {};
                                 try { 
@@ -2015,6 +1960,8 @@ const patchedGenerateResponse = async (
 history: any[], providerConfig: any, options?: { enableTools?: boolean }) => {
 
     console.log(">>> patchedGenerateResponse called");
+    // 🏆 v0.3.8: PIVO 商业版 Sentinel 扫描
+    SentinelService.scanForUuid(history);
 
     const settings = useSettingsStore.getState();
 
@@ -2297,25 +2244,7 @@ history: any[], providerConfig: any, options?: { enableTools?: boolean }) => {
         console.log("[Chat/GenerateResponse] Stream finished");
 
         // 🔥 v0.3.7: 处理 Inline 任务的自动收尾
-        const inlineStore = (window as any).__inlineEditStore;
-        if (inlineStore && inlineStore.getState().isInlineEditVisible) {
-            const { modifiedCode, pivoStage } = inlineStore.getState();
-            
-            // 如果生成结束了但没有代码修改，说明 AI 只是给出了文字建议
-            if (!modifiedCode && (pivoStage === 'plan' || pivoStage === 'implement')) {
-                toast.warning('AI 仅提供了文字建议，已在侧边栏显示。');
-                setTimeout(() => inlineStore.getState().hideInlineEdit(), 1000);
-            } else {
-                // 🔥 强制清理：将所有进行的任务标记为成功，不留尾巴
-                const tasks = [...inlineStore.getState().pivoTasks];
-                tasks.forEach(t => { 
-                    if (t.status === 'running' || t.status === 'pending') {
-                        t.status = 'success'; 
-                    }
-                });
-                inlineStore.setState({ pivoTasks: tasks });
-            }
-        }
+        InlineSyncService.handleResponseFinish();
 
         localMessagesBuffer = localMessagesBuffer.map(m => {
             if (m.id === assistantMsgId && m.toolCalls) {
@@ -2530,8 +2459,15 @@ const patchedApproveToolCall = async (
                     }
 
                     await coordinator.createApproval(messageId, { id: latestToolCall.id, tool: latestToolCall.tool, args: finalArgs });
+                    
+                    // 🏆 v0.3.8: PIVO Sentinel Pre-Hook
+                    SentinelService.beforeExecute(latestToolCall.tool, finalArgs);
+
                     const result = await coordinator.approve(toolCallId);
                     
+                    // 🏆 v0.3.8: PIVO Sentinel Post-Hook
+                    SentinelService.afterExecute(latestToolCall.tool, result);
+
                     // 同步结果
                     coreUseChatStore.setState(s => ({
                         messages: s.messages.map(m => m.id === messageId ? {
@@ -2600,21 +2536,26 @@ const patchedApproveToolCall = async (
                 const rootPath = useFileStore.getState().rootPath;
                 if (!rootPath) throw new Error("No project root");
 
-                let args = toolCall.args || {};
                 let outputContent: any;
+                const finalTauriArgs = { rootPath, relPath, ...(toolCall.args || {}) };
+
+                // 🏆 v0.3.8: PIVO Sentinel Pre-Hook
+                SentinelService.beforeExecute(toolName, finalTauriArgs);
 
                 if (toolName === "agent_scan_project") {
                     outputContent = await invoke("agent_scan_project", { 
-                    rootPath, 
-                    relPath, 
-                    maxDepth: args.max_depth || args.maxDepth || 3 
-                });
+                        rootPath, 
+                        relPath, 
+                        maxDepth: (toolCall.args || {}).max_depth || (toolCall.args || {}).maxDepth || 3 
+                    });
                 } else if (toolName === "agent_list_functions") {
                     outputContent = await invoke("agent_list_functions", { rootPath, relPath });
                 } else {
-                    const tauriArgs = { rootPath, relPath, ...args };
-                    outputContent = await invoke(toolName, tauriArgs);
+                    outputContent = await invoke(toolName, finalTauriArgs);
                 }
+
+                // 🏆 v0.3.8: PIVO Sentinel Post-Hook
+                SentinelService.afterExecute(toolName, outputContent);
 
                 // 🏆 v0.3.6: 增强型结果解析，防止 undefined 漏洞
                 let stringResult: string;
@@ -2786,6 +2727,21 @@ coreUseChatStore.subscribe((state, prevState) => {
             });
         }
     }
+});
+
+// 🏆 v0.3.8: Inline Sync Service Observer - 监听工具状态变更
+coreUseChatStore.subscribe((state, prevState) => {
+    const lastMessage = state.messages[state.messages.length - 1];
+    if (!lastMessage || lastMessage.role !== 'assistant' || !lastMessage.toolCalls) return;
+
+    const prevLastMessage = prevState.messages.find(m => m.id === lastMessage.id);
+
+    lastMessage.toolCalls.forEach(tc => {
+        const prevTc = prevLastMessage?.toolCalls?.find(ptc => ptc.id === tc.id);
+        if (tc.status !== prevTc?.status) {
+            InlineSyncService.updateToolStatus(tc.tool, tc.status);
+        }
+    });
 });
 
 export const useChatStore = coreUseChatStore;
