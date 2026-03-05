@@ -2246,30 +2246,34 @@ history: any[], providerConfig: any, options?: { enableTools?: boolean }) => {
         // 🔥 v0.3.7: 处理 Inline 任务的自动收尾
         InlineSyncService.handleResponseFinish();
 
-        localMessagesBuffer = localMessagesBuffer.map(m => {
-            if (m.id === assistantMsgId && m.toolCalls) {
-                return {
-                    ...m,
-                    toolCalls: m.toolCalls.map(tc => {
-                        let finalArgs = tc.args || {};
-                        // 🏆 物理还原：防止流结束一瞬间参数丢失
-                        if ((tc as any).function?.arguments) {
-                            try { 
-                                // 🔥 只有解析成功时才更新，解析失败保持原有 args
-                                const parsed = JSON.parse((tc as any).function.arguments);
-                                finalArgs = { ...finalArgs, ...parsed };
-                            } catch (e) {
-                                console.warn('[ChatStore] Final JSON parse failed, using incremental args:', e);
-                            }
-                        }
-                        return { ...tc, isPartial: false, args: finalArgs };
-                    })
-                };
-            }
-            return m;
-        });
+        console.log("[Chat/Sentinel] Force finalizing tool calls for:", assistantMsgId);
 
-        coreUseChatStore.setState({ messages: [...localMessagesBuffer] });
+        coreUseChatStore.setState(s => ({
+            messages: s.messages.map(m => {
+                if (m.id === assistantMsgId && m.toolCalls) {
+                    return {
+                        ...m,
+                        toolCalls: m.toolCalls.map(tc => {
+                            if (tc.status === 'pending' || tc.isPartial) {
+                                let finalArgs = tc.args || {};
+                                if ((tc as any).function?.arguments) {
+                                    try {
+                                        const parsed = JSON.parse((tc as any).function.arguments);
+                                        finalArgs = { ...finalArgs, ...parsed };
+                                    } catch (e) { /* keep existing */ }
+                                }
+                                return { ...tc, isPartial: false, args: finalArgs };
+                            }
+                            return tc;
+                        })
+                    };
+                }
+                return m;
+            })
+        }));
+
+        // 更新本地 buffer 保持同步
+        localMessagesBuffer = coreUseChatStore.getState().messages;
 
         const settings = useSettingsStore.getState();
 
