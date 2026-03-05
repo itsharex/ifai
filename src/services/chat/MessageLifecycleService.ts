@@ -63,7 +63,7 @@ export class MessageLifecycleService {
     if (isLastMessageStreaming) {
         if (!IS_COMMERCIAL) {
           store.setLoading(false);
-          store.addMessage({ id: crypto.randomUUID(), role: 'assistant', content: '💡 **提示**: 快速连续发送消息功能仅在 PRO 版本中可用。' });
+          store.addMessage({ id: crypto.randomUUID(), role: 'assistant', content: '💡 **提示**: 快速连续发送消息功能仅在 PRO 版本中可用。', isStreaming: false });
           return { enrichedContent, userMsgId, userMessageAdded, shouldStop: true };
         } else {
           (store as any).setState((s: any) => ({

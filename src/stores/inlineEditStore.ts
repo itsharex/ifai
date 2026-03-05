@@ -34,7 +34,9 @@ export interface InlineEditState {
   acceptChanges: () => void;
   rejectChanges: () => void;
   applyDiff: (modifiedCode: string) => void;
-  setPivoState: (stage: InlineEditState['pivoStage'], tasks?: any[]) => void;
+  setPivoState: (stage: InlineEditState['pivoStage'], tasks?: any[], files?: string[]) => void;
+  undo: () => void;
+  redo: () => void;
   
   submitInstruction: (text: string) => Promise<void>;
   showDiffEditor: () => void;
@@ -106,7 +108,7 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
 
     try {
         console.log('[InlineStore] 🚀 Bridging to ChatStore via PIVO 3.0 Pipe');
-        await useChatStore.getState().sendMessage(pivoPrompt, providerId, modelName, {
+        await (useChatStore.getState() as any).sendMessage(pivoPrompt, providerId, modelName, {
             isInlineTask: true,
             displayLabel: instruction // 保持 UI 显示原始简洁指令
         });
@@ -131,7 +133,11 @@ export const useInlineEditStore = create<InlineEditState>((set, get) => ({
   rejectDiff: () => get().rejectChanges(),
   acceptChanges: () => get().hideInlineEdit(),
   rejectChanges: () => get().hideInlineEdit(),
-  setPivoState: (stage, tasks) => set({ pivoStage: stage, pivoTasks: tasks || get().pivoTasks }),
+  setPivoState: (stage, tasks, files) => set({ 
+    pivoStage: stage, 
+    pivoTasks: tasks || get().pivoTasks,
+    modifiedFiles: files || get().modifiedFiles
+  }),
   undo: () => {},
   redo: () => {}
 }));

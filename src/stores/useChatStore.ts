@@ -58,7 +58,7 @@ export function switchThread(threadId: string): void {
   }
   threadStore.switchThread(threadId);
   const targetMessages = getThreadMessages(threadId);
-  coreUseChatStore.setState({ messages: [...targetMessages] });
+  coreUseChatStore.setState({ messages: [...targetMessages] as any });
 }
 
 registerStores(useFileStore.getState, useSettingsStore.getState, useThreadStore.getState);
@@ -81,7 +81,7 @@ const originalRejectToolCall = coreUseChatStore.getState().rejectToolCall;
 
 const patchedAddMessage = async (message: Message) => {
     const interceptedMessage = await MessageLifecycleService.interceptAddMessage(message, getStoreAdapter());
-    return originalAddMessage(interceptedMessage);
+    return originalAddMessage(interceptedMessage as any);
 };
 
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string, options: any = {}) => {
@@ -93,7 +93,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     
     const currentThreadMessages = getThreadMessages(activeThreadId);
     if (currentThreadMessages.length > 0 && coreUseChatStore.getState().messages.length === 0) {
-        coreUseChatStore.setState({ messages: currentThreadMessages });
+        coreUseChatStore.setState({ messages: currentThreadMessages as any });
     }
 
     const lifecycleResult = await MessageLifecycleService.interceptSendMessage(content, options, store);
@@ -117,10 +117,10 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     if (!userMessageAdded) {
         const autoApproveTools = typeof content === 'string' && content.includes('[TASK-EXECUTION]');
         coreUseChatStore.getState().addMessage({
-            id: userMsgId, role: 'user', content: displayContent,
+            id: userMsgId, role: 'user', content: displayContent as any,
             // @ts-ignore
             autoApproveTools, isInlineTask: options.isInlineTask, displayLabel: options.displayLabel
-        });
+        } as any);
     }
     await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig, { ...options, userMsgId, enrichedContent: lifecycleResult.enrichedContent, originalContent: content });
 };
@@ -153,7 +153,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
     let currentMessages = coreUseChatStore.getState().messages;
     if (!currentMessages.some(m => m.id === assistantMsgId)) currentMessages = [...currentMessages, assistantMsg as any];
 
-    await StreamingResponseController.getInstance().initSession(assistantMsgId, currentMessages);
+    await StreamingResponseController.getInstance().initSession(assistantMsgId, currentMessages as any);
 
     try {
         const currentMode = (window as any).__IFAI_EDITOR_MODE__;
@@ -185,7 +185,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 // 🏆 v0.3.8: 终极哨兵 (权威判定版)
 coreUseChatStore.subscribe((state, prevState) => {
     const lastMsg = state.messages[state.messages.length - 1];
-    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming && !state.isLoading) {
+    if (lastMsg && lastMsg.role === 'assistant' && (lastMsg as any).isStreaming && !state.isLoading) {
         // 🏆 PIVO 3.0: 权威物理判定
         // 哨兵不再根据 Store 的陈旧快照做猜测，而是直接询问控制器的实时心跳
         if (!StreamingResponseController.getInstance().isStreamStuck(lastMsg.id)) return;
@@ -269,7 +269,7 @@ coreUseChatStore.subscribe((state, prevState) => {
     if (!lastMessage || lastMessage.role !== 'assistant') return;
 
     // 1. 触发任务拆解 (PIVO 3.0 服务化版本)
-    MessageLifecycleService.triggerTaskBreakdown(lastMessage, state.messages);
+    MessageLifecycleService.triggerTaskBreakdown(lastMessage as any, state.messages as any);
 
     // 2. 任务状态同步
     const pivoStore = (window as any).__pivoStore;
@@ -280,7 +280,7 @@ coreUseChatStore.subscribe((state, prevState) => {
 
     const hasSuccessfulWrite = lastMessage.toolCalls?.some(tc => 
         (tc.tool === 'agent_write_file' || tc.tool === 'agent_replace') && 
-        (tc.status === 'completed' || tc.status === 'executed')
+        (tc.status === 'completed' || (tc.status as any) === 'executed')
     );
     if (hasSuccessfulWrite) {
         const implTask = currentTasks.find((t: any) => t.task_type === 'Implement' && t.status !== 'success');
@@ -288,14 +288,14 @@ coreUseChatStore.subscribe((state, prevState) => {
     }
 
     const hasSuccessfulVerify = lastMessage.toolCalls?.some(tc => 
-        tc.tool === 'agent_run_shell' && (tc.status === 'completed' || tc.status === 'executed')
+        tc.tool === 'agent_run_shell' && (tc.status === 'completed' || (tc.status as any) === 'executed')
     );
     if (hasSuccessfulVerify) {
         const verifyTask = currentTasks.find((t: any) => t.task_type === 'Verify' && t.status !== 'success');
         if (verifyTask) pivoStore.getState().updateTaskStatus(lastMessage.id, verifyTask.id, 'success');
     }
 
-    if (!lastMessage.isStreaming) {
+    if (!(lastMessage as any).isStreaming) {
         const content = typeof lastMessage.content === 'string' ? lastMessage.content : '';
         const completionKeywords = ['成功', '完成', '好了', '完善', '完毕', '结束', 'done', 'complete', 'success', 'ready'];
         const hasCompletionKeyword = completionKeywords.some(k => content.includes(k));

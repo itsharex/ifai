@@ -1,5 +1,16 @@
 import { AIProviderConfig } from './settingsStore';
 
+export interface ImageUrl {
+  url: string;
+  detail?: 'low' | 'high' | 'auto';
+}
+
+export interface ContentPart {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: ImageUrl;
+}
+
 export interface ToolCall {
   id: string;
   tool: string;
@@ -11,8 +22,6 @@ export interface ToolCall {
   batchId?: string;        // v0.3.6: 批处理 ID
 }
 
-// ... (ContentPart and ImageUrl)
-
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -22,7 +31,7 @@ export interface Message {
   toolCalls?: ToolCall[];
   tool_call_id?: string;
   contentSegments?: any[]; // v0.3.6: 用于流式按需渲染
-  isStreaming?: boolean;   // 🏆 v0.3.8: 是否正在流式生成
+  isStreaming: boolean;   // 🏆 v0.3.8: 是否正在流式生成
 }
 
 // Backend API message types (must match Rust `ai.rs`)
