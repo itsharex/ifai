@@ -14,6 +14,8 @@ export class StreamingResponseController {
     unlistenFns: UnlistenFn[];
     buffer: Message[];
     threadId: string;
+    hasReceivedChunk: boolean;
+    lastHeartbeat: number;
   }> = new Map();
 
   private constructor() {}
@@ -23,19 +25,28 @@ export class StreamingResponseController {
     return StreamingResponseController.instance;
   }
 
+  isStreamStuck(id: string): boolean {
+    const s = this.activeStreams.get(id);
+    if (!s) return false;
+    return (Date.now() - s.lastHeartbeat) > 5000;
+  }
+
   async initSession(assistantMsgId: string, initialMessages: Message[]) {
     const threadId = useThreadStore.getState().activeThreadId || 'default';
     const sessionData = { 
         renderRequested: false, 
         unlistenFns: [] as UnlistenFn[], 
-        buffer: [...initialMessages],
-        threadId
+        buffer: JSON.parse(JSON.stringify(initialMessages)), // 🏆 物理隔离初始数据，防止引用污染
+        threadId,
+        hasReceivedChunk: false,
+        lastHeartbeat: Date.now()
     };
     this.activeStreams.set(assistantMsgId, sessionData);
 
     const unlistenStatus = await listen<string>(`${assistantMsgId}_status`, (event) => {
       const safe = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
       sessionData.buffer = sessionData.buffer.map((m: any) => (m.id === assistantMsgId && !m.content) ? { ...m, content: `_(${safe})_\n\n` } : m);
+      sessionData.lastHeartbeat = Date.now();
       this.requestRender(assistantMsgId);
     });
     sessionData.unlistenFns.push(unlistenStatus);
@@ -52,14 +63,22 @@ export class StreamingResponseController {
       } catch (e) {}
 
       if (textChunk || toolCallUpdate) {
+        sessionData.lastHeartbeat = Date.now();
+        if (!sessionData.hasReceivedChunk) {
+            sessionData.hasReceivedChunk = true;
+            setTimeout(() => coreUseChatStore.setState({ isLoading: false }), 50);
+        }
+
         sessionData.buffer = sessionData.buffer.map((m: any) => {
           if (m.id === assistantMsgId) {
             const newMsg: Message = { ...m, isStreaming: true };
+            // 🏆 物理保护 contentSegments 不被重置
             if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
             
             if (textChunk) {
-              newMsg.content = (newMsg.content || '') + textChunk;
-              (newMsg as any).contentSegments.push({ type: 'text', order: (newMsg as any).contentSegments.length, timestamp: Date.now(), content: textChunk, startPos: newMsg.content.length - textChunk.length, endPos: newMsg.content.length });
+              const prevContent = newMsg.content || '';
+              newMsg.content = prevContent + textChunk;
+              (newMsg as any).contentSegments.push({ type: 'text', order: (newMsg as any).contentSegments.length, timestamp: Date.now(), content: textChunk, startPos: prevContent.length, endPos: newMsg.content.length });
               InlineSyncService.syncState("", "", textChunk);
             }
             if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
@@ -73,7 +92,6 @@ export class StreamingResponseController {
     sessionData.unlistenFns.push(unlistenStream);
 
     const unlistenFinish = await listen<string>(`${assistantMsgId}_finish`, async () => {
-      console.log(`[StreamingController] RECEIVED _finish EVENT for ${assistantMsgId}`);
       await this.finalizeStream(assistantMsgId);
     });
     sessionData.unlistenFns.push(unlistenFinish);
@@ -124,7 +142,14 @@ export class StreamingResponseController {
       msg.toolCalls = updated;
       if (parsed.content) InlineSyncService.syncState(toolName, parsed.content);
       
-      // 流式进行中的工具自动执行（仅针对低风险且非 Partial 的工具）
+      // 🏆 物理幂等保护：如果已经存在该 ToolCall 的渲染分段，严禁重复 push
+      const segments = (msg as any).contentSegments || [];
+      const hasSegment = segments.some((seg: any) => seg.toolCallId === updated[idx].id);
+      if (!hasSegment) {
+          segments.push({ type: 'tool', order: segments.length, timestamp: Date.now(), toolCallId: updated[idx].id });
+          (msg as any).contentSegments = segments;
+      }
+
       if (isPartial === false) {
         ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: toolName, isSandbox: true, userMessageHasAutoApprove: (msg as any).autoApproveTools || false }, () => {
           coreUseChatStore.getState().approveToolCall(assistantMsgId, updated[idx].id, { skipContinue: true });

@@ -179,16 +179,15 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
     }
 };
 
-// 🏆 v0.3.8: 终极哨兵 (物理容错版)
+// 🏆 v0.3.8: 终极哨兵 (权威判定版)
 coreUseChatStore.subscribe((state, prevState) => {
     const lastMsg = state.messages[state.messages.length - 1];
     if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming && !state.isLoading) {
-        // 🏆 PIVO 3.0: 物理哨兵宽限期 (1500ms)
-        // 确保 SSE 手握手期间不会被误终结，保护骨架屏和自动批准流水线
-        const startedAt = (lastMsg as any).pivo_started_at || 0;
-        if (Date.now() - startedAt < 1500) return;
+        // 🏆 PIVO 3.0: 权威物理判定
+        // 哨兵不再根据 Store 的陈旧快照做猜测，而是直接询问控制器的实时心跳
+        if (!StreamingResponseController.getInstance().isStreamStuck(lastMsg.id)) return;
 
-        console.log('[Sentinel] 🛡️ Detecting stuck streaming state, force finalizing:', lastMsg.id);
+        console.log('[Sentinel] 🛡️ Authoritative stuck state detected, force finalizing:', lastMsg.id);
         coreUseChatStore.setState(s => ({
             messages: s.messages.map(m => m.id === lastMsg.id ? { ...m, isStreaming: false } : m)
         }));
