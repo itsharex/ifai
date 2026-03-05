@@ -4,23 +4,14 @@ export interface ToolCall {
   id: string;
   tool: string;
   args: any;
-  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'failed' | 'executing';
+  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'failed' | 'executing' | 'executed';
   result?: string;
   isPartial?: boolean;
   isLocalModel?: boolean;  // 标记是否为本地模型执行的工具调用
   batchId?: string;        // v0.3.6: 批处理 ID
 }
 
-// Frontend display message type
-export interface ImageUrl {
-    url: string;
-}
-
-export interface ContentPart {
-    type: 'text' | 'image_url';
-    text?: string;
-    image_url?: ImageUrl;
-}
+// ... (ContentPart and ImageUrl)
 
 export interface Message {
   id: string;
@@ -31,6 +22,7 @@ export interface Message {
   toolCalls?: ToolCall[];
   tool_call_id?: string;
   contentSegments?: any[]; // v0.3.6: 用于流式按需渲染
+  isStreaming?: boolean;   // 🏆 v0.3.8: 是否正在流式生成
 }
 
 // Backend API message types (must match Rust `ai.rs`)
