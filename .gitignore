@@ -102,3 +102,10 @@ docs/testing/test-coverage-matrix.md
 tests/e2e/fuzzing/chaos-test.example.md
 .gemini
 .ifai/knowledge-base/
+
+# 🏆 PIVO 临时验证脚本忽略
+tests/*.js
+tests/*.cjs
+tests/*.sh
+tests/reproduction/
+
