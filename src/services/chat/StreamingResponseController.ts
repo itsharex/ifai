@@ -1,5 +1,6 @@
 import { Message, ToolCall } from '../../stores/chatStore';
 import { useChatStore as coreUseChatStore, toolCallDeduplicator } from '../../stores/useChatStore';
+import { useThreadStore } from '../../stores/threadStore';
 import { InlineSyncService } from '../InlineSyncService';
 import { SentinelService } from '../SentinelService';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
@@ -11,7 +12,8 @@ export class StreamingResponseController {
   private activeStreams: Map<string, {
     renderRequested: boolean;
     unlistenFns: UnlistenFn[];
-    lastContent: string;
+    buffer: Message[];
+    threadId: string;
   }> = new Map();
 
   private constructor() {}
@@ -21,15 +23,20 @@ export class StreamingResponseController {
     return StreamingResponseController.instance;
   }
 
-  async initSession(assistantMsgId: string) {
-    const sessionData = { renderRequested: false, unlistenFns: [] as UnlistenFn[], lastContent: "" };
+  async initSession(assistantMsgId: string, initialMessages: Message[]) {
+    const threadId = useThreadStore.getState().activeThreadId || 'default';
+    const sessionData = { 
+        renderRequested: false, 
+        unlistenFns: [] as UnlistenFn[], 
+        buffer: [...initialMessages],
+        threadId
+    };
     this.activeStreams.set(assistantMsgId, sessionData);
 
     const unlistenStatus = await listen<string>(`${assistantMsgId}_status`, (event) => {
       const safe = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
-      coreUseChatStore.setState((s: any) => ({
-        messages: s.messages.map((m: any) => (m.id === assistantMsgId && !m.content) ? { ...m, content: `_(${safe})_\n\n` } : m)
-      }));
+      sessionData.buffer = sessionData.buffer.map((m: any) => (m.id === assistantMsgId && !m.content) ? { ...m, content: `_(${safe})_\n\n` } : m);
+      this.requestRender(assistantMsgId);
     });
     sessionData.unlistenFns.push(unlistenStatus);
 
@@ -45,33 +52,22 @@ export class StreamingResponseController {
       } catch (e) {}
 
       if (textChunk || toolCallUpdate) {
-        coreUseChatStore.setState((state: any) => {
-          const updatedMessages = state.messages.map((m: any) => {
-            if (m.id === assistantMsgId) {
-              const newMsg: Message = { ...m, isStreaming: true }; // 🏆 强制保持 Streaming 状态
-              (newMsg as any).contentSegments = (m as any).contentSegments ? [...(m as any).contentSegments] : [];
-              
-              if (textChunk) {
-                newMsg.content = (newMsg.content || '') + textChunk;
-                sessionData.lastContent = newMsg.content;
-                (newMsg as any).contentSegments.push({ 
-                  type: 'text', 
-                  order: (newMsg as any).contentSegments.length, 
-                  timestamp: Date.now(), 
-                  content: textChunk, 
-                  startPos: newMsg.content.length - textChunk.length, 
-                  endPos: newMsg.content.length 
-                });
-                InlineSyncService.syncState("", "", textChunk);
-              }
-              
-              if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
-              return newMsg;
+        sessionData.buffer = sessionData.buffer.map((m: any) => {
+          if (m.id === assistantMsgId) {
+            const newMsg: Message = { ...m, isStreaming: true };
+            if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
+            
+            if (textChunk) {
+              newMsg.content = (newMsg.content || '') + textChunk;
+              (newMsg as any).contentSegments.push({ type: 'text', order: (newMsg as any).contentSegments.length, timestamp: Date.now(), content: textChunk, startPos: newMsg.content.length - textChunk.length, endPos: newMsg.content.length });
+              InlineSyncService.syncState("", "", textChunk);
             }
-            return m;
-          });
-          return { messages: updatedMessages };
+            if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
+            return newMsg;
+          }
+          return m;
         });
+        this.requestRender(assistantMsgId);
       }
     });
     sessionData.unlistenFns.push(unlistenStream);
@@ -84,13 +80,25 @@ export class StreamingResponseController {
 
     const unlistenError = await listen<string>(`${assistantMsgId}_error`, (event) => {
       const safe = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
-      coreUseChatStore.setState((s: any) => ({
-        messages: s.messages.map((m: any) => m.id === assistantMsgId ? { ...m, content: `❌ Error: ${safe}`, isStreaming: false } : m),
-        isLoading: false
-      }));
+      this.forceUpdateStore(assistantMsgId, (m: any) => ({ ...m, content: `❌ Error: ${safe}`, isStreaming: false }));
       this.cleanup(assistantMsgId);
     });
     sessionData.unlistenFns.push(unlistenError);
+  }
+
+  private requestRender(id: string) {
+    const s = this.activeStreams.get(id);
+    if (!s || s.renderRequested) return;
+    const currentThreadId = useThreadStore.getState().activeThreadId || 'default';
+    if (s.threadId !== currentThreadId) return; 
+
+    s.renderRequested = true;
+    setTimeout(() => {
+      if (this.activeStreams.has(id)) {
+        coreUseChatStore.setState({ messages: [...s.buffer] });
+        s.renderRequested = false;
+      }
+    }, 80);
   }
 
   private processToolCallUpdate(msg: Message, update: any, assistantMsgId: string) {
@@ -101,6 +109,8 @@ export class StreamingResponseController {
     if (update.id) cid = toolCallDeduplicator.getCanonicalId(update.id) || update.id;
 
     const idx = existingCalls.findIndex(tc => (cid && tc.id === cid) || (update.index !== undefined && (tc as any).index === update.index));
+    const isPartial = update.isPartial ?? true;
+
     if (idx !== -1) {
       const tc = existingCalls[idx];
       const argsStr = ((tc as any).function?.arguments || '') + newArgs;
@@ -110,21 +120,23 @@ export class StreamingResponseController {
         if (cMatch) parsed.content = cMatch[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
       }
       const updated = [...existingCalls];
-      updated[idx] = { ...tc, args: parsed, function: { name: toolName, arguments: argsStr }, isPartial: true } as any;
+      updated[idx] = { ...tc, args: parsed, function: { name: toolName, arguments: argsStr }, isPartial: isPartial } as any;
       msg.toolCalls = updated;
-      InlineSyncService.syncState(toolName, parsed.content);
+      if (parsed.content) InlineSyncService.syncState(toolName, parsed.content);
       
-      if (updated[idx].isPartial === false) {
-        ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: tc.tool, isSandbox: true, userMessageHasAutoApprove: false }, () => {
-          (window as any).__chatStore?.getState().approveToolCall(assistantMsgId, tc.id, { skipContinue: true });
+      // 流式进行中的工具自动执行（仅针对低风险且非 Partial 的工具）
+      if (isPartial === false) {
+        ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: toolName, isSandbox: true, userMessageHasAutoApprove: (msg as any).autoApproveTools || false }, () => {
+          coreUseChatStore.getState().approveToolCall(assistantMsgId, updated[idx].id, { skipContinue: true });
         });
       }
     } else {
       const tid = cid || `call_${crypto.randomUUID()}`;
       let iArgs: any = {};
       try { iArgs = newArgs ? JSON.parse(newArgs) : {}; } catch (e) {}
-      const tc = { id: tid, type: 'function', tool: toolName, args: iArgs, function: { name: toolName, arguments: newArgs }, status: 'pending', isPartial: true, index: update.index } as any;
+      const tc = { id: tid, type: 'function', tool: toolName, args: iArgs, function: { name: toolName, arguments: newArgs }, status: 'pending', isPartial: isPartial, index: update.index } as any;
       msg.toolCalls = [...existingCalls, tc];
+      if (!(msg as any).contentSegments) (msg as any).contentSegments = [];
       (msg as any).contentSegments.push({ type: 'tool', order: (msg as any).contentSegments.length, timestamp: Date.now(), toolCallId: tid });
       InlineSyncService.syncState(toolName, "");
     }
@@ -134,8 +146,7 @@ export class StreamingResponseController {
     const session = this.activeStreams.get(id);
     if (!session) return;
 
-    coreUseChatStore.setState((state: any) => ({
-      messages: state.messages.map((m: any) => m.id === id ? {
+    this.forceUpdateStore(id, (m: any) => ({
         ...m, 
         isStreaming: false,
         toolCalls: m.toolCalls?.map((tc: any) => {
@@ -145,12 +156,40 @@ export class StreamingResponseController {
           }
           return { ...tc, isPartial: false, args: fArgs };
         })
-      } : m),
-      isLoading: false
     }));
+
+    const updatedState = coreUseChatStore.getState();
+    const finalizedMsg = updatedState.messages.find(m => m.id === id);
+    if (finalizedMsg?.toolCalls) {
+        const pendingTCs = finalizedMsg.toolCalls.filter((tc: any) => tc.status === 'pending');
+        if (pendingTCs.length > 0) {
+            pendingTCs.forEach((tc: any) => {
+                ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: tc.tool, isSandbox: true, userMessageHasAutoApprove: (finalizedMsg as any).autoApproveTools || false }, () => {
+                    coreUseChatStore.getState().approveToolCall(id, tc.id, { skipContinue: true });
+                });
+            });
+            setTimeout(async () => {
+                const latestState = coreUseChatStore.getState();
+                const latestMsg = latestState.messages.find(m => m.id === id);
+                const anyRunning = latestMsg?.toolCalls?.some(tc => tc.status === 'pending' || tc.status === 'approved' || tc.status === 'executing' || tc.isPartial);
+                if (!anyRunning) {
+                    const settings = useSettingsStore.getState();
+                    const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+                    if (providerConfig) (window as any).__chatStore?.getState().generateResponse(latestState.messages, providerConfig);
+                }
+            }, 1000);
+        }
+    }
 
     InlineSyncService.handleResponseFinish();
     this.cleanup(id);
+  }
+
+  private forceUpdateStore(id: string, updateFn: (msg: any) => any) {
+    coreUseChatStore.setState((state: any) => ({
+        messages: state.messages.map((m: any) => m.id === id ? updateFn(m) : m),
+        isLoading: false
+    }));
   }
 
   private cleanup(id: string) {
