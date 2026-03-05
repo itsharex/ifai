@@ -304,7 +304,7 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({ paneId }) => {
       id: 'inline-ai-prompt',
       label: 'Inline AI Assistant',
       contextMenuGroupId: 'modification',
-      run: () => editor.trigger('keyboard', monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, {})
+      run: () => editor.trigger('keyboard', 'keyboard', {})
     });
 
     // Add "Explain Code" Action
@@ -900,7 +900,7 @@ ${textBefore}[CURSOR]${textAfter}
   // 🔥 v0.3.7: 监听修改代码的变化，自动展开内联 Diff 区域
   useEffect(() => {
     // 🚀 阶段+内容双驱动：进入实施阶段或已有内容时，立即展开
-    const isImplementing = pivoStage === 'implement' || pivoStage === 'optimize';
+    const isImplementing = (pivoStage as any) === 'implement' || (pivoStage as any) === 'optimize';
     
     if (isInlineEditVisible && (isImplementing || modifiedCode) && editorRef.current) {
       if (!diffZoneRef.current) {
@@ -976,7 +976,7 @@ ${textBefore}[CURSOR]${textAfter}
       {(isInlineEditVisible || debugWidgetVisible) && document.getElementById('monaco-inline-ai-portal') && createPortal(
         <div className="pointer-events-auto">
           <InlineAIWidget 
-            stage={isInlineEditVisible ? pivoStage : debugStage} 
+            stage={isInlineEditVisible ? (pivoStage as any) : (debugStage as any)} 
             isLoading={isInlineEditVisible ? pivoStage !== 'idle' : debugStage !== 'idle'}
             tasks={isInlineEditVisible ? pivoTasks : debugTasks}
             modifiedFiles={isInlineEditVisible ? modifiedFiles : []}
