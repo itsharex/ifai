@@ -21,7 +21,22 @@ export class StreamingResponseController {
   private constructor() {}
 
   static getInstance(): StreamingResponseController {
-    if (!StreamingResponseController.instance) StreamingResponseController.instance = new StreamingResponseController();
+    if (!StreamingResponseController.instance) {
+        StreamingResponseController.instance = new StreamingResponseController();
+        // 🏆 PIVO 3.0: 建立物理直连桥 (Fidelity Bridge)
+        if (typeof window !== 'undefined') {
+            (window as any).__PIVO_BRIDGE__ = {
+                push: (id: string, payload: any) => {
+                    console.log(`[PIVO-BRIDGE] 📥 Direct Injection: ${id}`, payload);
+                    window.dispatchEvent(new CustomEvent(`pivo:direct-chunk:${id}`, { detail: payload }));
+                },
+                finalize: (id: string) => {
+                    console.log(`[PIVO-BRIDGE] 🏁 Direct Finalize: ${id}`);
+                    window.dispatchEvent(new CustomEvent(`pivo:direct-finish:${id}`));
+                }
+            };
+        }
+    }
     return StreamingResponseController.instance;
   }
 
@@ -54,48 +69,23 @@ export class StreamingResponseController {
     sessionData.unlistenFns.push(unlistenStatus);
 
     const unlistenStream = await listen<string>(assistantMsgId, (event) => {
-      let textChunk = '';
-      let toolCallUpdate: any = null;
-      try {
-        const raw: any = event.payload;
-        if (!raw) return;
-        const p = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (p.type === 'content') textChunk = String(p.content);
-        else if (p.type === 'tool_call') toolCallUpdate = p.toolCall;
-      } catch (e) {}
-
-      if (textChunk || toolCallUpdate) {
-        sessionData.lastHeartbeat = Date.now();
-        if (!sessionData.hasReceivedChunk) {
-            sessionData.hasReceivedChunk = true;
-            setTimeout(() => coreUseChatStore.setState({ isLoading: false }), 50);
-        }
-
-        sessionData.buffer = sessionData.buffer.map((m: any) => {
-          if (m.id === assistantMsgId) {
-            const newMsg: Message = { ...m, isStreaming: true };
-            if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
-            
-            if (textChunk) {
-              const prevContent = newMsg.content || '';
-              newMsg.content = prevContent + textChunk;
-              (newMsg as any).contentSegments.push({ type: 'text', order: (newMsg as any).contentSegments.length, timestamp: Date.now(), content: textChunk, startPos: prevContent.length, endPos: newMsg.content.length });
-              InlineSyncService.syncState("", "", textChunk);
-            }
-            if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
-            return newMsg;
-          }
-          return m;
-        });
-        this.requestRender(assistantMsgId);
-      }
+      this.handleEventChunk(assistantMsgId, sessionData, event.payload);
     });
     sessionData.unlistenFns.push(unlistenStream);
+
+    // 🏆 PIVO 3.0 Bridge: 侧边信号直连 (E2E 环境极其稳定)
+    const bridgeHandler = (e: any) => this.handleEventChunk(assistantMsgId, sessionData, e.detail);
+    window.addEventListener(`pivo:direct-chunk:${assistantMsgId}`, bridgeHandler);
+    sessionData.unlistenFns.push(() => window.removeEventListener(`pivo:direct-chunk:${assistantMsgId}`, bridgeHandler));
 
     const unlistenFinish = await listen<string>(`${assistantMsgId}_finish`, async () => {
       await this.finalizeStream(assistantMsgId);
     });
     sessionData.unlistenFns.push(unlistenFinish);
+
+    const bridgeFinishHandler = () => this.finalizeStream(assistantMsgId);
+    window.addEventListener(`pivo:direct-finish:${assistantMsgId}`, bridgeFinishHandler);
+    sessionData.unlistenFns.push(() => window.removeEventListener(`pivo:direct-finish:${assistantMsgId}`, bridgeFinishHandler));
 
     const unlistenError = await listen<string>(`${assistantMsgId}_error`, (event) => {
       const safe = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
@@ -103,6 +93,43 @@ export class StreamingResponseController {
       this.cleanup(assistantMsgId);
     });
     sessionData.unlistenFns.push(unlistenError);
+  }
+
+  private handleEventChunk(assistantMsgId: string, sessionData: any, payload: any) {
+    let textChunk = '';
+    let toolCallUpdate: any = null;
+    try {
+      if (!payload) return;
+      const p = typeof payload === 'string' ? JSON.parse(payload) : payload;
+      if (p.type === 'content') textChunk = String(p.content);
+      else if (p.type === 'tool_call') toolCallUpdate = p.toolCall;
+    } catch (e) {}
+
+    if (textChunk || toolCallUpdate) {
+      sessionData.lastHeartbeat = Date.now();
+      if (!sessionData.hasReceivedChunk) {
+          sessionData.hasReceivedChunk = true;
+          setTimeout(() => coreUseChatStore.setState({ isLoading: false }), 50);
+      }
+
+      sessionData.buffer = sessionData.buffer.map((m: any) => {
+        if (m.id === assistantMsgId) {
+          const newMsg: Message = { ...m, isStreaming: true };
+          if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
+          
+          if (textChunk) {
+            const prevContent = newMsg.content || '';
+            newMsg.content = prevContent + textChunk;
+            (newMsg as any).contentSegments.push({ type: 'text', order: (newMsg as any).contentSegments.length, timestamp: Date.now(), content: textChunk, startPos: prevContent.length, endPos: newMsg.content.length });
+            InlineSyncService.syncState("", "", textChunk);
+          }
+          if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
+          return newMsg;
+        }
+        return m;
+      });
+      this.requestRender(assistantMsgId);
+    }
   }
 
   private requestRender(id: string) {
@@ -211,6 +238,9 @@ export class StreamingResponseController {
 
     // 🏆 PIVO 3.0: 物理闭环
     // 只有在没有后续任务且流真正结束时，才允许启动 UI 自洁
+    console.log(`[PIVO-SIGNAL] 🏁 Stream Finalized: ${id}`);
+    window.dispatchEvent(new CustomEvent('ifainew:stream-finished', { detail: { id } }));
+    
     InlineSyncService.handleResponseFinish({ isRealFinish: !hasFollowUp });
     this.cleanup(id);
   }
@@ -223,7 +253,12 @@ export class StreamingResponseController {
   }
 
   private cleanup(id: string) {
+    console.log(`[PIVO-SIGNAL] 🧹 Cleaning up session: ${id}`);
     const s = this.activeStreams.get(id);
-    if (s) { s.unlistenFns.forEach(u => u()); this.activeStreams.delete(id); }
+    if (s) { 
+        s.unlistenFns.forEach(u => u()); 
+        this.activeStreams.delete(id); 
+    }
+    window.dispatchEvent(new CustomEvent('ifainew:session-cleaned', { detail: { id } }));
   }
 }

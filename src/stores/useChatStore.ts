@@ -325,4 +325,12 @@ coreUseChatStore.subscribe((state, prevState) => {
 });
 
 export const useChatStore = coreUseChatStore;
-if (typeof window !== 'undefined') (window as any).__chatStore = coreUseChatStore;
+if (typeof window !== 'undefined') {
+    (window as any).__chatStore = coreUseChatStore;
+    // 🏆 PIVO 3.0: 暴露核心状态机给测试环境 (Authoritative Wait Support)
+    Object.defineProperty(window, '__CHAT_STORE_STATE__', {
+        get: () => coreUseChatStore.getState(),
+        enumerable: true,
+        configurable: true
+    });
+}

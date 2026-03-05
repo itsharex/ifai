@@ -1739,6 +1739,44 @@ Always use the appropriate tool when the user asks to perform file operations.`
             console.log('[E2E Mock] ai_chat called with eventId:', eventId);
             console.log('[E2E Mock] query:', query);
 
+            // 🏆 PIVO 3.0: 金标准测试响应分支 (仅在非真实 AI 模式下拦截)
+            if (!useRealAI && (query.includes('pivo3-uuid-') || (query.includes('README.md') && query.includes('Special UUID')))) {
+              console.log('[E2E Mock] 🏆 PIVO 3.0 Gold Standard query detected (Mock Mode), eventId:', eventId);
+              const uuidMatch = query.match(/pivo3-uuid-[\w\d]+/);
+              const uuid = uuidMatch ? uuidMatch[0] : 'pivo3-uuid-unknown';
+              
+              (async () => {
+                console.log(`[E2E Mock] ⏳ Waiting for listeners for ${eventId}...`);
+                const streamListeners = await (window as any).waitForListeners(eventId, 5000);
+                const finishListeners = (window as any).__TAURI_EVENT_LISTENERS__[`${eventId}_finish`] || [];
+                
+                console.log(`[E2E Mock] 📣 Found ${streamListeners.length} stream listeners and ${finishListeners.length} finish listeners`);
+
+                if (streamListeners.length === 0) {
+                  console.error(`[E2E Mock] ❌ CRITICAL: No listeners found for ${eventId}. Content will NOT be sent.`);
+                  return;
+                }
+
+                // 1. 发送第一个分片 (触发 isLoading 切换)
+                const firstPayload = JSON.stringify({ type: 'content', content: '好的，' });
+                streamListeners.forEach(fn => fn({ payload: firstPayload }));
+                
+                // 2. 模拟物理分片发送内容
+                const responseText = `我已经在 README.md 中找到了 Special UUID。它是：${uuid}。`;
+                for (const char of responseText.split('')) {
+                  await new Promise(r => setTimeout(r, 20)); // 物理延迟
+                  const payload = JSON.stringify({ type: 'content', content: char });
+                  streamListeners.forEach(fn => fn({ payload }));
+                }
+
+                // 3. 权威物理结束信号 (必须触发 _finish)
+                await new Promise(r => setTimeout(r, 200));
+                console.log(`[E2E Mock] 🏁 Emitting finish event for ${eventId}`);
+                finishListeners.forEach(fn => fn({ payload: '{}' }));
+              })();
+              return {};
+            }
+
             // Check if this is a bash command request
             const isBashCommand = query.includes('执行') || query.includes('运行') ||
                                  query.includes('python') || query.includes('java') ||

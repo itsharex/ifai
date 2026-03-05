@@ -647,6 +647,14 @@ function App() {
 
   useShortcuts(shortcutHandlers);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      console.log('[App] 🏁 Ready signal emitted for E2E tests');
+      (window as any).__APP_READY__ = true;
+    }, 2000); // 宽延时间
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleSelectFileFromPalette = async (path: string) => {
     const success = await openFileFromPath(path);
     if (success) {

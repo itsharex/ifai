@@ -1,170 +1,76 @@
 /**
- * Tauri API Mock - @tauri-apps/api/core
- *
- * 提供核心 API 的 Mock 实现，包括 invoke 函数
+ * 🏆 PIVO 3.0: Tauri v2 Protocol Fidelity Layer
+ * 
+ * 此模块不仅是 Mock，它通过伪造 window.__TAURI_INTERNALS__ 协议层，
+ * 能够欺骗真实的 @tauri-apps/api/v2 库在 Playwright 环境下正常运行。
  */
 
-// 🔥 调试：确认模块被加载
-console.log('[tauri-mocks/core] Module loaded');
+console.log('[PIVO3-Mock] 🛡️ Initializing Tauri v2 Protocol Fidelity Layer...');
 
 /**
- * SERIALIZE_TO_IPC_FN 符号 - 必须在类定义之前
- */
-export const SERIALIZE_TO_IPC_FN = Symbol('SERIALIZE_TO_IPC_FN');
-
-// 全局 invoke 处理器
-let invokeHandler: ((cmd: string, args?: any) => any) | null = null;
-
-/**
- * 设置 invoke 处理器
- */
-export function setInvokeHandler(handler: (cmd: string, args?: any) => any) {
-  invokeHandler = handler;
-}
-
-// 🔥 暴露到 window 对象以便 E2E 测试可以访问
-if (typeof window !== 'undefined') {
-  (window as any).__tauriSetInvokeHandler__ = setInvokeHandler;
-  console.log('[tauri-mocks/core] __tauriSetInvokeHandler__ exposed to window');
-} else {
-  console.log('[tauri-mocks/core] window is undefined, skipping exposure');
-}
-
-// 🔥 如果 window 上有 __E2E_REAL_AI_CONFIG__，说明是 E2E 测试环境
-// 需要延迟注册 handler，因为 setup-utils 可能在模块加载之后执行
-if (typeof window !== 'undefined') {
-  setTimeout(() => {
-    const config = (window as any).__E2E_REAL_AI_CONFIG__;
-    if (config && config.useRealAI) {
-      console.log('[tauri-mocks/core] Detected E2E Real AI mode, checking for invoke handler...');
-      // 等待 setup-utils 设置 handler
-      setTimeout(() => {
-        const handler = (window as any).__E2E_INVOKE_HANDLER__;
-        if (handler && invokeHandler !== handler) {
-          invokeHandler = handler;
-          console.log('[tauri-mocks/core] ✅ E2E invoke handler registered from __E2E_INVOKE_HANDLER__');
-        }
-      }, 200);
-    }
-  }, 100);
-}
-
-/**
- * transformCallback 函数 - Mock 实现
+ * 核心：模拟 Tauri v2 的 transformCallback
+ * 这是 @tauri-apps/api 内部调用的关键函数
  */
 export function transformCallback<T = unknown>(callback?: (response: T) => void, once?: boolean): number {
-  return Date.now();
+    const id = Math.floor(Math.random() * 1000000);
+    if (callback && typeof window !== 'undefined') {
+        const listeners = (window as any).__TAURI_EVENT_LISTENERS__ || {};
+        listeners[`callback_${id}`] = [callback];
+        (window as any).__TAURI_EVENT_LISTENERS__ = listeners;
+    }
+    return id;
 }
 
 /**
- * invoke 函数 - 调用 Tauri 命令
+ * 核心：模拟 Tauri v2 的 invoke
  */
 export async function invoke<T = any>(cmd: string, args?: any): Promise<T> {
-  console.log('[tauri-mocks/core] 📞 invoke called:', cmd, 'args:', args ? Object.keys(args) : 'none');
-  console.log('[tauri-mocks/core] hasHandler:', !!invokeHandler);
-  console.log('[tauri-mocks/core] hasE2EHandler:', !!(window as any).__E2E_INVOKE_HANDLER__);
-  console.log('[tauri-mocks/core] hasTauriInternals:', !!(window as any).__TAURI_INTERNALS__);
-  console.log('[tauri-mocks/core] hasWindowTauriCoreInvoke:', !!(window as any).__TAURI__?.core?.invoke);
-
-  if (invokeHandler) {
-    console.log('[tauri-mocks/core] ✅ Using invokeHandler');
-    return invokeHandler(cmd, args);
-  }
-
-  // 🔥 FIX: Fall back to window.__TAURI__.core.invoke if available
-  const windowTauriInvoke = (window as any).__TAURI__?.core?.invoke;
-  if (windowTauriInvoke) {
-    console.log('[tauri-mocks/core] ✅ Using window.__TAURI__.core.invoke as fallback');
-    return windowTauriInvoke(cmd, args);
-  }
-
-  console.warn('[tauri-mocks/core] ⚠️ No invokeHandler and no window.__TAURI__.core.invoke, returning empty object');
-  // 默认返回空对象
-  return {} as T;
+    console.log(`[PIVO3-Mock] 📞 IPC Invoke: ${cmd}`, args);
+    const handler = (window as any).__E2E_INVOKE_HANDLER__;
+    if (handler) return handler(cmd, args);
+    
+    // 默认兜底：有些命令需要特定的物理返回
+    if (cmd === 'get_git_statuses') return [] as any;
+    return {} as T;
 }
 
-/**
- * convertFileSrc 函数 - 转换文件源路径
- */
-export function convertFileSrc(filePath: string): string {
-  return filePath;
+// 🏆 物理欺骗层 (Environment Spoofing)
+if (typeof window !== 'undefined') {
+    // 1. 伪造 Tauri Internals (针对 v2)
+    (window as any).__TAURI_INTERNALS__ = {
+        transformCallback,
+        invoke,
+        metadata: {
+            app: { name: 'IfAI', version: '0.3.8' },
+            os: { name: 'darwin', version: '15.0' }
+        }
+    };
+
+    // 2. 伪造 Tauri Namespace (兼容旧版或第三方库)
+    (window as any).__TAURI__ = {
+        core: { invoke, transformCallback },
+        event: {
+            listen: (event: string, handler: any) => {
+                const listeners = (window as any).__TAURI_EVENT_LISTENERS__ || {};
+                if (!listeners[event]) listeners[event] = [];
+                listeners[event].push(handler);
+                (window as any).__TAURI_EVENT_LISTENERS__ = listeners;
+                return Promise.resolve(() => {});
+            }
+        }
+    };
+    
+    console.log('[PIVO3-Mock] ✅ window.__TAURI_INTERNALS__ and __TAURI__ spoofed.');
 }
 
-/**
- * Channel 类 - Mock 实现
- */
+export const SERIALIZE_TO_IPC_FN = Symbol('SERIALIZE_TO_IPC_FN');
+
 export class Channel<T = unknown> {
-  id: number;
-  private cleanupCallback: (() => void) | null = null;
-  private _onmessage: ((response: T) => void) | null = null;
-
-  constructor(onmessage?: (response: T) => void) {
-    this.id = transformCallback(onmessage);
-    this._onmessage = onmessage || null;
-  }
-
-  set onmessage(handler: (response: T) => void) {
-    this._onmessage = handler;
-  }
-
-  get onmessage(): (response: T) => void {
-    return this._onmessage!;
-  }
-
-  [SERIALIZE_TO_IPC_FN](): string {
-    return String(this.id);
-  }
-
-  toJSON(): string {
-    return String(this.id);
-  }
+    id: number;
+    constructor(onmessage?: (response: T) => void) { this.id = transformCallback(onmessage); }
+    [SERIALIZE_TO_IPC_FN](): string { return String(this.id); }
+    toJSON(): string { return String(this.id); }
 }
 
-/**
- * Resource 类 - Mock 实现
- */
-export class Resource {
-  private _rid: number;
-
-  constructor(rid: number) {
-    this._rid = rid;
-  }
-
-  get rid(): number {
-    return this._rid;
-  }
-
-  /**
-   * Destroys and cleans up this resource from memory
-   */
-  async close(): Promise<void> {
-    // Mock implementation - do nothing
-  }
-
-  [SERIALIZE_TO_IPC_FN](): string {
-    return String(this._rid);
-  }
-}
-
-// 其他导出（空实现）
-export const PluginListener = Object.freeze({});
-export function addPluginListener() {}
-export const PermissionState = Object.freeze({});
-export function checkPermissions() { return {}; }
-export function requestPermissions() { return {}; }
-
-/**
- * isTauri 函数 - Mock 实现
- */
-export function isTauri(): boolean {
-  return false;
-}
-
-/**
- * 其他可能的导出
- */
-export const Command = Object.freeze({});
-
-export const LinuxDesktopEnvironment = Object.freeze({});
-
-export const Theme = Object.freeze({});
+export function isTauri(): boolean { return true; } // 欺骗库认为这是 Tauri 环境
+export function convertFileSrc(p: string): string { return p; }
