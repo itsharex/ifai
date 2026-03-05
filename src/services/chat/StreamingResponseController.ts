@@ -25,11 +25,9 @@ export class StreamingResponseController {
     return StreamingResponseController.instance;
   }
 
-  // 🏆 PIVO 3.0: 哨兵权威判定接口
   isStreamStuck(id: string): boolean {
     const s = this.activeStreams.get(id);
     if (!s) return false;
-    // 宽限期延长至 8s，给慢速模型留足物理空间
     return (Date.now() - s.lastHeartbeat) > 8000;
   }
 
@@ -114,7 +112,7 @@ export class StreamingResponseController {
     s.renderRequested = true;
     setTimeout(() => {
       if (this.activeStreams.has(id)) {
-        coreUseChatStore.setState({ messages: [...s.buffer] });
+        coreUseChatStore.setState({ messages: [...s.buffer] as any });
         s.renderRequested = false;
       }
     }, 80);
@@ -135,8 +133,12 @@ export class StreamingResponseController {
       const argsStr = ((tc as any).function?.arguments || '') + newArgs;
       let parsed = { ...tc.args };
       try { parsed = JSON.parse(argsStr); } catch (e) {
+        // 🏆 PIVO 3.0: 增强型物理打捞 - 确保 rel_path 在流式过程中不丢失
         const cMatch = String(argsStr).match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:\\|"?$)/s);
         if (cMatch) parsed.content = cMatch[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+        
+        const pMatch = String(argsStr).match(/"rel_path"\s*:\s*"([^"]*)"?/);
+        if (pMatch) parsed.rel_path = pMatch[1];
       }
       const updated = [...existingCalls];
       updated[idx] = { ...tc, args: parsed, function: { name: toolName, arguments: argsStr }, isPartial: isPartial } as any;
@@ -152,7 +154,7 @@ export class StreamingResponseController {
 
       if (isPartial === false) {
         ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: toolName, isSandbox: true, userMessageHasAutoApprove: (msg as any).autoApproveTools || false }, () => {
-          coreUseChatStore.getState().approveToolCall(assistantMsgId, updated[idx].id, { skipContinue: true });
+          (coreUseChatStore.getState() as any).approveToolCall(assistantMsgId, updated[idx].id, { skipContinue: true });
         });
       }
     } else {
@@ -171,16 +173,28 @@ export class StreamingResponseController {
     const session = this.activeStreams.get(id);
     if (!session) return;
 
-    this.forceUpdateStore(id, (m: any) => ({
+    coreUseChatStore.setState((state: any) => ({
+      messages: state.messages.map((m: any) => m.id === id ? {
         ...m, 
         isStreaming: false,
         toolCalls: m.toolCalls?.map((tc: any) => {
-          let fArgs = tc.args || {};
-          if (Object.keys(fArgs).length === 0 && (tc as any).function?.arguments) {
-            try { fArgs = JSON.parse((tc as any).function.arguments); } catch (e) {}
+          // 🏆 PIVO 3.0: 终极物理合并 - 强制从完整 arguments 恢复参数
+          let fArgs = { ...tc.args };
+          const fullArgsStr = (tc as any).function?.arguments;
+          if (fullArgsStr) {
+            try { 
+                const fullParsed = JSON.parse(fullArgsStr);
+                fArgs = { ...fArgs, ...fullParsed };
+            } catch (e) {
+                // 如果 JSON 损坏，尝试正则保底
+                const pMatch = fullArgsStr.match(/"rel_path"\s*:\s*"([^"]*)"/);
+                if (pMatch) fArgs.rel_path = pMatch[1];
+            }
           }
           return { ...tc, isPartial: false, args: fArgs };
         })
+      } : m),
+      isLoading: false
     }));
 
     const updatedState = coreUseChatStore.getState();
@@ -190,10 +204,10 @@ export class StreamingResponseController {
     if (finalizedMsg?.toolCalls) {
         const pendingTCs = finalizedMsg.toolCalls.filter((tc: any) => tc.status === 'pending');
         if (pendingTCs.length > 0) {
-            hasFollowUp = true; // 🏆 关键：检测到有自动执行工具，标记为非终结态
+            hasFollowUp = true;
             pendingTCs.forEach((tc: any) => {
                 ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: tc.tool, isSandbox: true, userMessageHasAutoApprove: (finalizedMsg as any).autoApproveTools || false }, () => {
-                    coreUseChatStore.getState().approveToolCall(id, tc.id, { skipContinue: true });
+                    (coreUseChatStore.getState() as any).approveToolCall(id, tc.id, { skipContinue: true });
                 });
             });
             setTimeout(async () => {
@@ -203,14 +217,12 @@ export class StreamingResponseController {
                 if (!anyRunning) {
                     const settings = useSettingsStore.getState();
                     const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-                    if (providerConfig) (window as any).__chatStore?.getState().generateResponse(latestState.messages, providerConfig);
+                    if (providerConfig) (window as any).__chatStore?.getState().generateResponse(latestState.messages as any, providerConfig);
                 }
             }, 1000);
         }
     }
 
-    // 🏆 PIVO 3.0: 物理闭环
-    // 只有在没有后续任务且流真正结束时，才允许启动 UI 自洁
     InlineSyncService.handleResponseFinish({ isRealFinish: !hasFollowUp });
     this.cleanup(id);
   }
