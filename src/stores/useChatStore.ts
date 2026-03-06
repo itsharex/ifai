@@ -46,14 +46,31 @@ export interface ContentSegment {
 
 const threadMessages: Map<string, Message[]> = new Map();
 export function getThreadMessages(threadId: string): Message[] { return threadMessages.get(threadId) || []; }
+let isInternalSyncing = false;
+
 export function setThreadMessages(threadId: string, messages: Message[]): void { 
     threadMessages.set(threadId, messages); 
     
-    // 🏆 PIVO 3.0: 实时同步活跃线程数据
+    // 🏆 PIVO 3.0: 实时同步活跃线程数据 (带物理防循环锁)
+    if (isInternalSyncing) return;
+
     const activeThreadId = useThreadStore.getState().activeThreadId;
     if (activeThreadId === threadId) {
-        console.log(`[ChatStore] 🔄 Syncing active thread messages for: ${threadId}`);
-        coreUseChatStore.setState({ messages: [...messages] });
+        const currentMessages = coreUseChatStore.getState().messages;
+        
+        // 值相等检查
+        const hasChanged = currentMessages.length !== messages.length || 
+                           (messages.length > 0 && currentMessages[currentMessages.length - 1]?.id !== messages[messages.length - 1]?.id);
+
+        if (hasChanged) {
+            console.log(`[ChatStore] 🔄 Syncing active thread messages for: ${threadId}`);
+            isInternalSyncing = true;
+            try {
+                coreUseChatStore.setState({ messages: [...messages] });
+            } finally {
+                isInternalSyncing = false;
+            }
+        }
     }
     
     autoSaveThread(threadId); 
