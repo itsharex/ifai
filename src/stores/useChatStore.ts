@@ -250,9 +250,25 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
                 SentinelService.beforeExecute(latestToolCall.tool, finalArgs);
                 const result = await coordinator.approve(toolCallId);
                 SentinelService.afterExecute(latestToolCall.tool, result);
+
+                // 🏆 PIVO 3.0: 物理保真度保全 - 严禁在同步层修改原始数据类型
+                const finalResult = result.content || result.error || "";
+                
+                console.log(`[ChatStore] 💾 Synchronizing tool result:`, {
+                    tool: latestToolCall.tool,
+                    success: result.success,
+                    contentSize: finalResult.length
+                });
+
                 coreUseChatStore.setState(s => ({
                     messages: s.messages.map(m => m.id === messageId ? {
-                        ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { ...tc, status: result.success ? "completed" as const : "failed" as const, result: result.content || result.error } : tc)
+                        ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { 
+                            ...tc, 
+                            status: result.success ? "completed" as const : "failed" as const, 
+                            // 🚀 保持原始字符串，确保 package-lock.json 等文件不被破坏
+                            result: finalResult,
+                            output: finalResult
+                        } : tc)
                     } : m)
                 }));
                 coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: result.content || result.error || "", tool_call_id: toolCallId });
