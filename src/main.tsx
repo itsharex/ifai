@@ -12,6 +12,21 @@ if (typeof window !== 'undefined' && (import.meta.env.VITE_TEST_ENV === 'e2e' ||
   const invoke = async (cmd: string, args?: any) => {
     console.log(`[PIVO3-Mock] 📞 IPC Invoke: ${cmd}`, args);
     const handler = (window as any).__E2E_INVOKE_HANDLER__;
+    
+    // 🏆 PIVO 3.0: 同步高保真探测 Mock 逻辑
+    if (cmd === 'probe_symbols') {
+        if (args.path?.includes('settingsStore')) {
+            return [
+                { name: 'SettingsState', kind: 'interface', line: 50, context: 'export interface SettingsState' },
+                { name: 'useSettingsStore', kind: 'variable', line: 150, context: 'export const useSettingsStore = ...' }
+            ];
+        }
+        return [];
+    }
+    if (cmd === 'get_file_metadata') {
+        return { size: 1024, mtime: Date.now(), fingerprint: `mock_${Date.now()}` };
+    }
+
     if (handler) return handler(cmd, args);
     return {};
   };

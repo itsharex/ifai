@@ -27,12 +27,69 @@ export function transformCallback<T = unknown>(callback?: (response: T) => void,
 export async function invoke<T = any>(cmd: string, args?: any): Promise<T> {
     console.log(`[PIVO3-Mock] 📞 IPC Invoke: ${cmd}`, args);
     const handler = (window as any).__E2E_INVOKE_HANDLER__;
+    
+    // 🏆 PIVO 3.0: 高保真探测模拟
+    if (cmd === 'probe_symbols') {
+        if (handler) {
+            // 尝试从 E2E 环境获取文件的 Mock 内容并提取符号
+            try {
+                const content = await handler('agent_read_file', { rel_path: args.path });
+                if (content && typeof content === 'string') {
+                    return mockExtractSymbols(content) as any;
+                }
+            } catch (e) {}
+        }
+        // 默认返回基础符号（针对 settingsStore 等核心文件）
+        if (args.path?.includes('settingsStore')) {
+            return [
+                { name: 'SettingsState', kind: 'interface', line: 50, context: 'export interface SettingsState' },
+                { name: 'useSettingsStore', kind: 'variable', line: 150, context: 'export const useSettingsStore = ...' }
+            ] as any;
+        }
+        return [] as any;
+    }
+
+    if (cmd === 'get_file_metadata') {
+        return { size: 1024, mtime: Date.now(), fingerprint: `mock_${Date.now()}` } as any;
+    }
+
     if (handler) return handler(cmd, args);
     
-    // 基础物理返回兜底
+    // 默认兜底
     if (cmd.includes('get_config')) return { providers: [] } as any;
     if (cmd === 'get_git_statuses') return [] as any;
     return {} as T;
+}
+
+/**
+ * 🏆 PIVO 3.0: JS 版高保真符号提取器 (仅用于 Mock)
+ */
+function mockExtractSymbols(content: string): any[] {
+    const lines = content.split('\n');
+    const symbols: any[] = [];
+    const patterns = [
+        { type: 'class', regex: /(?:export\s+)?class\s+([a-zA-Z0-9_]+)/ },
+        { type: 'function', regex: /(?:export\s+)?(?:async\s+)?function\s+([a-zA-Z0-9_]+)/ },
+        { type: 'interface', regex: /(?:export\s+)?interface\s+([a-zA-Z0-9_]+)/ },
+        { type: 'variable', regex: /export\s+(?:const|let)\s+([a-zA-Z0-9_]+)/ }
+    ];
+
+    lines.forEach((line, i) => {
+        const trimmed = line.trim();
+        for (const p of patterns) {
+            const match = trimmed.match(p.regex);
+            if (match) {
+                symbols.push({
+                    name: match[1],
+                    kind: p.type,
+                    line: i + 1,
+                    context: trimmed
+                });
+                break;
+            }
+        }
+    });
+    return symbols;
 }
 
 /**
