@@ -25,6 +25,7 @@ export default defineConfig({
   // 包含 core (金标准) 和 e2e 目录
   testMatch: [
     'tests/core/**/*.spec.ts',
+    'tests/reproduction/**/*.spec.ts',
     'tests/e2e/**/*.spec.ts'
   ],
 

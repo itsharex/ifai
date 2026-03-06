@@ -82,6 +82,14 @@ export class AuthoritativeWait {
     }
 
     /**
+     * 等待持久化层 Hydration 完成 (由 threadPersistence.ts 发出的信号)
+     */
+    static async forPersistenceHydrated(page: Page, options?: { timeout?: number }) {
+        console.log('[AuthoritativeWait] 🛰️ Awaiting physical persistence signal...');
+        await this.forPipelineSignal(page, 'ifainew:persistence-hydrated', options);
+    }
+
+    /**
      * 等待流式响应完成 (优先使用物理信号，Store 状态作为回退)
      */
     static async forStreamComplete(page: Page, options?: { timeout?: number }) {
