@@ -6,7 +6,7 @@ import i18n from '../i18n/config';
 export type AIProtocol = 'openai' | 'anthropic' | 'gemini';
 
 // 预设模板类型（用于自定义提供商）
-export type PresetTemplate = 'ollama' | 'vllm' | 'localai' | 'lmstudio' | 'custom';
+export type PresetTemplate = 'ollama' | 'vllm' | 'localai' | 'lmstudio' | 'nvidia' | 'custom';
 
 export interface ModelParamsConfig {
   temperature?: number;
@@ -33,6 +33,7 @@ export const PRESET_ENDPOINTS: Record<PresetTemplate, { baseUrl: string; default
   vllm: { baseUrl: 'http://localhost:8000/v1/chat/completions', defaultModels: ['meta-llama/Llama-3.1-8B-Instruct'] },
   localai: { baseUrl: 'http://localhost:8080/v1/chat/completions', defaultModels: ['gpt-3.5-turbo'] },
   lmstudio: { baseUrl: 'http://localhost:1234/v1/chat/completions', defaultModels: ['local-model'] },
+  nvidia: { baseUrl: 'https://integrate.api.nvidia.com/v1/chat/completions', defaultModels: ['meta/llama-3.1-405b-instruct', 'meta/llama-3.1-70b-instruct', 'nvidia/llama-3.1-nemotron-70b-instruct', 'z-ai/glm4.7'] },
   custom: { baseUrl: '', defaultModels: ['z-ai/glm5', 'z-ai/glm4.7', 'nv-tmp', 'gpt-4o-mini', 'claude-3-5-sonnet-20241022'] },
 };
 
@@ -126,6 +127,7 @@ export interface SettingsState {
     presetTemplate: PresetTemplate;
     customEndpoint?: string;
     apiKey?: string;
+    models?: string[]; // 🚀 新增：支持传入初始模型
     modelParams?: ModelParamsConfig;
   }) => string;  // 返回新提供商 ID
   updateModelParams: (providerId: string, modelParams: ModelParamsConfig) => void;
@@ -253,15 +255,19 @@ export const useSettingsStore = create<SettingsState>()(
 
       addCustomProvider: (config) => {
         const id = `custom-${uuidv4().slice(0, 8)}`;
+        const preset = PRESET_ENDPOINTS[config.presetTemplate];
+        
         const newProvider: AIProviderConfig = {
           id,
           name: config.name,
           protocol: 'openai',
-          baseUrl: config.customEndpoint || '',
+          baseUrl: config.customEndpoint || preset?.baseUrl || '',
           apiKey: config.apiKey || '',
-          models: [],
+          // 🏆 PIVO 3.0: 影子补全 - 优先使用传入模型，否则使用预设，最后兜底为空
+          models: config.models || preset?.defaultModels || [],
           enabled: true,
           group: 'custom',
+          isCustom: true, // 🚀 物理兼容补丁：确保 UI 能识别
           presetTemplate: config.presetTemplate,
           modelParams: config.modelParams
         };
