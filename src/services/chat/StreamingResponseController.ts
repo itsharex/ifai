@@ -1,7 +1,7 @@
 import { Message, ToolCall } from '../../stores/chatStore';
 import { useChatStore as coreUseChatStore, toolCallDeduplicator } from '../../stores/useChatStore';
 import { useThreadStore } from '../../stores/threadStore';
-import { InlineSyncService } from './InlineSyncService';
+import { InlineSyncService } from '../InlineSyncService';
 import { listen } from '@tauri-apps/api/event';
 
 interface StreamSession {
