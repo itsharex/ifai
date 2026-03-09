@@ -145,10 +145,10 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     if (!userMessageAdded) {
         const autoApproveTools = typeof content === 'string' && content.includes('[TASK-EXECUTION]');
         coreUseChatStore.getState().addMessage({
-            id: userMsgId, role: 'user', content: displayContent as any,
+            id: userMsgId, role: "user", content: displayContent as any,
             // @ts-ignore
             autoApproveTools, isInlineTask: options.isInlineTask, displayLabel: options.displayLabel
-        } as any);
+        });
     }
     await patchedGenerateResponse(coreUseChatStore.getState().messages, providerConfig, { ...options, userMsgId, enrichedContent: lifecycleResult.enrichedContent, originalContent: content });
 };
@@ -213,7 +213,7 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 // 🏆 v0.3.8: 终极哨兵 (权威判定版)
 coreUseChatStore.subscribe((state, prevState) => {
     const lastMsg = state.messages[state.messages.length - 1];
-    if (lastMsg && lastMsg.role === 'assistant' && (lastMsg as any).isStreaming && !state.isLoading) {
+    if (lastMsg && lastMsg.role === 'assistant' &&  (lastMsg as any).isStreaming && !state.isLoading) {
         // 🏆 PIVO 3.0: 权威物理判定
         // 哨兵不再根据 Store 的陈旧快照做猜测，而是直接询问控制器的实时心跳
         if (!StreamingResponseController.getInstance().isStreamStuck(lastMsg.id)) return;
@@ -374,7 +374,7 @@ coreUseChatStore.subscribe((state, prevState) => {
         if (verifyTask) pivoStore.getState().updateTaskStatus(lastMessage.id, verifyTask.id, 'success');
     }
 
-    if (!(lastMessage as any).isStreaming) {
+    if (! (lastMessage as any).isStreaming) {
         const content = typeof lastMessage.content === 'string' ? lastMessage.content : '';
         const completionKeywords = ['成功', '完成', '好了', '完善', '完毕', '结束', 'done', 'complete', 'success', 'ready'];
         const hasCompletionKeyword = completionKeywords.some(k => content.includes(k));
