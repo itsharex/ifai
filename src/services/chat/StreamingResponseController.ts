@@ -10,6 +10,7 @@ interface StreamSession {
     unlistenFns: (() => void)[];
     fullResponse: string;
     lastUpdate: number;
+    lastHeartbeat: number; // 🚀 PIVO 3.0: 哨兵心跳
     streamingTools: Record<number, { id: string; name: string; arguments: string }>;
 }
 
@@ -33,6 +34,16 @@ export class StreamingResponseController {
   }
 
   /**
+   * 🏆 PIVO 3.0: 哨兵权威判定接口
+   */
+  isStreamStuck(id: string): boolean {
+    const s = this.activeStreams.get(id);
+    if (!s) return false;
+    // 宽限期延长至 15s，给慢速模型留足物理空间
+    return (Date.now() - s.lastHeartbeat) > 15000;
+  }
+
+  /**
    * 初始化流式会话物理 Buffer
    */
   async initSession(assistantMsgId: string, history: Message[]) {
@@ -45,6 +56,7 @@ export class StreamingResponseController {
         unlistenFns: [],
         fullResponse: "",
         lastUpdate: 0,
+        lastHeartbeat: Date.now(),
         streamingTools: {}
     };
 
@@ -70,6 +82,9 @@ export class StreamingResponseController {
   private handleStreamChunk(id: string, payload: any) {
     const session = this.activeStreams.get(id);
     if (!session) return;
+
+    // 🚀 更新心跳
+    session.lastHeartbeat = Date.now();
 
     if (payload.type === 'content') {
         session.fullResponse += payload.content;
@@ -119,7 +134,7 @@ export class StreamingResponseController {
     const session = this.activeStreams.get(id);
     if (!session) return;
 
-    const liveToolCalls: ToolCall[] = Object.values(session.streamingTools).map(st => ({
+    const liveToolCalls: any[] = Object.values(session.streamingTools).map(st => ({
         id: st.id || `call_${Math.random().toString(36).slice(2, 9)}`,
         tool: st.name,
         args: {}, // 运行时由 JSON 解析补充

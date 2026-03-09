@@ -66,7 +66,7 @@ export function setThreadMessages(threadId: string, messages: Message[]): void {
             console.log(`[ChatStore] 🔄 Syncing active thread messages for: ${threadId}`);
             isInternalSyncing = true;
             try {
-                coreUseChatStore.setState({ messages: [...messages] });
+                coreUseChatStore.setState({ messages: [...messages] as any });
             } finally {
                 isInternalSyncing = false;
             }
@@ -250,7 +250,9 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
                 // 🏆 PIVO 3.0: 物理级影子参数注入 (Shadow Parameter Hydration)
                 // 针对 agent_read_file，如果 AI 忘记传路径，自动补全为当前活跃文件
                 if (latestToolCall.tool === 'agent_read_file' && !finalArgs.rel_path && !finalArgs.path) {
-                    const activeFile = useFileStore.getState().activeFile;
+                    const fileState = useFileStore.getState();
+                    const activeFileId = fileState.activeFileId;
+                    const activeFile = activeFileId ? fileState.openedFiles.find(f => f.id === activeFileId) : null;
                     const fallbackPath = activeFile?.path;
                     
                     if (fallbackPath) {

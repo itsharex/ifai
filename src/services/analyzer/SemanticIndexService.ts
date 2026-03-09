@@ -37,7 +37,8 @@ export class SemanticIndexService {
             const meta = await SymbolExtractor.getMetadata(path);
             
             // 2. 尝试从 IndexedDB 读取缓存
-            const cached = await manager.getItem<CachedIndex>(cacheKey);
+            const cachedRaw = await manager.getItem(cacheKey);
+            const cached = cachedRaw ? JSON.parse(cachedRaw) as CachedIndex : null;
 
             // 3. 校验指纹
             if (cached && cached.fingerprint === meta.fingerprint) {
@@ -55,7 +56,7 @@ export class SemanticIndexService {
                 symbols,
                 timestamp: Date.now()
             };
-            await manager.setItem(cacheKey, newIndex);
+            await manager.setItem(cacheKey, JSON.stringify(newIndex));
 
             return symbols;
         } catch (error) {

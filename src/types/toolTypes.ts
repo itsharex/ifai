@@ -178,6 +178,14 @@ export interface LaunchAgentResult {
   };
 }
 
+/**
+ * 符号探测结果
+ */
+export interface ProbeSymbolsResult {
+  success: true;
+  output: string; // JSON 格式的符号列表
+}
+
 // ============================================================================
 // 工具类型映射表
 // ============================================================================
@@ -188,6 +196,7 @@ export interface LaunchAgentResult {
 export interface ToolArgsMap {
   'agent_write_file': WriteFileArgs;
   'agent_read_file': ReadFileArgs;
+  'agent_probe_symbols': ProbeSymbolsArgs;
   'agent_list_dir': ListDirArgs;
   'agent_delete_file': DeleteFileArgs;
   'agent_search_files': SearchFilesArgs;
@@ -202,6 +211,7 @@ export interface ToolArgsMap {
 export interface ToolResultMap {
   'agent_write_file': WriteFileResult;
   'agent_read_file': ReadFileResult;
+  'agent_probe_symbols': ProbeSymbolsResult;
   'agent_list_dir': ListDirResult;
   'agent_delete_file': DeleteFileResult;
   'agent_search_files': SearchFilesResult;

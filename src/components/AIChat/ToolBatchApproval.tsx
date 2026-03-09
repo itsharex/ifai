@@ -36,7 +36,7 @@ export const ToolBatchApproval: React.FC<ToolBatchApprovalProps> = ({
         // 🏆 PIVO 3.0: 物理级 Token 动态统计
         let charCount = 0;
         toolCalls.forEach(tc => {
-            const res = tc.result || tc.output || "";
+            const res = tc.result || (tc as any).output || "";
             charCount += typeof res === 'string' ? res.length : JSON.stringify(res).length;
         });
         // 换算公式：1 Token ≈ 4 字符，并加上 1k 的基础上下文消耗
