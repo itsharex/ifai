@@ -46,7 +46,35 @@ export interface ContentSegment {
 
 const threadMessages: Map<string, Message[]> = new Map();
 export function getThreadMessages(threadId: string): Message[] { return threadMessages.get(threadId) || []; }
-export function setThreadMessages(threadId: string, messages: Message[]): void { threadMessages.set(threadId, messages); autoSaveThread(threadId); }
+let isInternalSyncing = false;
+
+export function setThreadMessages(threadId: string, messages: Message[]): void { 
+    threadMessages.set(threadId, messages); 
+    
+    // 🏆 PIVO 3.0: 实时同步活跃线程数据 (带物理防循环锁)
+    if (isInternalSyncing) return;
+
+    const activeThreadId = useThreadStore.getState().activeThreadId;
+    if (activeThreadId === threadId) {
+        const currentMessages = coreUseChatStore.getState().messages;
+        
+        // 值相等检查
+        const hasChanged = currentMessages.length !== messages.length || 
+                           (messages.length > 0 && currentMessages[currentMessages.length - 1]?.id !== messages[messages.length - 1]?.id);
+
+        if (hasChanged) {
+            console.log(`[ChatStore] 🔄 Syncing active thread messages for: ${threadId}`);
+            isInternalSyncing = true;
+            try {
+                coreUseChatStore.setState({ messages: [...messages] });
+            } finally {
+                isInternalSyncing = false;
+            }
+        }
+    }
+    
+    autoSaveThread(threadId); 
+}
 export function clearThreadMessages(): void { threadMessages.clear(); }
 
 export function switchThread(threadId: string): void {
@@ -218,13 +246,62 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
                 let finalArgs = latestToolCall.args || {};
                 const rawArgsStr = (latestToolCall as any).function?.arguments || "";
                 if (rawArgsStr) try { finalArgs = { ...finalArgs, ...JSON.parse(rawArgsStr) }; } catch {}
+
+                // 🏆 PIVO 3.0: 物理级影子参数注入 (Shadow Parameter Hydration)
+                // 针对 agent_read_file，如果 AI 忘记传路径，自动补全为当前活跃文件
+                if (latestToolCall.tool === 'agent_read_file' && !finalArgs.rel_path && !finalArgs.path) {
+                    const activeFile = useFileStore.getState().activeFile;
+                    const fallbackPath = activeFile?.path;
+                    
+                    if (fallbackPath) {
+                        console.log(`[ChatStore] 💧 Shadow Hydration: Injected path "${fallbackPath}" into ${latestToolCall.tool}`);
+                        finalArgs.rel_path = fallbackPath;
+                        // 同步回 toolCall 对象以保持 UI 显示一致
+                        (latestToolCall as any).args = finalArgs;
+                    } else {
+                        // 实在没招了，才走静默报错逻辑
+                        console.warn(`[ChatStore] 🛡️ Shadow Hydration failed: No active file found.`);
+                        const silentError = { success: false, content: "[Error] rel_path is required but was not provided. Please retry with target file path.", error: "Missing mandatory parameter: rel_path" };
+                        
+                        coreUseChatStore.setState(s => ({
+                            messages: s.messages.map(m => m.id === messageId ? {
+                                ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { ...tc, status: "failed" as const, result: silentError.content, output: silentError.content } : tc)
+                            } : m)
+                        }));
+                        
+                        coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: silentError.content, tool_call_id: toolCallId });
+                        
+                        if (!options?.skipContinue) {
+                            const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+                            if (providerConfig) setTimeout(async () => { await (window as any).__chatStore?.getState().generateResponse(coreUseChatStore.getState().messages, providerConfig); }, 100);
+                        }
+                        return;
+                    }
+                }
+
                 await coordinator.createApproval(messageId, { id: latestToolCall.id, tool: latestToolCall.tool, args: finalArgs });
                 SentinelService.beforeExecute(latestToolCall.tool, finalArgs);
                 const result = await coordinator.approve(toolCallId);
                 SentinelService.afterExecute(latestToolCall.tool, result);
+
+                // 🏆 PIVO 3.0: 物理保真度保全 - 严禁在同步层修改原始数据类型
+                const finalResult = result.content || result.error || "";
+                
+                console.log(`[ChatStore] 💾 Synchronizing tool result:`, {
+                    tool: latestToolCall.tool,
+                    success: result.success,
+                    contentSize: finalResult.length
+                });
+
                 coreUseChatStore.setState(s => ({
                     messages: s.messages.map(m => m.id === messageId ? {
-                        ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { ...tc, status: result.success ? "completed" as const : "failed" as const, result: result.content || result.error } : tc)
+                        ...m, toolCalls: m.toolCalls?.map(tc => tc.id === toolCallId ? { 
+                            ...tc, 
+                            status: result.success ? "completed" as const : "failed" as const, 
+                            // 🚀 保持原始字符串，确保 package-lock.json 等文件不被破坏
+                            result: finalResult,
+                            output: finalResult
+                        } : tc)
                     } : m)
                 }));
                 coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: result.content || result.error || "", tool_call_id: toolCallId });
@@ -325,4 +402,12 @@ coreUseChatStore.subscribe((state, prevState) => {
 });
 
 export const useChatStore = coreUseChatStore;
-if (typeof window !== 'undefined') (window as any).__chatStore = coreUseChatStore;
+if (typeof window !== 'undefined') {
+    (window as any).__chatStore = coreUseChatStore;
+    // 🏆 PIVO 3.0: 暴露核心状态机给测试环境 (Authoritative Wait Support)
+    Object.defineProperty(window, '__CHAT_STORE_STATE__', {
+        get: () => coreUseChatStore.getState(),
+        enumerable: true,
+        configurable: true
+    });
+}

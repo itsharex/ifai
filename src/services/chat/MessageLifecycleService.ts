@@ -13,14 +13,26 @@ export class MessageLifecycleService {
   static async interceptAddMessage(message: Message, store: ICoreChatStore): Promise<Message> {
     if (message.role === 'tool' && typeof message.content === 'string') {
         const content = message.content.trim();
-        if (content.startsWith('[') && content.endsWith(']')) {
+        // 🏆 PIVO 3.0: 物理结构化识别 - 兼容数组和 agent_scan_project 的对象格式
+        if ((content.startsWith('[') && content.endsWith(']')) || (content.startsWith('{') && content.endsWith('}'))) {
             try {
-                const files = JSON.parse(content);
-                if (Array.isArray(files) && files.length > 0 && files.every(f => typeof f === 'string')) {
+                const parsed = JSON.parse(content);
+                let files: string[] = [];
+                
+                if (Array.isArray(parsed)) {
+                    files = parsed;
+                } else if (parsed && typeof parsed === 'object' && parsed.structure) {
+                    // 🚀 agent_scan_project 的特殊格式，扁平化 structure 以供预览
+                    files = Object.keys(parsed.structure);
+                }
+
+                if (files.length > 0 && files.every(f => typeof f === 'string')) {
                     (message as any).exploreProgress = {
                         phase: 'completed',
                         progress: { total: files.length, scanned: files.length, byDirectory: {} },
-                        scannedFiles: files
+                        scannedFiles: files,
+                        // 🏆 物理透传：保存原始结构以供更高级的树形渲染
+                        rawStructure: parsed && parsed.structure ? parsed.structure : null
                     };
                     setTimeout(() => {
                         const msgs = store.messages;

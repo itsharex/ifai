@@ -1,241 +1,163 @@
 import { Message, ToolCall } from '../../stores/chatStore';
 import { useChatStore as coreUseChatStore, toolCallDeduplicator } from '../../stores/useChatStore';
 import { useThreadStore } from '../../stores/threadStore';
-import { InlineSyncService } from '../InlineSyncService';
-import { SentinelService } from '../SentinelService';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { ApprovalPipeline } from '../../utils/approvalPipeline';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { InlineSyncService } from './InlineSyncService';
+import { listen } from '@tauri-apps/api/event';
 
+interface StreamSession {
+    id: string;
+    messageId: string;
+    unlistenFns: (() => void)[];
+    fullResponse: string;
+    lastUpdate: number;
+    streamingTools: Record<number, { id: string; name: string; arguments: string }>;
+}
+
+/**
+ * 🏆 PIVO 3.0 Streaming Response Controller
+ * 
+ * 物理层流式响应控制器，负责 Buffer 对齐、状态机同步与 UI 削峰。
+ */
 export class StreamingResponseController {
   private static instance: StreamingResponseController;
-  private activeStreams: Map<string, {
-    renderRequested: boolean;
-    unlistenFns: UnlistenFn[];
-    buffer: Message[];
-    threadId: string;
-    hasReceivedChunk: boolean;
-    lastHeartbeat: number;
-  }> = new Map();
+  private activeStreams: Map<string, StreamSession> = new Map();
+  private RENDER_THROTTLE = 80; // 物理削峰：80ms 渲染缓冲区
 
   private constructor() {}
 
-  static getInstance(): StreamingResponseController {
-    if (!StreamingResponseController.instance) StreamingResponseController.instance = new StreamingResponseController();
+  static getInstance() {
+    if (!StreamingResponseController.instance) {
+      StreamingResponseController.instance = new StreamingResponseController();
+    }
     return StreamingResponseController.instance;
   }
 
-  isStreamStuck(id: string): boolean {
-    const s = this.activeStreams.get(id);
-    if (!s) return false;
-    return (Date.now() - s.lastHeartbeat) > 8000;
-  }
+  /**
+   * 初始化流式会话物理 Buffer
+   */
+  async initSession(assistantMsgId: string, history: Message[]) {
+    const eventId = assistantMsgId;
+    console.log(`[StreamingController] 🌊 Initializing physical buffer for: ${eventId}`);
 
-  async initSession(assistantMsgId: string, initialMessages: Message[]) {
-    const threadId = useThreadStore.getState().activeThreadId || 'default';
-    const sessionData = { 
-        renderRequested: false, 
-        unlistenFns: [] as UnlistenFn[], 
-        buffer: JSON.parse(JSON.stringify(initialMessages)),
-        threadId,
-        hasReceivedChunk: false,
-        lastHeartbeat: Date.now()
+    const session: StreamSession = {
+        id: eventId,
+        messageId: assistantMsgId,
+        unlistenFns: [],
+        fullResponse: "",
+        lastUpdate: 0,
+        streamingTools: {}
     };
-    this.activeStreams.set(assistantMsgId, sessionData);
 
-    const unlistenStatus = await listen<string>(`${assistantMsgId}_status`, (event) => {
-      const safe = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
-      sessionData.buffer = sessionData.buffer.map((m: any) => (m.id === assistantMsgId && !m.content) ? { ...m, content: `_(${safe})_\n\n` } : m);
-      sessionData.lastHeartbeat = Date.now();
-      this.requestRender(assistantMsgId);
+    // 1. 物理链路监听：Debug SSE
+    const unlistenDebug = await listen<string>(`${eventId}_debug`, (event) => {
+        // console.log("[RAW SSE]", event.payload);
     });
-    sessionData.unlistenFns.push(unlistenStatus);
+    session.unlistenFns.push(unlistenDebug);
 
-    const unlistenStream = await listen<string>(assistantMsgId, (event) => {
-      let textChunk = '';
-      let toolCallUpdate: any = null;
-      try {
-        const raw: any = event.payload;
-        if (!raw) return;
-        const p = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (p.type === 'content') textChunk = String(p.content);
-        else if (p.type === 'tool_call') toolCallUpdate = p.toolCall;
-      } catch (e) {}
-
-      if (textChunk || toolCallUpdate) {
-        sessionData.lastHeartbeat = Date.now();
-        if (!sessionData.hasReceivedChunk) {
-            sessionData.hasReceivedChunk = true;
-            setTimeout(() => coreUseChatStore.setState({ isLoading: false }), 50);
-        }
-
-        sessionData.buffer = sessionData.buffer.map((m: any) => {
-          if (m.id === assistantMsgId) {
-            const newMsg: Message = { ...m, isStreaming: true };
-            if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
-            
-            if (textChunk) {
-              const prevContent = newMsg.content || '';
-              newMsg.content = prevContent + textChunk;
-              (newMsg as any).contentSegments.push({ type: 'text', order: (newMsg as any).contentSegments.length, timestamp: Date.now(), content: textChunk, startPos: prevContent.length, endPos: newMsg.content.length });
-              InlineSyncService.syncState("", "", textChunk);
-            }
-            if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
-            return newMsg;
-          }
-          return m;
-        });
-        this.requestRender(assistantMsgId);
-      }
+    // 2. 物理链路监听：Data SSE (核心状态机)
+    const unlistenData = await listen<any>(eventId, (event) => {
+        this.handleStreamChunk(eventId, event.payload);
     });
-    sessionData.unlistenFns.push(unlistenStream);
+    session.unlistenFns.push(unlistenData);
 
-    const unlistenFinish = await listen<string>(`${assistantMsgId}_finish`, async () => {
-      await this.finalizeStream(assistantMsgId);
-    });
-    sessionData.unlistenFns.push(unlistenFinish);
-
-    const unlistenError = await listen<string>(`${assistantMsgId}_error`, (event) => {
-      const safe = typeof event.payload === 'string' ? event.payload : JSON.stringify(event.payload);
-      this.forceUpdateStore(assistantMsgId, (m: any) => ({ ...m, content: `❌ Error: ${safe}`, isStreaming: false }));
-      this.cleanup(assistantMsgId);
-    });
-    sessionData.unlistenFns.push(unlistenError);
+    this.activeStreams.set(eventId, session);
+    return eventId;
   }
 
-  private requestRender(id: string) {
-    const s = this.activeStreams.get(id);
-    if (!s || s.renderRequested) return;
-    const currentThreadId = useThreadStore.getState().activeThreadId || 'default';
-    if (s.threadId !== currentThreadId) return; 
-
-    s.renderRequested = true;
-    setTimeout(() => {
-      if (this.activeStreams.has(id)) {
-        coreUseChatStore.setState({ messages: [...s.buffer] as any });
-        s.renderRequested = false;
-      }
-    }, 80);
-  }
-
-  private processToolCallUpdate(msg: Message, update: any, assistantMsgId: string) {
-    const toolName = update.function?.name || update.tool;
-    const newArgs = update.function?.arguments || '';
-    const existingCalls = msg.toolCalls || [];
-    let cid = update.id;
-    if (update.id) cid = toolCallDeduplicator.getCanonicalId(update.id) || update.id;
-
-    const idx = existingCalls.findIndex(tc => (cid && tc.id === cid) || (update.index !== undefined && (tc as any).index === update.index));
-    const isPartial = update.isPartial ?? true;
-
-    if (idx !== -1) {
-      const tc = existingCalls[idx];
-      const argsStr = ((tc as any).function?.arguments || '') + newArgs;
-      let parsed = { ...tc.args };
-      try { parsed = JSON.parse(argsStr); } catch (e) {
-        // 🏆 PIVO 3.0: 增强型物理打捞 - 确保 rel_path 在流式过程中不丢失
-        const cMatch = String(argsStr).match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:\\|"?$)/s);
-        if (cMatch) parsed.content = cMatch[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
-        
-        const pMatch = String(argsStr).match(/"rel_path"\s*:\s*"([^"]*)"?/);
-        if (pMatch) parsed.rel_path = pMatch[1];
-      }
-      const updated = [...existingCalls];
-      updated[idx] = { ...tc, args: parsed, function: { name: toolName, arguments: argsStr }, isPartial: isPartial } as any;
-      msg.toolCalls = updated;
-      if (parsed.content) InlineSyncService.syncState(toolName, parsed.content);
-      
-      const segments = (msg as any).contentSegments || [];
-      const hasSegment = segments.some((seg: any) => seg.toolCallId === updated[idx].id);
-      if (!hasSegment) {
-          segments.push({ type: 'tool', order: segments.length, timestamp: Date.now(), toolCallId: updated[idx].id });
-          (msg as any).contentSegments = segments;
-      }
-
-      if (isPartial === false) {
-        ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: toolName, isSandbox: true, userMessageHasAutoApprove: (msg as any).autoApproveTools || false }, () => {
-          (coreUseChatStore.getState() as any).approveToolCall(assistantMsgId, updated[idx].id, { skipContinue: true });
-        });
-      }
-    } else {
-      const tid = cid || `call_${crypto.randomUUID()}`;
-      let iArgs: any = {};
-      try { iArgs = newArgs ? JSON.parse(newArgs) : {}; } catch (e) {}
-      const tc = { id: tid, type: 'function', tool: toolName, args: iArgs, function: { name: toolName, arguments: newArgs }, status: 'pending', isPartial: isPartial, index: update.index } as any;
-      msg.toolCalls = [...existingCalls, tc];
-      if (!(msg as any).contentSegments) (msg as any).contentSegments = [];
-      (msg as any).contentSegments.push({ type: 'tool', order: (msg as any).contentSegments.length, timestamp: Date.now(), toolCallId: tid });
-      InlineSyncService.syncState(toolName, "");
-    }
-  }
-
-  async finalizeStream(id: string) {
+  /**
+   * 处理物理 Chunk 片段
+   */
+  private handleStreamChunk(id: string, payload: any) {
     const session = this.activeStreams.get(id);
     if (!session) return;
 
-    coreUseChatStore.setState((state: any) => ({
-      messages: state.messages.map((m: any) => m.id === id ? {
-        ...m, 
-        isStreaming: false,
-        toolCalls: m.toolCalls?.map((tc: any) => {
-          // 🏆 PIVO 3.0: 终极物理合并 - 强制从完整 arguments 恢复参数
-          let fArgs = { ...tc.args };
-          const fullArgsStr = (tc as any).function?.arguments;
-          if (fullArgsStr) {
-            try { 
-                const fullParsed = JSON.parse(fullArgsStr);
-                fArgs = { ...fArgs, ...fullParsed };
-            } catch (e) {
-                // 如果 JSON 损坏，尝试正则保底
-                const pMatch = fullArgsStr.match(/"rel_path"\s*:\s*"([^"]*)"/);
-                if (pMatch) fArgs.rel_path = pMatch[1];
-            }
-          }
-          return { ...tc, isPartial: false, args: fArgs };
-        })
-      } : m),
-      isLoading: false
+    if (payload.type === 'content') {
+        session.fullResponse += payload.content;
+        this.throttledUpdate(id);
+    } else if (payload.type === 'tool_call') {
+        const chunk = payload.tool_call;
+        // 🏆 PIVO 3.0: 物理级索引安全加固
+        const idx = chunk.index !== undefined ? chunk.index : 0;
+        if (!session.streamingTools[idx]) {
+            session.streamingTools[idx] = { id: '', name: '', arguments: '' };
+        }
+        
+        if (chunk.id) session.streamingTools[idx].id = chunk.id;
+        
+        // 🔥 核心修复：防止 undefined 累加为 "undefined" 字符串 (同步 ifainew-core 修复)
+        if (chunk.function?.name) {
+            session.streamingTools[idx].name = (session.streamingTools[idx].name || '') + chunk.function.name;
+        }
+        if (chunk.function?.arguments) {
+            session.streamingTools[idx].arguments = (session.streamingTools[idx].arguments || '') + chunk.function.arguments;
+        }
+        
+        this.throttledUpdate(id);
+    } else if (payload.type === 'done') {
+        this.finalFlush(id, payload.has_follow_up);
+    }
+  }
+
+  /**
+   * 物理渲染削峰器
+   */
+  private throttledUpdate(id: string) {
+    const session = this.activeStreams.get(id);
+    if (!session) return;
+
+    const now = Date.now();
+    if (now - session.lastUpdate < this.RENDER_THROTTLE) return;
+
+    this.syncToStore(id);
+    session.lastUpdate = now;
+  }
+
+  /**
+   * 同步物理状态至 Store
+   */
+  private syncToStore(id: string) {
+    const session = this.activeStreams.get(id);
+    if (!session) return;
+
+    const liveToolCalls: ToolCall[] = Object.values(session.streamingTools).map(st => ({
+        id: st.id || `call_${Math.random().toString(36).slice(2, 9)}`,
+        tool: st.name,
+        args: {}, // 运行时由 JSON 解析补充
+        function: { name: st.name, arguments: st.arguments },
+        status: 'pending' as const,
+        isPartial: true
     }));
 
-    const updatedState = coreUseChatStore.getState();
-    const finalizedMsg = updatedState.messages.find(m => m.id === id);
-    let hasFollowUp = false;
+    coreUseChatStore.getState().updateMessageContent(
+        session.messageId, 
+        session.fullResponse, 
+        liveToolCalls.length > 0 ? liveToolCalls : undefined
+    );
+  }
 
-    if (finalizedMsg?.toolCalls) {
-        const pendingTCs = finalizedMsg.toolCalls.filter((tc: any) => tc.status === 'pending');
-        if (pendingTCs.length > 0) {
-            hasFollowUp = true;
-            pendingTCs.forEach((tc: any) => {
-                ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: tc.tool, isSandbox: true, userMessageHasAutoApprove: (finalizedMsg as any).autoApproveTools || false }, () => {
-                    (coreUseChatStore.getState() as any).approveToolCall(id, tc.id, { skipContinue: true });
-                });
-            });
-            setTimeout(async () => {
-                const latestState = coreUseChatStore.getState();
-                const latestMsg = latestState.messages.find(m => m.id === id);
-                const anyRunning = latestMsg?.toolCalls?.some(tc => tc.status === 'pending' || tc.status === 'approved' || tc.status === 'executing' || tc.isPartial);
-                if (!anyRunning) {
-                    const settings = useSettingsStore.getState();
-                    const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-                    if (providerConfig) (window as any).__chatStore?.getState().generateResponse(latestState.messages as any, providerConfig);
-                }
-            }, 1000);
-        }
-    }
+  /**
+   * 物理流终结刷新
+   */
+  private finalFlush(id: string, hasFollowUp: boolean) {
+    const session = this.activeStreams.get(id);
+    if (!session) return;
 
+    // 🏆 PIVO 3.0: 物理闭环
+    // 只有在没有后续任务且流真正结束时，才允许启动 UI 自洁
+    console.log(`[PIVO-SIGNAL] 🏁 Stream Finalized: ${id}`);
+    window.dispatchEvent(new CustomEvent('ifainew:stream-finished', { detail: { id } }));
+
+    this.syncToStore(id);
     InlineSyncService.handleResponseFinish({ isRealFinish: !hasFollowUp });
     this.cleanup(id);
   }
 
-  private forceUpdateStore(id: string, updateFn: (msg: any) => any) {
-    coreUseChatStore.setState((state: any) => ({
-        messages: state.messages.map((m: any) => m.id === id ? updateFn(m) : m),
-        isLoading: false
-    }));
-  }
-
   private cleanup(id: string) {
-    const s = this.activeStreams.get(id);
-    if (s) { s.unlistenFns.forEach(u => u()); this.activeStreams.delete(id); }
+    const session = this.activeStreams.get(id);
+    if (session) {
+        session.unlistenFns.forEach(u => u());
+        this.activeStreams.delete(id);
+    }
+    window.dispatchEvent(new CustomEvent('ifainew:session-cleaned', { detail: { id } }));
   }
 }

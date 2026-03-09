@@ -30,6 +30,7 @@ import { ApprovalToolbar } from './components/AIChat/ApprovalToolbar';
 
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
 import { PromptManager } from './components/PromptManager/PromptManager';
+import { StorageQuotaBanner } from './components/Storage/StorageQuotaBanner';
 
 
 
@@ -647,6 +648,19 @@ function App() {
 
   useShortcuts(shortcutHandlers);
 
+  useEffect(() => {
+    (window as any).__APP_READY__ = true;
+    console.log('[App] 🏁 Ready signal emitted for E2E tests');
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      console.log('[App] 🏁 Ready signal emitted for E2E tests');
+      (window as any).__APP_READY__ = true;
+    }, 2000); // 宽延时间
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleSelectFileFromPalette = async (path: string) => {
     const success = await openFileFromPath(path);
     if (success) {
@@ -707,6 +721,7 @@ function App() {
 
   
       <Titlebar onToggleChat={toggleChat} isChatOpen={isChatOpen} onToggleTerminal={toggleTerminal} isTerminalOpen={isTerminalOpen} />
+      <StorageQuotaBanner />
 
       {/* Main content area: Sidebar + Editor/Terminal + AIChat */}
       <div className="flex flex-1 overflow-hidden">

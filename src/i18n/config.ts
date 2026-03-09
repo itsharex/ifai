@@ -8,16 +8,25 @@ import enUS from './locales/en-US.json';
 // 这样可以避免在 Vite 生产构建中，组件在语言检测完成前就渲染的竞态条件
 const getInitialLanguage = (): string | undefined => {
   try {
-    // 优先读取 localStorage 中保存的语言
+    // 1. 优先读取 i18next 默认 Key
     const saved = localStorage.getItem('i18nextLng');
     if (saved && (saved === 'zh-CN' || saved === 'en-US' || saved === 'en' || saved === 'zh')) {
-      console.log('[i18n] Initial language from localStorage:', saved);
+      console.log('[i18n] Initial language from i18nextLng:', saved);
       return saved;
     }
+
+    // 2. 🏆 PIVO 3.0: 探测统一设置存储
+    const settingsRaw = localStorage.getItem('settings-storage');
+    if (settingsRaw) {
+      const settings = JSON.parse(settingsRaw);
+      if (settings.state?.language) {
+        console.log('[i18n] Initial language from settings-storage:', settings.state.language);
+        return settings.state.language;
+      }
+    }
   } catch (e) {
-    console.warn('[i18n] Failed to read localStorage:', e);
+    console.warn('[i18n] Failed to read initial language:', e);
   }
-  // 返回 undefined，让 LanguageDetector 继续检测
   return undefined;
 };
 
