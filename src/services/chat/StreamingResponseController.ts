@@ -179,7 +179,7 @@ export class StreamingResponseController {
 
       if (isPartial === false) {
         ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: toolName, isSandbox: true, userMessageHasAutoApprove: (msg as any).autoApproveTools || false }, () => {
-          coreUseChatStore.getState().approveToolCall(assistantMsgId, updated[idx].id);
+          (coreUseChatStore.getState() as any).approveToolCall(assistantMsgId, updated[idx].id, { skipContinue: true });
         });
       }
     } else {
@@ -220,7 +220,7 @@ export class StreamingResponseController {
             hasFollowUp = true; // 🏆 关键：检测到有自动执行工具，标记为非终结态
             pendingTCs.forEach((tc: any) => {
                 ApprovalPipeline.processAutoApproval({ settings: useSettingsStore.getState(), editorMode: (window as any).__IFAI_EDITOR_MODE__ || "standard", isSessionTrusted: false, toolName: tc.tool, isSandbox: true, userMessageHasAutoApprove: (finalizedMsg as any).autoApproveTools || false }, () => {
-                    coreUseChatStore.getState().approveToolCall(id, tc.id);
+                    (coreUseChatStore.getState() as any).approveToolCall(id, tc.id, { skipContinue: true });
                 });
             });
             setTimeout(async () => {

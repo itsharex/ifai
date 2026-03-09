@@ -145,7 +145,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     if (!userMessageAdded) {
         const autoApproveTools = typeof content === 'string' && content.includes('[TASK-EXECUTION]');
         coreUseChatStore.getState().addMessage({
-            id: userMsgId, role: "user", content: displayContent as any,
+            id: userMsgId, role: 'user', content: displayContent as any,
             // @ts-ignore
             autoApproveTools, isInlineTask: options.isInlineTask, displayLabel: options.displayLabel
         });
