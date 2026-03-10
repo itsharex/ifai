@@ -257,6 +257,37 @@ async fn ai_chat(
     if let Some(ref root) = project_root {
         let root_clone = root.clone();
 
+        // 🏆 v0.5.0: DebuggerAgent 意图拦截
+        if let Some(last_msg) = messages.iter().filter(|m| m.role == "user").last() {
+            let text = match &last_msg.content {
+                core_traits::ai::Content::Text(t) => t.clone(),
+                _ => String::new(),
+            };
+            
+            let router = crate::intelligence_router::IntelligenceRouter::new();
+            if router.is_debug_request(&text) {
+                println!("[AI Chat] 🛡️ DebuggerAgent Intent Detected. Intercepting flow...");
+                
+                let root_owned = root.clone();
+                let app_owned = app.clone();
+                let event_id_owned = event_id.clone();
+                let error_log = text.clone();
+
+                tokio::spawn(async move {
+                    println!("[AI Chat] 🚀 Starting autonomous healing loop...");
+                    let agent = crate::agent_system::debugger::DebuggerAgent::new(
+                        event_id_owned, 
+                        &root_owned, 
+                        Some(app_owned)
+                    );
+                    let _ = agent.run_debug_loop(&error_log).await;
+                });
+                
+                // 暂时返回 Ok，让后端异步跑，前端通过事件接收进度
+                return Ok(());
+            }
+        }
+
         // 1. Detect @codebase query or smart RAG trigger
         let mut codebase_query = None;
         if let Some(last_msg) = messages.iter().filter(|m| m.role == "user").last() {
