@@ -258,33 +258,46 @@ async fn ai_chat(
         let root_clone = root.clone();
 
         // 🏆 v0.5.0: DebuggerAgent 意图拦截
-        if let Some(last_msg) = messages.iter().filter(|m| m.role == "user").last() {
-            let text = match &last_msg.content {
-                core_traits::ai::Content::Text(t) => t.clone(),
-                _ => String::new(),
-            };
-            
-            let router = crate::intelligence_router::IntelligenceRouter::new();
-            if router.is_debug_request(&text) {
-                println!("[AI Chat] 🛡️ DebuggerAgent Intent Detected. Intercepting flow...");
+        if let Some(last_msg) = messages.last_mut() {
+            // 关键：只有当最后一条是 user 消息，且不是对工具调用的回复时，才进行拦截
+            if last_msg.role == "user" && last_msg.tool_call_id.is_none() {
+                let text = match &last_msg.content {
+                    core_traits::ai::Content::Text(t) => t.clone(),
+                    _ => String::new(),
+                };
                 
-                let root_owned = root.clone();
-                let app_owned = app.clone();
-                let event_id_owned = event_id.clone();
-                let error_log = text.clone();
-
-                tokio::spawn(async move {
-                    println!("[AI Chat] 🚀 Starting autonomous healing loop...");
+                let router = crate::intelligence_router::IntelligenceRouter::new();
+                if router.is_debug_request(&text) {
+                    println!("[AI Chat] 🛡️ DebuggerAgent Intent Detected. Augmenting context...");
+                    
                     let agent = crate::agent_system::debugger::DebuggerAgent::new(
-                        event_id_owned, 
-                        &root_owned, 
-                        Some(app_owned)
+                        event_id.clone(), 
+                        root, 
+                        Some(app.clone())
                     );
-                    let _ = agent.run_debug_loop(&error_log).await;
-                });
-                
-                // 暂时返回 Ok，让后端异步跑，前端通过事件接收进度
-                return Ok(());
+                    
+                    let mut augmented_prompt = format!("用户请求修复报错。指令内容: {}\n", text);
+                    
+                    let extracted_path = agent.extract_file_path(&text);
+                    if let Some(path) = extracted_path {
+                        augmented_prompt.push_str(&format!("\n[物理诊断结果]\n- 目标文件: `{}`\n", path));
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            use ifainew_core::symbols::{SymbolExtractor, detect_language};
+                            if let Ok(extractor) = SymbolExtractor::new() {
+                                let lang = detect_language(&path);
+                                if let Ok(Some(symbol)) = extractor.find_symbol_at_line(&content, 1, lang) {
+                                    if let Ok(Some(source)) = extractor.get_symbol_source(&content, &symbol.name, lang) {
+                                        augmented_prompt.push_str(&format!("- 关键符号: `{}`\n- 符号定义:\n```{}\n{}\n```\n", symbol.name, lang, source));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    augmented_prompt.push_str("\n请按照 PIVO 3.0 规范，优先针对上述物理诊断出的符号进行自愈修复。首先生成 Execution Plan，然后调用 agent_write_file 提供补丁。");
+                    last_msg.content = core_traits::ai::Content::Text(augmented_prompt);
+                    println!("[AI Chat] 🚀 Context augmented successfully. Handing control back to main Chat Pipeline.");
+                }
             }
         }
 
