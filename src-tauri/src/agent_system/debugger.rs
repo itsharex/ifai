@@ -44,15 +44,14 @@ impl DebuggerAgent {
         self.persistence.save_session(&session)
     }
 
-    /// 从终端输出中摄取错误信息 (Side-car Hook)
+    /// 从终端输出中摄取错误信息
     pub async fn ingest_terminal_output(&self, output: &str) -> Result<bool, String> {
         use ifainew_core::error_parser::ErrorParser;
         let parser = ErrorParser::new().map_err(|e| e.to_string())?;
         let errors = parser.parse_terminal_output(output);
         
-        if !errors.is_empty() {
+        if let Some(first_error) = errors.first() {
             let mut session = self.session.lock().await;
-            let first_error = &errors[0];
             
             println!("[Debugger] 解析到错误: {} at {}:{}", first_error.code, first_error.file, first_error.line);
             
@@ -81,18 +80,25 @@ impl DebuggerAgent {
             
             let parser = ErrorParser::new().map_err(|e| e.to_string())?;
             let errors = parser.parse_terminal_output(error_log);
-            let first_error = &errors[0];
-
-            if !first_error.file.is_empty() {
-                if let Ok(file_content) = std::fs::read_to_string(&first_error.file) {
-                    let extractor = SymbolExtractor::new().map_err(|e| e.to_string())?;
-                    let lang = detect_language(&first_error.file);
-                    
-                    if let Ok(Some(symbol)) = extractor.find_symbol_at_line(&file_content, first_error.line, lang) {
-                        let mut session = self.session.lock().await;
-                        session.current_step = format!("正在分析符号定义: {}", symbol.name);
-                        session.context_symbols.push(symbol.name.clone());
-                        println!("[Debugger] 成功提取到源码定义: {}", symbol.name);
+            
+            if let Some(first_error) = errors.first() {
+                if !first_error.file.is_empty() {
+                    if let Ok(file_content) = std::fs::read_to_string(&first_error.file) {
+                        let extractor = SymbolExtractor::new().map_err(|e| e.to_string())?;
+                        let lang = detect_language(&first_error.file);
+                        
+                        if let Ok(Some(symbol)) = extractor.find_symbol_at_line(&file_content, first_error.line, lang) {
+                            let mut session = self.session.lock().await;
+                            session.current_step = format!("正在分析符号定义: {}", symbol.name);
+                            if !session.context_symbols.contains(&symbol.name) {
+                                session.context_symbols.push(symbol.name.clone());
+                            }
+                            
+                            // 物理提取源码定义
+                            if let Ok(Some(_source)) = extractor.get_symbol_source(&file_content, &symbol.name, lang) {
+                                println!("[Debugger] 成功提取源码定义: {}", symbol.name);
+                            }
+                        }
                     }
                 }
             }
@@ -125,21 +131,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_high_fidelity_user_request() {
+        // 1. 环境准备
         let _ = std::fs::create_dir_all("src");
-        let _ = std::fs::write("src/faulty_module.rs", "fn calculate_sum(a: i32, b: i32) -> i32 {\n    a + b + unknown\n}");
+        let test_file = "src/faulty_module.rs";
+        let _ = std::fs::write(test_file, "fn calculate_sum(a: i32, b: i32) -> i32 {\n    a + b + unknown\n}");
 
         let agent = DebuggerAgent::new("session-real-sim".to_string(), ".", None);
         let error_log = "error[E0425]: cannot find value `unknown` in this scope\n  --> src/faulty_module.rs:2:13";
         
+        // 2. 执行
         let result = agent.run_debug_loop(error_log).await;
         
-        assert!(result.is_ok());
+        // 3. 健壮断言 (通过反序列化验证逻辑而非字符串)
+        assert!(result.is_ok(), "调试循环应成功执行");
         
         let persistence_path = std::path::Path::new("./.ifai/sessions/session-real-sim.json");
-        let content = std::fs::read_to_string(persistence_path).unwrap();
-        println!("[Green Phase Success] Persistent Data: {}", content);
+        assert!(persistence_path.exists(), "持久化文件应存在");
         
-        assert!(content.contains("calculate_sum"));
-        assert!(content.contains("fixed\":true"));
+        let json_content = std::fs::read_to_string(persistence_path).expect("读取 JSON 失败");
+        let session: DebugSession = serde_json::from_str(&json_content).expect("反序列化失败");
+        
+        assert_eq!(session.id, "session-real-sim");
+        assert!(session.fixed, "最终状态应为 fixed");
+        assert!(session.context_symbols.contains(&"calculate_sum".to_string()), "应包含被分析的符号名");
+        
+        println!("[World-Class Success] Integration test passed with robust JSON verification.");
     }
 }
