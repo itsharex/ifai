@@ -11,8 +11,8 @@ pub struct SessionPersistence {
 }
 
 impl SessionPersistence {
-    pub fn new() -> Self {
-        let mut path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    pub fn new(project_root: &str) -> Self {
+        let mut path = PathBuf::from(project_root);
         path.push(".ifai");
         path.push("sessions");
         

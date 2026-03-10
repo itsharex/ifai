@@ -1,0 +1,10 @@
+{
+  "id": "session-real-sim",
+  "error_trace": "E0425: cannot find value `unknown` in this scope",
+  "current_step": "修复完成",
+  "retry_count": 0,
+  "fixed": true,
+  "context_symbols": [
+    "calculate_sum"
+  ]
+}
