@@ -1,6 +1,6 @@
 # IfAI
 
-### 🌟 v0.3.9 Highlights: Physical Fidelity & Cognitive Upgrade
+### 🌟 v0.3.10 Highlights: Physical Fidelity & Cognitive Upgrade
 - **Symbol-First Probing Engine**: New "skeleton-first" cognition mode, resolving context overflow for 10KB+ files via millisecond-level physical structure analysis.
 - **Physical Fidelity Reinforcement**: Full storage migration to IndexedDB (bye-bye 5MB LocalStorage limit); fixed large JSON rendering fidelity.
 - **NVIDIA NIM Deep Integration**: Rust-based URL auto-calibration for industrial-grade inference protocols, resolving 404 configuration pitfalls.
