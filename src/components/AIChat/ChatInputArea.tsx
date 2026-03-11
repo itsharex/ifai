@@ -262,27 +262,24 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({ isLoading }) => {
         </AnimatePresence>
 
         {/* 2. 中部输入区 (Textarea 占满宽度) */}
-        <div className="flex flex-col p-2">
+        <div className="flex flex-col p-2 min-h-[60px]">
           <textarea ref={textareaRef} data-testid="chat-input" rows={1} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown} disabled={isLoading} placeholder="问问 IfAI..." className="w-full max-h-48 min-h-[44px] py-2.5 px-3 bg-transparent outline-none text-gray-100 text-[13px] placeholder-gray-500 resize-none leading-relaxed font-semibold transition-all" />
+          
+          {/* 🏆 v0.5.0: 独立状态指示行 (Dedicated Status Row) - 工业级微调 */}
+          <div className="mx-2 mt-1 mb-0.5 px-2 py-1.5 flex items-center gap-3 border-t border-white/[0.03] transition-all duration-300 group-focus-within/input:opacity-100 group-hover/input:opacity-100">
+            <div className="scale-[0.85] origin-left flex-shrink-0">
+              <ToolClassificationIndicator input={input} />
+            </div>
+            {input.length > 0 && (
+              <div className="scale-[0.85] origin-left opacity-50 hover:opacity-100 transition-opacity flex-shrink-0">
+                <ContextHUD text={input} />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 3. 底部集成状态栏 (Status Dashboard) */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-black/20 via-white/[0.02] to-black/20 border-t border-white/5 backdrop-blur-sm min-h-[40px] rounded-b-2xl">
-          {/* 左侧：识别状态与性能指标 */}
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="scale-95 origin-left">
-              <ToolClassificationIndicator input={input} className="flex-shrink-0" />
-            </div>
-            {input.length > 0 && (
-              <>
-                <div className="h-3 w-px bg-white/10 hidden sm:block" />
-                <div className="scale-95 origin-left opacity-60 hover:opacity-100 transition-opacity">
-                  <ContextHUD text={input} />
-                </div>
-              </>
-            )}
-          </div>
-
+        <div className="flex items-center justify-end px-3 py-1.5 bg-gradient-to-r from-black/20 via-white/[0.02] to-black/20 border-t border-white/5 backdrop-blur-sm min-h-[40px] rounded-b-2xl">
           {/* 右侧：操作按钮与发送 */}
           <div className="flex items-center gap-0.5" ref={modelPanelRef}>
             {/* Phase 6: Interaction Descent - Bottom Model Selector */}

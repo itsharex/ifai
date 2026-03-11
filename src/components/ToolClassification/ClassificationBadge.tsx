@@ -41,7 +41,7 @@ export const ClassificationBadge: React.FC<ClassificationBadgeProps> = ({
   if (compact) {
     return (
       <div
-        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-opacity-10 text-xs font-medium ${className}`}
+        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-opacity-10 text-xs font-medium whitespace-nowrap ${className}`}
         style={{
           backgroundColor: `${categoryInfo.color}20`,
           color: categoryInfo.color,
