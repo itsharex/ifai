@@ -113,6 +113,9 @@ const patchedAddMessage = async (message: Message) => {
 };
 
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string, options: any = {}) => {
+    // 🏆 v0.5.0: 物理级激活调试哨兵
+    initDebugEventListeners();
+
     const store = getStoreAdapter();
     const settings = useSettingsStore.getState();
     const threadStore = useThreadStore.getState();
@@ -444,11 +447,17 @@ coreUseChatStore.subscribe((state, prevState) => {
 
 // 🏆 v0.5.0: DebuggerAgent 实时同步引擎 (强同步初始化)
 let isDebugInitialized = false;
-function initDebugEventListeners() {
+export async function initDebugEventListeners() {
     if (isDebugInitialized) return;
-    isDebugInitialized = true;
     
-    console.log('[ChatStore] 📡 Initializing DebuggerAgent Event Listeners (Sync)...');
+    // 检查 Tauri 物理环境
+    if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) {
+        console.warn('[ChatStore] 📡 Tauri internals not found, deferring DebuggerAgent initialization.');
+        return;
+    }
+
+    isDebugInitialized = true;
+    console.log('[ChatStore] 📡 Activating DebuggerAgent Physical Sentry...');
     
     // 1. 监听步骤开始
     listen<{ messageId: string; stepLabel: string; status?: string }>('debug:step:start', (event) => {
@@ -479,10 +488,19 @@ function initDebugEventListeners() {
     listen<{ file: string; original: string; modified: string }>('debug:diff:preview', (event) => {
         const { file, original, modified } = event.payload;
         const inlineStore = (window as any).__inlineEditStore;
+        const fileStore = useFileStore.getState();
+        const rootPath = fileStore.rootPath;
+
+        // 🏆 v0.5.0: 物理级路径纠偏 (Normalize Path)
+        let normalizedPath = file;
+        if (rootPath && normalizedPath.startsWith(rootPath)) {
+            normalizedPath = normalizedPath.replace(rootPath, '').replace(/^\/+/, '');
+        }
+
         if (inlineStore) {
             inlineStore.setState({
                 isInlineEditVisible: true,
-                currentFilePath: file,
+                currentFilePath: normalizedPath,
                 originalCode: original,
                 modifiedCode: modified,
                 pivoStage: 'implement'
