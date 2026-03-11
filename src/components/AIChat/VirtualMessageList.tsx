@@ -52,22 +52,31 @@ export const VirtualMessageList: React.FC<VirtualMessageListProps> = ({
     count: visibleMessages.length,
     getScrollElement: () => scrollElementRef.current,
     estimateSize: () => 150, // 估算每条消息高度
-    overscan: 3, // 额外渲染上下各 3 条消息（减少白屏）
-    // 流式输出 或 有待处理工具调用时禁用虚拟滚动
-    enabled: visibleMessages.length >= 15 && !isLoading && !hasPendingToolCalls,
+    overscan: 5, // 额外渲染上下各 5 条消息（减少白屏）
+    // v0.3.9: 始终启用虚拟滚动，除非消息极少，不再因加载状态禁用，防止闪屏
+    enabled: visibleMessages.length >= 10,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
 
-  // 自动滚动到底部（流式输出时）
+  // 🏆 v0.3.9: 物理级智能粘性滚动 (Smart Sticky Scroll)
   useEffect(() => {
-    if ((isLoading || hasPendingToolCalls) && scrollElementRef.current) {
-      scrollElementRef.current.scrollTop = scrollElementRef.current.scrollHeight;
-    }
-  }, [visibleMessages, isLoading, hasPendingToolCalls]);
+    const el = scrollElementRef.current;
+    if (!el || !isLoading) return;
 
-  // 条件渲染：短对话、正在加载、或有待处理工具调用时使用普通列表
-  if (visibleMessages.length < 15 || isLoading || hasPendingToolCalls) {
+    // 阈值检测：如果距离底部小于 50px，视为粘性状态
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+
+    if (isAtBottom) {
+      // 使用 requestAnimationFrame 确保在 DOM 更新后执行滚动
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+    }
+  }, [visibleMessages.length, isLoading, hasPendingToolCalls]);
+
+  // v0.3.9: 取消全量卸载分支，保持组件稳定性，仅在极短对话时使用简单渲染
+  if (visibleMessages.length < 10) {
     return (
       <div className="space-y-4" style={{ contain: 'layout style paint' }}>
         {visibleMessages.map((message) => (
@@ -78,15 +87,16 @@ export const VirtualMessageList: React.FC<VirtualMessageListProps> = ({
             onReject={onReject}
             onOpenFile={onOpenFile}
             onOpenComposer={onOpenComposer}
-            isStreaming={isLoading && message.role === 'assistant'}
+            isStreaming={isLoading && message.role === 'assistant' && message.id === visibleMessages[visibleMessages.length - 1]?.id}
           />
         ))}
       </div>
     );
   }
 
-  // 虚拟滚动渲染（长对话 + 非流式状态 + 无待处理工具调用）
+  // 虚拟滚动渲染（长对话）
   return (
+
     <div
       ref={localRef}
       style={{

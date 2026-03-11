@@ -248,22 +248,49 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
                 if (rawArgsStr) try { finalArgs = { ...finalArgs, ...JSON.parse(rawArgsStr) }; } catch {}
 
                 // 🏆 PIVO 3.0: 物理级影子参数注入 (Shadow Parameter Hydration)
-                // 针对 agent_read_file，如果 AI 忘记传路径，自动补全为当前活跃文件
-                if (latestToolCall.tool === 'agent_read_file' && !finalArgs.rel_path && !finalArgs.path) {
+                // 针对 agent_read_file 和 agent_write_file，如果 AI 忘记传路径，自动补齐为当前活跃文件或任务目标
+                const isFilePathMissing = !finalArgs.path && !finalArgs.rel_path && !finalArgs.file_path;
+                const isFileTool = ['agent_read_file', 'agent_write_file', 'agent_replace', 'agent_insert_code'].includes(latestToolCall.tool);
+
+                if (isFileTool && isFilePathMissing) {
                     const fileState = useFileStore.getState();
                     const activeFileId = fileState.activeFileId;
                     const activeFile = activeFileId ? fileState.openedFiles.find(f => f.id === activeFileId) : null;
-                    const fallbackPath = activeFile?.path;
+                    const rootPath = fileState.rootPath;
+                    
+                    // 优先级 1: 尝试从 PIVO 任务树中获取目标路径 (针对 Implement 任务)
+                    const pivoStore = (window as any).__pivoStore;
+                    const currentTasks = pivoStore?.getState()?.taskTrees[messageId];
+                    const taskPath = currentTasks?.find((t: any) => t.target_path && t.status !== 'success')?.target_path;
+
+                    // 优先级 2: 活跃编辑器路径
+                    let fallbackPath = taskPath || activeFile?.path;
                     
                     if (fallbackPath) {
-                        console.log(`[ChatStore] 💧 Shadow Hydration: Injected path "${fallbackPath}" into ${latestToolCall.tool}`);
-                        finalArgs.rel_path = fallbackPath;
-                        // 同步回 toolCall 对象以保持 UI 显示一致
-                        (latestToolCall as any).args = finalArgs;
-                    } else {
-                        // 实在没招了，才走静默报错逻辑
+                        // 🏆 v0.3.9: 物理级路径纠偏 (Path Sanitization)
+                        // 如果是绝对路径，且位于当前项目内，则物理剥离根路径，转为相对路径
+                        if (rootPath && fallbackPath.startsWith(rootPath)) {
+                            console.log(`[ChatStore] 🛡️ Path Sanitization: Converting absolute path to relative for ${latestToolCall.tool}`);
+                            fallbackPath = fallbackPath.replace(rootPath, '').replace(/^\/+/, '');
+                        }
+
+                        console.log(`[ChatStore] 💧 Shadow Hydration: Injected relative path "${fallbackPath}" into ${latestToolCall.tool}`);
+                        // 兼容多种参数名
+                        if (latestToolCall.tool === 'agent_read_file') {
+                            finalArgs.rel_path = fallbackPath;
+                            finalArgs.path = fallbackPath; // 双向兼容
+                        } else {
+                            finalArgs.path = fallbackPath;
+                            finalArgs.file_path = fallbackPath; // 双向兼容
+                        }
+                        
+                        // 🔥 重要：同步回 toolCall 对象以保持 UI 显示一致
+                        (latestToolCall as any).args = { ...finalArgs };
+                    } else if (latestToolCall.tool === 'agent_read_file') {
+                        // 只有读取操作且实在没招了，才走静默报错逻辑
                         console.warn(`[ChatStore] 🛡️ Shadow Hydration failed: No active file found.`);
                         const silentError = { success: false, content: "[Error] rel_path is required but was not provided. Please retry with target file path.", error: "Missing mandatory parameter: rel_path" };
+                        // ... 其余逻辑保持不变
                         
                         coreUseChatStore.setState(s => ({
                             messages: s.messages.map(m => m.id === messageId ? {
@@ -306,6 +333,15 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
                         } : tc)
                     } : m)
                 }));
+
+                // 🏆 v0.3.9: 物理级主动刷新资源管理器
+                // 如果是写入类工具且成功，立即触发刷新，不完全依赖异步订阅者
+                const isWritingTool = ['agent_write_file', 'agent_replace', 'agent_insert_code', 'agent_delete_file', 'bash', 'agent_bash', 'agent_execute_command'].includes(latestToolCall.tool);
+                if (result.success && isWritingTool) {
+                    console.log(`[ChatStore] 🔄 Tool "${latestToolCall.tool}" success, triggering immediate file tree refresh.`);
+                    useFileStore.getState().refreshFileTreeDebounced();
+                }
+
                 coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: result.content || result.error || "", tool_call_id: toolCallId });
                 if (!options?.skipContinue && result.success) {
                     const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
@@ -358,12 +394,15 @@ coreUseChatStore.subscribe((state, prevState) => {
     if (!currentTasks || currentTasks.length === 0) return;
 
     const hasSuccessfulWrite = lastMessage.toolCalls?.some(tc => 
-        (tc.tool === 'agent_write_file' || tc.tool === 'agent_replace') && 
+        (tc.tool === 'agent_write_file' || tc.tool === 'agent_replace' || tc.tool === 'agent_insert_code' || tc.tool === 'agent_delete_file') && 
         (tc.status === 'completed' || (tc.status as any) === 'executed')
     );
     if (hasSuccessfulWrite) {
         const implTask = currentTasks.find((t: any) => t.task_type === 'Implement' && t.status !== 'success');
         if (implTask) pivoStore.getState().updateTaskStatus(lastMessage.id, implTask.id, 'success');
+        
+        // 🔥 v0.3.9: 物理级文件树自动同步
+        useFileStore.getState().refreshFileTreeDebounced();
     }
 
     const hasSuccessfulVerify = lastMessage.toolCalls?.some(tc => 

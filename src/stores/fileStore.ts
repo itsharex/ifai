@@ -58,6 +58,7 @@ interface FileState {
   refreshFileTree: () => Promise<void>;
   refreshFileTreeDebounced: () => void;
   refreshFileTreePreserveExpanded: (expandedNodes: Set<string>) => Promise<Set<string>>;
+  clearProjectState: () => void;
   toggleExpandedNode: (nodeId: string) => void;
   setExpandedNodes: (nodes: Set<string>) => void;
   setSelectedNodeIds: (ids: string[]) => void;
@@ -570,6 +571,11 @@ export const useFileStore = create<FileState>()(
       },
       
       setRootPath: async (path) => {
+        const oldPath = get().rootPath;
+        if (path !== oldPath) {
+          get().clearProjectState();
+        }
+        
         set({ rootPath: path });
 
         // Auto-initialize RAG index when project is opened
@@ -766,6 +772,31 @@ export const useFileStore = create<FileState>()(
         // This prevents file tree from collapsing when refreshing (e.g., after approving file write)
         const { expandedNodes } = get();
         await get().refreshFileTreePreserveExpanded(expandedNodes);
+      },
+
+      clearProjectState: () => {
+        console.log('[FileStore] 🧹 Clearing project state (Workspace Isolation)');
+        set({
+          openedFiles: [],
+          activeFileId: null,
+          selectedNodeIds: [],
+          lastSelectedNodeId: null,
+          expandedNodes: new Set(),
+          allFilePaths: [],
+          gitStatuses: new Map(),
+        });
+        
+        // v0.3.5: 清理全局索引
+        if (typeof window !== "undefined") { 
+            (window as any).__IFAI_ALL_FILES__ = []; 
+            
+            // 🏆 v0.3.9: 物理级清理 PIVO 任务树，防止跨项目状态泄露 (State Leak)
+            const pivoStore = (window as any).__pivoStore;
+            if (pivoStore && pivoStore.setState) {
+                console.log('[FileStore] 🌳 Cleaning up PIVO task trees...');
+                pivoStore.setState({ taskTrees: {} });
+            }
+        }
       },
 
       // Debounced version of refreshFileTree - useful for rapid successive refreshes
