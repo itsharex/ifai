@@ -170,67 +170,65 @@ export class StreamingResponseController {
           setTimeout(() => coreUseChatStore.setState({ isLoading: false }), 50);
       }
 
+      // 🏆 PIVO 3.0: 精准物理引用锁定 - 仅更新当前活跃消息，保护历史消息引用
       sessionData.buffer = sessionData.buffer.map((m: any) => {
-        if (m.id === assistantMsgId) {
-          const newMsg: Message = { ...m, isStreaming: true };
-          if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
+        if (m.id !== assistantMsgId) return m; // 物理保留历史引用，防止 React 冗余重绘
+
+        const newMsg: Message = { ...m, isStreaming: true };
+        if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
+        
+        if (textChunk) {
+          const prevContent = String(newMsg.content || '');
           
-          if (textChunk) {
-            const prevContent = String(newMsg.content || '');
-            
-            // 🏆 PIVO 3.0: 工业级消重算法 (物理级消除乱码)
-            // A. 计算完全重叠部分
-            let overlapIdx = 0;
-            const checkLimit = Math.min(prevContent.length, textChunk.length, 50); 
-            for (let i = 1; i <= checkLimit; i++) {
-                if (prevContent.endsWith(textChunk.substring(0, i))) {
-                    overlapIdx = i;
-                }
-            }
-            
-            let cleanChunk = textChunk.substring(overlapIdx);
-            
-            // B. 🚀 物理增强：检测“交叉错位叠加” (防突变乱码)
-            // 如果 cleanChunk 的前几个字符在 prevContent 的末尾高频出现，则进一步截断
-            if (cleanChunk.length > 3 && prevContent.length > 10) {
-                const tail = prevContent.slice(-15);
-                const chunkHead = cleanChunk.slice(0, 5);
-                // 如果头部的 3 个字符在尾部都找得到，极大概率是错位重发
-                let matchCount = 0;
-                for (const char of chunkHead) {
-                    if (tail.includes(char)) matchCount++;
-                }
-                if (matchCount >= 3) {
-                    console.warn(`[Streaming] 🛡️ High-entropy overlap detected, potential garbled text blocked: "${cleanChunk}"`);
-                    // 尝试寻找 cleanChunk 中第一个不在 tail 里的字符作为真实起点
-                    let realStart = 0;
-                    for (let j = 0; j < cleanChunk.length; j++) {
-                        if (!tail.includes(cleanChunk[j])) {
-                            realStart = j;
-                            break;
-                        }
-                    }
-                    cleanChunk = cleanChunk.substring(realStart);
-                }
-            }
-            
-            if (cleanChunk.length > 0) {
-                newMsg.content = prevContent + cleanChunk;
-                (newMsg as any).contentSegments.push({ 
-                    type: 'text', 
-                    order: (newMsg as any).contentSegments.length, 
-                    timestamp: Date.now(), 
-                    content: cleanChunk, 
-                    startPos: prevContent.length, 
-                    endPos: newMsg.content.length 
-                });
-                InlineSyncService.syncState("", "", cleanChunk);
-            }
+          // 🏆 PIVO 3.0: 工业级消重算法 (物理级消除乱码)
+          let overlapIdx = 0;
+          const checkLimit = Math.min(prevContent.length, textChunk.length, 50); 
+          for (let i = 1; i <= checkLimit; i++) {
+              if (prevContent.endsWith(textChunk.substring(0, i))) {
+                  overlapIdx = i;
+              }
           }
-          if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
-          return newMsg;
+          
+          let cleanChunk = textChunk.substring(overlapIdx);
+          
+          // B. 🚀 物理增强：检测“交叉错位叠加” (防突变乱码)
+          if (cleanChunk.length > 3 && prevContent.length > 10) {
+              const tail = prevContent.slice(-15);
+              const chunkHead = cleanChunk.slice(0, 5);
+              
+              const isTechnicalWord = /^[a-zA-Z0-9\-\/._]+$/.test(cleanChunk) && cleanChunk.length < 10;
+              let matchCount = 0;
+              for (const char of chunkHead) {
+                  if (tail.includes(char)) matchCount++;
+              }
+              
+              if (matchCount >= 3 && !isTechnicalWord) {
+                  let realStart = 0;
+                  for (let j = 0; j < cleanChunk.length; j++) {
+                      if (!tail.includes(cleanChunk[j])) {
+                          realStart = j;
+                          break;
+                      }
+                  }
+                  cleanChunk = cleanChunk.substring(realStart);
+              }
+          }
+          
+          if (cleanChunk.length > 0) {
+              newMsg.content = prevContent + cleanChunk;
+              (newMsg as any).contentSegments.push({ 
+                  type: 'text', 
+                  order: (newMsg as any).contentSegments.length, 
+                  timestamp: Date.now(), 
+                  content: cleanChunk, 
+                  startPos: prevContent.length, 
+                  endPos: newMsg.content.length 
+              });
+              InlineSyncService.syncState("", "", cleanChunk);
+          }
         }
-        return m;
+        if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
+        return newMsg;
       });
       this.requestRender(assistantMsgId);
     }
