@@ -468,16 +468,16 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
 
     // 🔥 FIX v0.4.0: 智能内容预处理 - 提取思考内容
     const { thinkingText, contentWithoutThinking } = React.useMemo(() => {
-        const content = typeof displayContent === 'string' ? displayContent : '';
-        const thinkingMatch = content.match(/^_\(([^)]+)\)_/);
+        const content = typeof message.content === 'string' ? message.content : (Array.isArray(message.content) ? message.content.map(p => p.type === 'text' ? p.text : '').join('') : '');
+        const thinkingMatch = String(content || '').match(/^_\(([^)]+)\)_/);
         if (thinkingMatch) {
             return {
-                thinkingText: thinkingMatch[1],
-                contentWithoutThinking: content.replace(/^_\([^)]+\)_\s*/, '')
+                thinkingText: String(thinkingMatch[1]),
+                contentWithoutThinking: String(content).replace(/^_\([^)]+\)_\s*/, '')
             };
         }
-        return { thinkingText: null, contentWithoutThinking: content };
-    }, [displayContent]);
+        return { thinkingText: null, contentWithoutThinking: String(content || '') };
+    }, [message.content]);
     // Parse segments from string content (for non-multi-modal or fallback)
     const stringSegments = React.useMemo(() => {
         // Use contentWithoutThinking instead of raw displayContent
@@ -593,10 +593,10 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
             if (seg.type === 'text') {
                 const last = mergedTextResult[mergedTextResult.length - 1];
                 if (last && last.type === 'text') {
-                    last.content = (last.content || '') + (seg.content || '');
+                    last.content = String(last.content || '') + String(seg.content || '');
                     last.timestamp = seg.timestamp;
                 } else {
-                    mergedTextResult.push({ ...seg });
+                    mergedTextResult.push({ ...seg, content: String(seg.content || '') });
                 }
             } else {
                 mergedTextResult.push(seg);
@@ -803,15 +803,21 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                             </div>
                         ) : message.multiModalContent && message.multiModalContent.length > 0 ? (
                             <div className="space-y-2">
-                                {message.multiModalContent.map((part, index) => renderContentPart(part, index, effectivelyStreaming))}
+                                {message.multiModalContent.map((part, index) => {
+                                    // 🏆 PIVO 3.0: 物理级防护，防止多模态对象直接进入渲染流
+                                    if (part.type === 'text') {
+                                        return renderContentPart({ ...part, text: String(part.text || '') }, index, effectivelyStreaming);
+                                    }
+                                    return renderContentPart(part, index, effectivelyStreaming);
+                                })}
                             </div>
-                        ) : sortedSegments ? (
+                        ) : mergedSegments ? (
                             <div className="space-y-3">
                                 {mergedSegments.map((segment: any, index: number) => {
                                     if (segment.type === 'text') {
-                                        const content = segment.content;
-                                        // 🏆 PIVO 3.0: 物理级渲染防护 - 拒绝非字符串对象进入 React Tree
-                                        if (!content || typeof content !== 'string') return null;
+                                        const content = String(segment.content || '');
+                                        // 🏆 PIVO 3.0: 拒绝非字符串对象
+                                        if (!content) return null;
                                         
                                         if (effectivelyStreaming) return renderMarkdownWithoutHighlight(content, `streaming-text-${index}`);
                                         return renderContentPart({ type: 'text', text: content }, index, effectivelyStreaming);

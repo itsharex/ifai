@@ -118,10 +118,56 @@ export class StreamingResponseController {
           if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
           
           if (textChunk) {
-            const prevContent = newMsg.content || '';
-            newMsg.content = prevContent + textChunk;
-            (newMsg as any).contentSegments.push({ type: 'text', order: (newMsg as any).contentSegments.length, timestamp: Date.now(), content: textChunk, startPos: prevContent.length, endPos: newMsg.content.length });
-            InlineSyncService.syncState("", "", textChunk);
+            const prevContent = String(newMsg.content || '');
+            
+            // 🏆 PIVO 3.0: 工业级消重算法 (物理级消除乱码)
+            // A. 计算完全重叠部分
+            let overlapIdx = 0;
+            const checkLimit = Math.min(prevContent.length, textChunk.length, 50); 
+            for (let i = 1; i <= checkLimit; i++) {
+                if (prevContent.endsWith(textChunk.substring(0, i))) {
+                    overlapIdx = i;
+                }
+            }
+            
+            let cleanChunk = textChunk.substring(overlapIdx);
+            
+            // B. 🚀 物理增强：检测“交叉错位叠加” (防突变乱码)
+            // 如果 cleanChunk 的前几个字符在 prevContent 的末尾高频出现，则进一步截断
+            if (cleanChunk.length > 3 && prevContent.length > 10) {
+                const tail = prevContent.slice(-15);
+                const chunkHead = cleanChunk.slice(0, 5);
+                // 如果头部的 3 个字符在尾部都找得到，极大概率是错位重发
+                let matchCount = 0;
+                for (const char of chunkHead) {
+                    if (tail.includes(char)) matchCount++;
+                }
+                if (matchCount >= 3) {
+                    console.warn(`[Streaming] 🛡️ High-entropy overlap detected, potential garbled text blocked: "${cleanChunk}"`);
+                    // 尝试寻找 cleanChunk 中第一个不在 tail 里的字符作为真实起点
+                    let realStart = 0;
+                    for (let j = 0; j < cleanChunk.length; j++) {
+                        if (!tail.includes(cleanChunk[j])) {
+                            realStart = j;
+                            break;
+                        }
+                    }
+                    cleanChunk = cleanChunk.substring(realStart);
+                }
+            }
+            
+            if (cleanChunk.length > 0) {
+                newMsg.content = prevContent + cleanChunk;
+                (newMsg as any).contentSegments.push({ 
+                    type: 'text', 
+                    order: (newMsg as any).contentSegments.length, 
+                    timestamp: Date.now(), 
+                    content: cleanChunk, 
+                    startPos: prevContent.length, 
+                    endPos: newMsg.content.length 
+                });
+                InlineSyncService.syncState("", "", cleanChunk);
+            }
           }
           if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
           return newMsg;
@@ -222,9 +268,10 @@ export class StreamingResponseController {
         isStreaming: false,
         toolCalls: m.toolCalls?.map((tc: any) => {
           let fArgs = tc.args || {};
-          if (Object.keys(fArgs).length === 0 && (tc as any).function?.arguments) {
+          if ((!fArgs || Object.keys(fArgs).length === 0) && (tc as any).function?.arguments) {
             try { fArgs = JSON.parse((tc as any).function.arguments); } catch (e) {}
           }
+          // 🏆 PIVO 3.0: 物理保留所有字段（包括 result），仅更新 isPartial 和 args
           return { ...tc, isPartial: false, args: fArgs };
         })
     }));
@@ -258,6 +305,11 @@ export class StreamingResponseController {
     // 🏆 PIVO 3.0: 物理闭环
     // 只有在没有后续任务且流真正结束时，才允许启动 UI 自洁
     console.log(`[PIVO-SIGNAL] 🏁 Stream Finalized: ${id}`);
+    
+    // 🏆 PIVO 3.0: 物理管线存根 (用于 E2E 消除竞态)
+    if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
+    (window as any).__PIVO_SIGNALS__['ifainew:stream-finished'] = { timestamp: Date.now(), id };
+
     window.dispatchEvent(new CustomEvent('ifainew:stream-finished', { detail: { id } }));
     
     InlineSyncService.handleResponseFinish({ isRealFinish: !hasFollowUp });

@@ -146,7 +146,13 @@ const initMonacoEnvironment = async () => {
 
 // 暴露 Store 到全局以便调试 (延迟执行)
 const exposeDebugStores = () => {
-  if (import.meta.env.DEV || (window as any).__E2E__) {
+  const isE2E = (window as any).__E2E__ || import.meta.env.VITE_TEST_ENV === 'e2e' || window.location.search.includes('e2e=true');
+  
+  if (import.meta.env.DEV || isE2E) {
+    // 🏆 PIVO 3.0: 物理信号存根初始化
+    (window as any).__PIVO_SIGNALS__ = (window as any).__PIVO_SIGNALS__ || {};
+    (window as any).__APP_READY__ = true;
+
     // 使用 requestIdleCallback 确保在浏览器空闲时执行
     const runExpose = () => {
       Promise.all([
@@ -159,10 +165,11 @@ const exposeDebugStores = () => {
         import('./utils/tokenCounter'),
         import('./stores/pivoStore')
       ]).then(([skill, file, chat, settings, layout, editor, tokens, pivo]) => {
+        const chatStore = chat.useChatStore || (chat as any).default;
         const stores = {
           skillStore: skill.useSkillStore,
           fileStore: file.useFileStore,
-          chatStore: chat.useChatStore,
+          chatStore: chatStore,
           settingsStore: settings.useSettingsStore,
           layoutStore: layout.useLayoutStore,
           editorStore: editor.useEditorStore,
@@ -174,17 +181,29 @@ const exposeDebugStores = () => {
         };
         (window as any).__DEBUG__ = { ...(window as any).__DEBUG__, ...stores };
         
-        // 🔥 为 E2E 测试直接暴露
-        if ((window as any).__E2E__ || (window as any).process?.env?.NODE_ENV === 'test') {
-          (window as any).__chatStore = chat.useChatStore;
-          (window as any).__pivoStore = pivo.usePivoStore;
-        }
+        // 🔥 为 E2E 测试直接暴露 (高保真 Authoritative 访问)
+        (window as any).useChatStore = chatStore;
+        (window as any).__chatStore = chatStore;
+        (window as any).useFileStore = file.useFileStore;
+        (window as any).useSettingsStore = settings.useSettingsStore;
+        (window as any).useThreadStore = (chat as any).useThreadStore || stores.chatStore; // 兼容性路径
+        (window as any).useLayoutStore = layout.useLayoutStore;
+        (window as any).__pivoStore = pivo.usePivoStore;
         
-        console.log('[Main] 🛠️  Core Stores and Utils exposed to window.__DEBUG__ (Idle)');
+        // 🏆 PIVO 3.0: 物理状态机快照暴露 (用于 AuthoritativeWait)
+        Object.defineProperty(window, '__CHAT_STORE_STATE__', {
+            get: () => chatStore.getState(),
+            configurable: true
+        });
+
+        console.log('[Main] 🛠️  Core Stores and Utils exposed for Authoritative E2E (Immediate)');
       });
     };
 
-    if ('requestIdleCallback' in window) {
+    // 🏆 PIVO 3.0: E2E 环境下禁止延迟，必须立即加载 Bridge
+    if (isE2E) {
+        runExpose();
+    } else if ('requestIdleCallback' in window) {
       window.requestIdleCallback(runExpose);
     } else {
       setTimeout(runExpose, 1000);

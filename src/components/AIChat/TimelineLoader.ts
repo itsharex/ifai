@@ -175,7 +175,14 @@ export class TimelineLoader {
    * 单个消息转换为事件
    */
   private messageToEvent(message: Message): TimelineEvent {
-    const content = typeof message.content === 'string' ? message.content : '';
+    // 🏆 PIVO 3.0: 增强型字符串化逻辑，支持多模态 ContentPart[]
+    let content = '';
+    if (typeof message.content === 'string') {
+        content = message.content;
+    } else if (Array.isArray(message.content)) {
+        content = message.content.map(p => p.type === 'text' ? p.text : '[image]').join('');
+    }
+    
     const codeInfo = this.extractCodeInfo(content);
 
     return {

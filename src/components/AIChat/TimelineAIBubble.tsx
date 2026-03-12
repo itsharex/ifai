@@ -45,9 +45,10 @@ export const TimelineAIBubble: React.FC<TimelineAIBubbleProps> = ({
   };
 
   // 截断内容预览（取前100个字符）
-  const truncateContent = (text: string, maxLength = 100): string => {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + '...';
+  const truncateContent = (text: any, maxLength = 100): string => {
+    const safeText = String(text || '');
+    if (safeText.length <= maxLength) return safeText;
+    return safeText.substring(0, maxLength) + '...';
   };
 
   return (
@@ -84,6 +85,7 @@ export const TimelineAIBubble: React.FC<TimelineAIBubbleProps> = ({
       >
         {/* 消息预览 */}
         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+          {/* 🏆 PIVO 3.0: 物理级渲染防护 */}
           {truncateContent(content)}
         </p>
 
@@ -115,7 +117,8 @@ export const TimelineAIBubble: React.FC<TimelineAIBubbleProps> = ({
             data-testid="timeline-code-block"
           >
             <pre className="text-xs text-gray-300 font-mono">
-              <code>{content}</code>
+              {/* 🏆 PIVO 3.0: 物理级防护，防止渲染对象崩溃 */}
+              <code>{String(content)}</code>
             </pre>
           </div>
         )}

@@ -69,7 +69,8 @@ export const TimelineUserBubble: React.FC<TimelineUserBubbleProps> = ({
       >
         {/* 消息预览 */}
         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words" data-testid="bubble-content">
-          {content}
+          {/* 🏆 PIVO 3.0: 物理级防护 */}
+          {String(content)}
         </p>
 
         {/* 代码块标识 */}

@@ -422,12 +422,18 @@ class ThreadPersistenceService {
       }
 
       console.log(`[ThreadPersistence] ✅ Restored ${threads.length} threads with ${totalMessages} total messages`);
-      
+
+      // 🏆 PIVO 3.0: 物理管线存根 (用于 E2E 消除竞态)
+      if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
+      (window as any).__PIVO_SIGNALS__['ifainew:persistence-hydrated'] = { 
+          timestamp: Date.now(), 
+          data: { threadCount: threads.length, messageCount: totalMessages } 
+      };
+
       // 🏆 PIVO 3.0: 物理管线信号 - 持久化层已就绪
-      window.dispatchEvent(new CustomEvent('ifainew:persistence-hydrated', { 
-        detail: { threadCount: threads.length, messageCount: totalMessages } 
-      }));
-    } catch (error) {
+      window.dispatchEvent(new CustomEvent('ifainew:persistence-hydrated', {
+        detail: { threadCount: threads.length, messageCount: totalMessages }
+      }));    } catch (error) {
       console.error('[ThreadPersistence] ❌ Failed to restore from storage:', error);
     }
   }

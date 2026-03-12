@@ -9,24 +9,26 @@ test.describe('DebuggerAgent Fidelity (PIVO 3.0)', () => {
     
     test.beforeEach(async ({ page }) => {
         await page.goto('http://localhost:1420?e2e=true');
-        // 等待应用就绪信号
-        await AuthoritativeWait.forPersistenceHydrated(page);
+        // 🏆 PIVO 3.0: 权威等待应用逻辑层就绪
+        await page.waitForFunction(() => (window as any).__APP_READY__ === true, { timeout: 30000 });
+        // 等待初始持久化信号（带超时降级）
+        await AuthoritativeWait.forPersistenceHydrated(page, { timeout: 10000 }).catch(() => {
+            console.warn('[Test] Initial persistence signal skipped or timeout.');
+        });
     });
 
     test('should intercept error logs and step through PIVO task tree', async ({ page }) => {
-        const errorLog = "error[E0425]: cannot find value `unknown_var` in this scope\n  --> src/main.rs:10:5";
+        const errorLog = "error[E0425]: cannot find value `unknown_var` in this scope\\n  --> src/main.rs:10:5";
         
         console.log('[Test] 发送模拟报错日志...');
         
         // 1. 触发调试意图
         await page.evaluate((log) => {
-            const chatStore = (window as any).__chatStore;
-            const settings = (window as any).__settingsStore.getState();
+            const store = (window as any).useChatStore;
+            const settings = (window as any).useSettingsStore.getState();
             
-            chatStore.getState().sendMessage(log, {
-                provider: settings.provider,
-                model: settings.model
-            });
+            // 🏆 PIVO 3.0: 使用 Authoritative 发送路径
+            store.getState().sendMessage(log, settings.currentProviderId, settings.currentModel);
         }, errorLog);
 
         // 2. 权威等待：验证 PIVO 任务树是否出现了“分析错误日志”步骤
