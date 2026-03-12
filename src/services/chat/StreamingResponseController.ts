@@ -49,18 +49,28 @@ export class StreamingResponseController {
     }
 
     const hasUnclosedTool = msg.toolCalls?.some(tc => tc.isPartial);
-    if (hasUnclosedTool) {
-        console.log(`[Controller] 🔄 Physical Auto-Continue: ${id}`);
+    const hasContent = !!msg.content && String(msg.content).trim().length > 0;
+    const hasAnyTool = msg.toolCalls && msg.toolCalls.length > 0;
+
+    // 🏆 PIVO 3.0: 物理级自愈决策引擎
+    // 情况 A: 有未闭合工具 -> 物理续写
+    // 情况 B: 没有任何内容且没有工具 (启动假死) -> 物理重试
+    if (hasUnclosedTool || (!hasContent && !hasAnyTool)) {
+        const reason = hasUnclosedTool ? "Unclosed tool" : "Startup stall";
+        console.log(`[Controller] 🔄 Physical Auto-Continue (${reason}): ${id}`);
+        
         const settings = useSettingsStore.getState();
         const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
         if (providerConfig) {
-            (coreUseChatStore.getState() as any).generateResponse(state.messages, providerConfig);
-            // 重置心跳防止重复触发
+            // 重置心跳防止进入死循环
             const s = this.activeStreams.get(id);
             if (s) s.lastHeartbeat = Date.now();
+            
+            (coreUseChatStore.getState() as any).generateResponse(state.messages, providerConfig);
         }
     } else {
-        console.log(`[Controller] 🛡️ Physical Finalize: ${id}`);
+        // 情况 C: 有内容且已闭合 -> 正常终结
+        console.log(`[Controller] 🛡️ Physical Finalize (Normal stop): ${id}`);
         this.finalizeStream(id);
     }
   }
