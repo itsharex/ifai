@@ -6,6 +6,7 @@ import { SentinelService } from '../SentinelService';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { ApprovalPipeline } from '../../utils/approvalPipeline';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { eventBus } from '../../core/events/GlobalEventBus';
 
 export class StreamingResponseController {
   private static instance: StreamingResponseController;
