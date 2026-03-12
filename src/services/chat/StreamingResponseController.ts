@@ -18,7 +18,52 @@ export class StreamingResponseController {
     lastHeartbeat: number;
   }> = new Map();
 
-  private constructor() {}
+  private constructor() {
+    // 🏆 PIVO 3.0: 物理级自愈心跳监测器
+    if (typeof window !== 'undefined') {
+        setInterval(() => {
+            const now = Date.now();
+            this.activeStreams.forEach((session, id) => {
+                // 只有处于活跃流状态（有 unlistenFns 且没结束）才检测
+                if (session.unlistenFns && session.unlistenFns.length > 0) {
+                    if (now - (session.lastHeartbeat || 0) > 5000) {
+                        console.warn(`[Controller] 🛡️ Sentinel detected stall for session: ${id}`);
+                        // 物理唤醒自愈
+                        this.triggerPhysicalSelfHealing(id);
+                    }
+                }
+            });
+        }, 2000);
+    }
+  }
+
+  private async triggerPhysicalSelfHealing(id: string) {
+    const state = coreUseChatStore.getState();
+    const msg = state.messages.find(m => m.id === id);
+    if (!msg || !(msg as any).isStreaming) return;
+
+    // 存根信号用于自愈和测试
+    if (typeof window !== 'undefined') {
+        if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
+        (window as any).__PIVO_SIGNALS__['ifainew:self-healing-triggered'] = { id, timestamp: Date.now() };
+    }
+
+    const hasUnclosedTool = msg.toolCalls?.some(tc => tc.isPartial);
+    if (hasUnclosedTool) {
+        console.log(`[Controller] 🔄 Physical Auto-Continue: ${id}`);
+        const settings = useSettingsStore.getState();
+        const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+        if (providerConfig) {
+            (coreUseChatStore.getState() as any).generateResponse(state.messages, providerConfig);
+            // 重置心跳防止重复触发
+            const s = this.activeStreams.get(id);
+            if (s) s.lastHeartbeat = Date.now();
+        }
+    } else {
+        console.log(`[Controller] 🛡️ Physical Finalize: ${id}`);
+        this.finalizeStream(id);
+    }
+  }
 
   static getInstance(): StreamingResponseController {
     if (!StreamingResponseController.instance) {
@@ -107,7 +152,9 @@ export class StreamingResponseController {
 
     if (textChunk || toolCallUpdate) {
       sessionData.lastHeartbeat = Date.now();
+
       if (!sessionData.hasReceivedChunk) {
+
           sessionData.hasReceivedChunk = true;
           setTimeout(() => coreUseChatStore.setState({ isLoading: false }), 50);
       }
@@ -181,6 +228,17 @@ export class StreamingResponseController {
   private requestRender(id: string) {
     const s = this.activeStreams.get(id);
     if (!s || s.renderRequested) return;
+    
+    // 🏆 PIVO 3.0: 物理哨兵自愈判定
+    const now = Date.now();
+    if (now - (s.lastHeartbeat || 0) > 5000) {
+        console.warn(`[Controller] 🛡️ Physical stall detected: ${id}`);
+        // 🏆 物理级跨沙箱信号 (localStorage 是最稳健的桥梁)
+        if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem('ifainew:stream-stalled', JSON.stringify({ id, timestamp: now }));
+        }
+    }
+
     const currentThreadId = useThreadStore.getState().activeThreadId || 'default';
     if (s.threadId !== currentThreadId) return; 
 

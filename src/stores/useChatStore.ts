@@ -115,7 +115,6 @@ const patchedAddMessage = async (message: Message) => {
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string, options: any = {}) => {
     // 🏆 v0.5.0: 物理级激活调试哨兵
     initDebugEventListeners();
-
     const store = getStoreAdapter();
     const settings = useSettingsStore.getState();
     const threadStore = useThreadStore.getState();
@@ -215,16 +214,33 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
 // 🏆 v0.3.8: 终极哨兵 (权威判定版)
 coreUseChatStore.subscribe((state, prevState) => {
-    const lastMsg = state.messages[state.messages.length - 1];
-    if (lastMsg && lastMsg.role === 'assistant' &&  (lastMsg as any).isStreaming && !state.isLoading) {
-        // 🏆 PIVO 3.0: 权威物理判定
-        // 哨兵不再根据 Store 的陈旧快照做猜测，而是直接询问控制器的实时心跳
-        if (!StreamingResponseController.getInstance().isStreamStuck(lastMsg.id)) return;
+    const lastMsg = state.messages.length > 0 ? state.messages[state.messages.length - 1] : null;
+    if (!lastMsg) return;
 
-        console.log('[Sentinel] 🛡️ Authoritative stuck state detected, force finalizing:', lastMsg.id);
-        coreUseChatStore.setState(s => ({
-            messages: s.messages.map(m => m.id === lastMsg.id ? { ...m, isStreaming: false } : m)
-        }));
+    if (lastMsg && lastMsg.role === 'assistant' &&  (lastMsg as any).isStreaming && !state.isLoading) {
+        // 🏆 PIVO 3.0: 物理哨兵主动探测
+        // 只有当超过 5s 没有新数据块到达时，才物理触发自愈
+        const controller = StreamingResponseController.getInstance();
+        if (controller.isStreamStuck(lastMsg.id)) {
+             console.warn(`[ChatStore] 🛡️ Active probe detected stall: ${lastMsg.id}`);
+             
+             const hasUnclosedTool = lastMsg.toolCalls?.some(tc => tc.isPartial);
+             if (hasUnclosedTool) {
+                 const settings = (window as any).__settingsStore?.getState();
+                 const providerConfig = settings?.providers.find((p: any) => p.id === settings.currentProviderId);
+                 if (providerConfig) {
+                     console.log('[ChatStore] 🔄 Active Self-healing: Triggering Auto-Continue.');
+                     // 存根自愈触发状态用于 E2E
+                     if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
+                     (window as any).__PIVO_SIGNALS__['ifainew:self-healing-triggered'] = { id: lastMsg.id, timestamp: Date.now() };
+                     
+                     (coreUseChatStore.getState() as any).generateResponse(state.messages, providerConfig);
+                 }
+             } else {
+                 console.log('[ChatStore] 🛡️ Active Sentinel: Healthy but quiet. Finalizing.');
+                 controller.finalizeStream(lastMsg.id);
+             }
+        }
     }
 });
 
@@ -385,6 +401,10 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
     return await originalApproveToolCall(messageId, toolCallId);
 };
 
+import { eventBus } from '../core/events/GlobalEventBus';
+
+
+
 coreUseChatStore.setState({
     sendMessage: patchedSendMessage,
     addMessage: patchedAddMessage,
@@ -474,6 +494,42 @@ coreUseChatStore.subscribe((state, prevState) => {
 });
 
 // 🏆 v0.5.0: DebuggerAgent 实时同步引擎 (强同步初始化)
+
+// 🏆 PIVO 3.0: 物理级流式自愈中枢
+let isHealingInitialized = false;
+export function initPivoSelfHealing() {
+    if (isHealingInitialized || typeof window === 'undefined') return;
+    isHealingInitialized = true;
+    
+    console.log('[ChatStore] 🛡️ Activating PIVO 3.0 Self-Healing Sentinel...');
+    eventBus.on('stream:stalled', async (payload: { id: string }) => {
+        console.warn();
+        
+        if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
+        (window as any).__PIVO_SIGNALS__['ifainew:self-healing-triggered'] = { id: payload.id, timestamp: Date.now() };
+
+        const state = coreUseChatStore.getState();
+        const msg = (state.messages || []).find(m => m.id === payload.id);
+        
+        if (msg && (msg as any).isStreaming) {
+            const hasUnclosedTool = msg.toolCalls?.some(tc => tc.isPartial);
+            if (hasUnclosedTool) {
+                console.log();
+                const settings = (window as any).__settingsStore?.getState();
+                const providerConfig = settings?.providers.find((p: any) => p.id === settings.currentProviderId);
+                
+                if (providerConfig) {
+                    (coreUseChatStore.getState() as any).generateResponse(state.messages, providerConfig);
+                }
+            } else {
+                console.log();
+                const { StreamingResponseController } = await import('../services/chat/StreamingResponseController');
+                StreamingResponseController.getInstance().finalizeStream(payload.id);
+            }
+        }
+    });
+}
+
 let isDebugInitialized = false;
 export async function initDebugEventListeners() {
     if (isDebugInitialized) return;
@@ -486,8 +542,11 @@ export async function initDebugEventListeners() {
 
     isDebugInitialized = true;
     console.log('[ChatStore] 📡 Activating DebuggerAgent Physical Sentry...');
+
     
+
     // 1. 监听步骤开始
+
     listen<{ messageId: string; stepLabel: string; status?: string }>('debug:step:start', (event) => {
         const { messageId, stepLabel, status } = event.payload;
         const pivoStore = (window as any).__pivoStore;
@@ -537,6 +596,7 @@ export async function initDebugEventListeners() {
     });
 }
 
+initPivoSelfHealing();
 initDebugEventListeners();
 
 export const useChatStore = coreUseChatStore;
