@@ -38,5 +38,10 @@ export function getApprovalCoordinator(): ApprovalCoordinator {
   const symbolTools = ["get_file_symbols", "agent_list_functions"];
   symbolTools.forEach(tool => instance!.registerExecutor(tool, symbolExecutor));
 
+  // 🏆 物理级实时 Shell 校准 (解决 agent_execute_command 缺失问题)
+  const shellExecutor = new ShellExecutor(invoke);
+  const shellTools = ["bash", "agent_bash", "agent_execute_command", "execute_bash_command", "agent_run_shell_command", "agent_run_shell"];
+  shellTools.forEach(tool => instance!.registerExecutor(tool, shellExecutor));
+
   return instance;
 }
