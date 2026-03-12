@@ -501,9 +501,11 @@ export function initPivoSelfHealing() {
     if (isHealingInitialized || typeof window === 'undefined') return;
     isHealingInitialized = true;
     
-    console.log('[ChatStore] 🛡️ Activating PIVO 3.0 Self-Healing Sentinel...');
+    console.log('[ChatStore] 🛡️ Activating PIVO 3.0 Physical Sentry...');
+    
+    // 1. 订阅流停滞事件 (自愈)
     eventBus.on('stream:stalled', async (payload: { id: string }) => {
-        console.warn();
+        console.warn(`[ChatStore] 🛡️ Self-healing triggered: ${payload.id}`);
         
         if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
         (window as any).__PIVO_SIGNALS__['ifainew:self-healing-triggered'] = { id: payload.id, timestamp: Date.now() };
@@ -514,18 +516,29 @@ export function initPivoSelfHealing() {
         if (msg && (msg as any).isStreaming) {
             const hasUnclosedTool = msg.toolCalls?.some(tc => tc.isPartial);
             if (hasUnclosedTool) {
-                console.log();
                 const settings = (window as any).__settingsStore?.getState();
                 const providerConfig = settings?.providers.find((p: any) => p.id === settings.currentProviderId);
-                
                 if (providerConfig) {
+                    console.log(`[ChatStore] 🔄 Auto-Continue physically for session ${payload.id}`);
                     (coreUseChatStore.getState() as any).generateResponse(state.messages, providerConfig);
                 }
             } else {
-                console.log();
+                console.log(`[ChatStore] 🛡️ Sentinel: Session ${payload.id} healthy but quiet. Finalizing.`);
                 const { StreamingResponseController } = await import('../services/chat/StreamingResponseController');
                 StreamingResponseController.getInstance().finalizeStream(payload.id);
             }
+        }
+    });
+
+    // 2. 订阅流结束事件 (异步任务拆解，解决 flushSync 冲突)
+    eventBus.on('ifainew:stream-finished', async (payload: { id: string }) => {
+        console.log(`[ChatStore] 🌳 Async Task Breakdown: ${payload.id}`);
+        const state = coreUseChatStore.getState();
+        const lastMsg = (state.messages || []).find(m => m.id === payload.id);
+        
+        if (lastMsg) {
+            const { MessageLifecycleService } = await import('../services/chat/MessageLifecycleService');
+            MessageLifecycleService.triggerTaskBreakdown(lastMsg, state.messages);
         }
     });
 }
