@@ -338,8 +338,8 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     }, [isStreaming, message.id]);
     // Count pending tool calls for batch actions
     const pendingCount = React.useMemo(() => {
-        if (!message.toolCalls) return 0;
-        return message.toolCalls.filter(tc => tc.status === 'pending' && !tc.isPartial).length;
+        if (!message.toolCalls || !Array.isArray(message.toolCalls)) return 0;
+        return message.toolCalls.filter(tc => tc && tc.status === 'pending' && !tc.isPartial).length;
     }, [message.toolCalls]);
     const handleApproveAll = () => {
         const store = useChatStore.getState() as any;
