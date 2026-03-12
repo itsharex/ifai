@@ -244,7 +244,6 @@ export class StreamingResponseController {
     const now = Date.now();
     if (now - (s.lastHeartbeat || 0) > 5000) {
         console.warn(`[Controller] 🛡️ Physical stall detected: ${id}`);
-        // 🏆 物理级跨沙箱信号 (localStorage 是最稳健的桥梁)
         if (typeof window !== 'undefined' && window.localStorage) {
             localStorage.setItem('ifainew:stream-stalled', JSON.stringify({ id, timestamp: now }));
         }
@@ -253,11 +252,14 @@ export class StreamingResponseController {
     const currentThreadId = useThreadStore.getState().activeThreadId || 'default';
     if (s.threadId !== currentThreadId) return; 
 
+    // 🔥 物理锁：确保节流周期内只有一个待执行任务
     s.renderRequested = true;
     setTimeout(() => {
-      if (this.activeStreams.has(id)) {
-        coreUseChatStore.setState({ messages: [...s.buffer] as any });
-        s.renderRequested = false;
+      // 🏆 物理二次检查：确保会话依然活跃且处于同一线程
+      const session = this.activeStreams.get(id);
+      if (session && session.renderRequested) {
+        coreUseChatStore.setState({ messages: [...session.buffer] as any });
+        session.renderRequested = false;
       }
     }, 80);
   }
