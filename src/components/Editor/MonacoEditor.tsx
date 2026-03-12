@@ -921,14 +921,29 @@ ${textBefore}[CURSOR]${textAfter}
       }
       
       const position = editorRef.current.getPosition();
-      if (position) {
-        // 在当前行展开预览区域
+      const model = editorRef.current.getModel();
+      
+      if (position && model) {
+        // 🏆 PIVO 3.0: 物理智能高度适配逻辑
         const codeLines = modifiedCode ? modifiedCode.split('\n').length : 0;
-        // 如果代码还没出来，给个基础高度显示加载中
-        const lineCount = Math.min(Math.max(codeLines + 2, 6), 25);
+        
+        // 检测是否是“全量替换”模式 (包含 package 或 import 且 行数多)
+        const isFullFile = modifiedCode?.includes('package ') || modifiedCode?.includes('import ') || codeLines > 50;
+        
+        // 计算物理高度：全量替换给固定高，局部建议给动态高
+        let lineCount = 0;
+        if (isFullFile) {
+            lineCount = 15; // 给一个稳健的滚动视口
+        } else {
+            lineCount = Math.min(Math.max(codeLines + 3, 6), 25);
+        }
+        
         const displayContent = modifiedCode || '✨ AI 正在构思并生成代码...';
         
-        diffZoneRef.current.show(position.lineNumber, lineCount, displayContent);
+        // 如果是全量替换且行数极多，锚定在第一行展示，防止在文件末尾重叠
+        const targetLine = isFullFile ? 0 : position.lineNumber;
+        
+        diffZoneRef.current.show(targetLine, lineCount, displayContent);
       }
     } else {
       diffZoneRef.current?.hide();
