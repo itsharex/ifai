@@ -3,8 +3,9 @@
  */
 
 // 判断是否为商业版
-// 通过 Vite define 注入或通过 mode 判断
+// 通过 Vite define 注入或通过 mode 判断，并支持运行时物理覆盖 (针对 E2E)
 export const IS_COMMERCIAL = 
+    (typeof window !== 'undefined' && (window as any).__IFAI_EDITION__ === 'commercial') ||
     (process.env as any).APP_EDITION === 'commercial' || 
     import.meta.env.MODE === 'commercial';
 

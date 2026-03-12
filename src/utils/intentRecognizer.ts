@@ -81,6 +81,13 @@ const PATTERNS: IntentPattern[] = [
         regex: /(?:重构|优化|升级)(.+?)(?=架构|系统|模块|$)/i,
         minConfidence: 0.65,
         category: 'write'
+    },
+    {
+        type: '/refactor',
+        keywords: ['错误', '报错', '分析', '修复', 'error', 'debug', 'fix'],
+        regex: /(?:帮我)?(?:分析|修复|解决)(?:错误|报错|bug|error|异常)?/i,
+        minConfidence: 0.8,
+        category: 'write'
     }
 ];
 

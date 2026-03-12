@@ -10,33 +10,32 @@ export class AuthoritativeWait {
      */
     static async forChatStateInternal(
         page: Page,
-        predicate: string | ((state: any) => boolean),
-        options: { timeout?: number } = {}
+        predicate: string | ((state: any, args?: any) => boolean),
+        options: { timeout?: number, args?: any } = {}
     ) {
-        const { timeout = 30000 } = options;
+        const { timeout = 30000, args = {} } = options;
         const startTime = Date.now();
         
         // 🏆 PIVO 3.0: 物理级自动序列化
         const logicStr = typeof predicate === 'function' ? predicate.toString() : predicate;
 
         while (Date.now() - startTime < timeout) {
-            const isMatch = await page.evaluate((logic) => {
+            const isMatch = await page.evaluate(({ logic, params }) => {
                 const state = (window as any).__CHAT_STORE_STATE__;
                 if (!state) return false;
                 
                 try {
-                    // 如果 logic 是函数字符串 (state => ...)，直接执行
+                    // 如果 logic 是函数字符串，直接执行并传入参数
                     if (logic.trim().startsWith('(') || logic.trim().startsWith('state') || logic.trim().startsWith('async') || logic.trim().includes('=>')) {
                         const fn = eval(logic);
-                        return fn(state);
+                        return fn(state, params);
                     }
-                    // 否则作为简易表达式执行
-                    const fn = new Function('state', `return (${logic})`);
-                    return fn(state);
+                    const fn = new Function('state', 'args', `return (${logic})`);
+                    return fn(state, params);
                 } catch (e) {
                     return false;
                 }
-            }, logicStr);
+            }, { logic: logicStr, params: args });
 
             if (isMatch) return;
             await page.waitForTimeout(500);
@@ -82,6 +81,31 @@ export class AuthoritativeWait {
      */
     static async forStreamComplete(page: Page, options?: { timeout?: number }) {
         await this.forPipelineSignal(page, 'ifainew:stream-finished', options);
+    }
+
+    /**
+     * 🏆 PIVO 3.0: 等待任务树中出现特定任务
+     */
+    static async forPivoTask(page: Page, taskLabel: string, options: { timeout?: number } = {}) {
+        const { timeout = 20000 } = options;
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < timeout) {
+            const found = await page.evaluate((label) => {
+                // 安全获取 Pivo Store
+                const store = (window as any).__pivoStore;
+                if (!store) return false;
+                
+                const tasks = store.getState().taskTrees;
+                return Object.values(tasks).some((tree: any) => 
+                    tree.some((t: any) => t.label.includes(label))
+                );
+            }, taskLabel);
+
+            if (found) return;
+            await page.waitForTimeout(500);
+        }
+        throw new Error(`[AuthoritativeWait] Timeout waiting for Pivo Task: ${taskLabel}`);
     }
 
     /**

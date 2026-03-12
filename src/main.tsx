@@ -151,7 +151,6 @@ const exposeDebugStores = () => {
   if (import.meta.env.DEV || isE2E) {
     // 🏆 PIVO 3.0: 物理信号存根初始化
     (window as any).__PIVO_SIGNALS__ = (window as any).__PIVO_SIGNALS__ || {};
-    (window as any).__APP_READY__ = true;
 
     // 使用 requestIdleCallback 确保在浏览器空闲时执行
     const runExpose = () => {
@@ -182,21 +181,26 @@ const exposeDebugStores = () => {
         (window as any).__DEBUG__ = { ...(window as any).__DEBUG__, ...stores };
         
         // 🔥 为 E2E 测试直接暴露 (高保真 Authoritative 访问)
-        (window as any).useChatStore = chatStore;
-        (window as any).__chatStore = chatStore;
+        // 🏆 PIVO 3.0: 必须挂载原始 Store 引用，而不是 Hook
+        const actualChatStore = chatStore;
+        const actualThreadStore = (chat as any).useThreadStore || chatStore;
+        
+        (window as any).useChatStore = actualChatStore;
+        (window as any).__chatStore = actualChatStore;
         (window as any).useFileStore = file.useFileStore;
         (window as any).useSettingsStore = settings.useSettingsStore;
-        (window as any).useThreadStore = (chat as any).useThreadStore || stores.chatStore; // 兼容性路径
+        (window as any).useThreadStore = actualThreadStore;
         (window as any).useLayoutStore = layout.useLayoutStore;
         (window as any).__pivoStore = pivo.usePivoStore;
         
         // 🏆 PIVO 3.0: 物理状态机快照暴露 (用于 AuthoritativeWait)
         Object.defineProperty(window, '__CHAT_STORE_STATE__', {
-            get: () => chatStore.getState(),
+            get: () => actualChatStore.getState(),
             configurable: true
         });
 
         console.log('[Main] 🛠️  Core Stores and Utils exposed for Authoritative E2E (Immediate)');
+        (window as any).__APP_READY__ = true;
       });
     };
 

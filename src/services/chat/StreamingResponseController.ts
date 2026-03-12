@@ -306,11 +306,25 @@ export class StreamingResponseController {
     // 只有在没有后续任务且流真正结束时，才允许启动 UI 自洁
     console.log(`[PIVO-SIGNAL] 🏁 Stream Finalized: ${id}`);
     
+    // 触发任务拆解 (PIVO 3.0 物理核心步进)
+    try {
+        const { MessageLifecycleService } = await import('./MessageLifecycleService');
+        const state = coreUseChatStore.getState();
+        const lastMsg = state.messages.find(m => m.id === id);
+        if (lastMsg) {
+            MessageLifecycleService.triggerTaskBreakdown(lastMsg, state.messages);
+        }
+    } catch (e) {
+        console.error('[Streaming] ❌ Failed to trigger task breakdown:', e);
+    }
+
     // 🏆 PIVO 3.0: 物理管线存根 (用于 E2E 消除竞态)
     if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
     (window as any).__PIVO_SIGNALS__['ifainew:stream-finished'] = { timestamp: Date.now(), id };
 
     window.dispatchEvent(new CustomEvent('ifainew:stream-finished', { detail: { id } }));
+    // 发送旧版 finish 事件以保证兼容性
+    window.dispatchEvent(new CustomEvent(`${id}_finish`, { detail: { payload: 'done' } }));
     
     InlineSyncService.handleResponseFinish({ isRealFinish: !hasFollowUp });
     this.cleanup(id);

@@ -22,15 +22,35 @@ test.describe('PIVO 3.0 Storage Recovery Fidelity', () => {
   test('@fidelity Should persist and recover Thread History via Physical Signal', async ({ page }) => {
     const uniqueTitle = 'Thread-Recovery-' + Math.random().toString(36).substring(7);
     
-    // 1. 模拟生成数据
+    // 1. 模拟生成数据 (物理注入)
     await page.evaluate(async (title) => {
-        const { useThreadStore } = await import('../../src/stores/threadStore');
-        // 创建一个 Thread
-        useThreadStore.getState().createThread({ title });
+        const ts = (window as any).useThreadStore;
+        if (ts && typeof ts.setState === 'function') {
+            const id = `thread_e2e_${Date.now()}`;
+            ts.setState((s: any) => ({
+                threads: { 
+                    ...s.threads, 
+                    [id]: { 
+                        id, title, status: 'active', 
+                        createdAt: Date.now(), updatedAt: Date.now(), lastActiveAt: Date.now(),
+                        messageCount: 0, agentTasks: [], hasUnreadActivity: false, tags: [], pinned: false
+                    } 
+                }
+            }));
+        } else {
+            throw new Error('[E2E] useThreadStore.setState not found');
+        }
     }, uniqueTitle);
 
-    console.log(`[Pivo3] Thread "${uniqueTitle}" created, awaiting persistence...`);
-    await page.waitForTimeout(2000); 
+    // 🏆 PIVO 3.0: 权威等待 Store 更新完成 (通过物理参数注入)
+    await AuthoritativeWait.forChatStateInternal(page, (state: any, params: any) => {
+        const ts = (window as any).useThreadStore;
+        const threads = ts?.getState().threads || {};
+        return Object.values(threads).some((t: any) => t.title === params.title);
+    }, { timeout: 10000, args: { title: uniqueTitle } });
+
+    console.log(`[Pivo3] Thread "${uniqueTitle}" confirmed in Store, allowing IO sync...`);
+    await page.waitForTimeout(3000); // 留出物理磁盘写入时间
 
     // 2. 🚀 刷新页面 (模拟重启)
     console.log('[Pivo3] Refreshing page...');

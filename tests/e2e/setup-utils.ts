@@ -548,11 +548,34 @@ export async function setupE2ETestEnvironment(
       return JSON.stringify(result, null, 2);
     };
 
+    // 🏆 PIVO 3.0: 物理级商业版全功能激活
+    (window as any).__IFAI_EDITION__ = 'commercial';
+    (window as any).__E2E__ = true;
+    (window as any).isE2E = true;
+
     const mockInvoke = async (cmd: string, args?: any) => {
         // 🔥 Debug: Log all invoke calls
         console.log('[E2E Mock] 📞 invoke called:', { cmd, argsKeys: args ? Object.keys(args) : 'no args' });
 
         if (cmd === 'get_git_statuses') return [];
+        
+        // 🏆 PIVO 3.0: 物理任务拆解 Mock
+        if (cmd === 'pivo_generate_tasks') {
+            const intent = String(args.intent || '').toLowerCase();
+            console.log('[E2E Mock] Generating PIVO tasks for intent:', intent);
+            
+            if (intent.includes('error') || intent.includes('分析错误')) {
+                return [
+                    { id: 't1', label: '分析错误日志', status: 'success', order: 0 },
+                    { id: 't2', label: '生成原子补丁方案', status: 'success', order: 1 }
+                ];
+            }
+            return [
+                { id: 't1', label: '分析需求', status: 'success', order: 0 },
+                { id: 't2', label: '物理执行', status: 'pending', order: 1 }
+            ];
+        }
+
         if (cmd === 'plugin:fs|read_dir') return [
             { name: 'App.tsx', isDirectory: false, isFile: true },
             { name: 'main.tsx', isDirectory: false, isFile: true },
