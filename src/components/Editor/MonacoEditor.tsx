@@ -836,6 +836,7 @@ ${textBefore}[CURSOR]${textAfter}
                 const noFocus = !editor.hasTextFocus(); 
                 const isNotDirty = !file.isDirty;
 
+                // 🔥 物理加固：如果不是 dirty，说明是外部同步（如 Agent 写入），强制刷新
                 if (noFocus || isNotDirty) {
                     console.log('[MonacoEditor] 🔄 Mandatory Physical Sync:', { file: file.path });
                     editor.setValue(targetValue);

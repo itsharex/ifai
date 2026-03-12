@@ -337,12 +337,40 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
                     } : m)
                 }));
 
-                // 🏆 v0.3.9: 物理级主动刷新资源管理器
+                // 🏆 v0.3.9: 物理级主动刷新资源管理器与编辑器同步
                 // 如果是写入类工具且成功，立即触发刷新，不完全依赖异步订阅者
                 const isWritingTool = ['agent_write_file', 'agent_replace', 'agent_insert_code', 'agent_delete_file', 'bash', 'agent_bash', 'agent_execute_command'].includes(latestToolCall.tool);
                 if (result.success && isWritingTool) {
                     console.log(`[ChatStore] 🔄 Tool "${latestToolCall.tool}" success, triggering immediate file tree refresh.`);
-                    useFileStore.getState().refreshFileTreeDebounced();
+                    const fileState = useFileStore.getState();
+                    fileState.refreshFileTreeDebounced();
+
+                    // 🏆 PIVO 3.0: 实时编辑器内容物理同步
+                    // 如果改动的是当前已打开的文件，强制同步内存中的 content，触发 Monaco 物理刷新
+                    const targetPath = finalArgs.path || finalArgs.rel_path || finalArgs.file_path;
+                    if (targetPath) {
+                        const openedFile = fileState.openedFiles.find(f => 
+                            f.path === targetPath || 
+                            (fileState.rootPath && f.path === `${fileState.rootPath}/${targetPath}`)
+                        );
+                        if (openedFile) {
+                            // 尝试从 JSON 响应中提取 newContent (支持 Diff 协议)
+                            let updatedContent = "";
+                            try {
+                                const parsed = JSON.parse(result.content || "");
+                                updatedContent = parsed.newContent || finalArgs.content || "";
+                            } catch (e) {
+                                // 兜底：如果不是 JSON，直接使用 AI 写入的内容
+                                updatedContent = finalArgs.content || "";
+                            }
+
+                            if (updatedContent) {
+                                console.log(`[ChatStore] ⚡ Physical Sync: Updating opened file "${targetPath}" content.`);
+                                fileState.updateFileContent(openedFile.id, updatedContent);
+                                fileState.setFileDirty(openedFile.id, false); // 磁盘已同步，重置为非 dirty
+                            }
+                        }
+                    }
                 }
 
                 coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: result.content || result.error || "", tool_call_id: toolCallId });
