@@ -176,29 +176,34 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   };
 
   // Detect user manual scroll
+  const lastHeightRef = useRef(0);
   const handleScroll = () => {
     if (!scrollContainerRef.current) return;
 
     const container = scrollContainerRef.current;
-    const THRESHOLD = 50; // 更加严格的底部判定阈值
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < THRESHOLD;
+    const currentHeight = container.scrollHeight;
+    const THRESHOLD = 100; // 提升物理感应阈值
+    const isNearBottom = currentHeight - container.scrollTop - container.clientHeight < THRESHOLD;
 
-    if (!isNearBottom) {
-      // 🏆 PIVO 3.0: 物理级静默锁定
+    // 🏆 PIVO 3.0: 物理几何指纹判定
+    // 如果高度发生了变化，说明是内容增长，此时我们应优先保全粘性滚动
+    const isContentGrowing = Math.abs(currentHeight - lastHeightRef.current) > 10;
+    lastHeightRef.current = currentHeight;
+
+    if (!isNearBottom && !isContentGrowing) {
+      // 只有在内容没有剧烈变动，且用户离开底部时，才触发锁定
       isUserScrolling.current = true;
 
       if (scrollTimeoutRef.current) {
         window.clearTimeout(scrollTimeoutRef.current);
       }
 
-      // 延长锁定期限，确保用户阅读体验
       scrollTimeoutRef.current = window.setTimeout(() => {
         if (container.scrollHeight - container.scrollTop - container.clientHeight < THRESHOLD) {
           isUserScrolling.current = false;
         }
       }, 3000);
-    } else {
-      // 用户主动滑到底部：立即解除锁定
+    } else if (isNearBottom) {
       isUserScrolling.current = false;
       if (scrollTimeoutRef.current) {
         window.clearTimeout(scrollTimeoutRef.current);

@@ -51,59 +51,38 @@ export const VirtualMessageList: React.FC<VirtualMessageListProps> = ({
   const virtualizer = useVirtualizer({
     count: visibleMessages.length,
     getScrollElement: () => scrollElementRef.current,
-    estimateSize: () => 150, // 估算每条消息高度
-    overscan: 5, // 额外渲染上下各 5 条消息（减少白屏）
-    // v0.3.9: 始终启用虚拟滚动，除非消息极少，不再因加载状态禁用，防止闪屏
-    enabled: visibleMessages.length >= 10,
+    estimateSize: () => 180, // 物理级初始估算
+    overscan: 8, // 增加缓冲区以应对高频滚动
+    // v0.3.9: 始终启用虚拟滚动，实现物理级结构一致性，根除闪屏
+    enabled: true,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
 
-  // 🏆 v0.3.9: 物理级智能粘性滚动 (Smart Sticky Scroll)
+  // 🏆 v0.3.9: 物理级智能粘性滚动 (Smart Sticky Scroll) - 优化对齐逻辑
   useEffect(() => {
     const el = scrollElementRef.current;
     if (!el || !isLoading) return;
 
-    // 阈值检测：如果距离底部小于 50px，视为粘性状态
-    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+    // 增加物理判定灵敏度
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
 
     if (isAtBottom) {
-      // 使用 requestAnimationFrame 确保在 DOM 更新后执行滚动
+      // 🏆 PIVO 3.0: 物理级强制对齐
       requestAnimationFrame(() => {
         el.scrollTop = el.scrollHeight;
       });
     }
   }, [visibleMessages.length, isLoading, hasPendingToolCalls]);
 
-  // v0.3.9: 取消全量卸载分支，保持组件稳定性，仅在极短对话时使用简单渲染
-  if (visibleMessages.length < 10) {
-    return (
-      <div className="space-y-4" style={{ contain: 'layout style paint' }}>
-        {visibleMessages.map((message) => (
-          <MessageItem
-            key={message.id}
-            message={message as any}
-            onApprove={onApprove}
-            onReject={onReject}
-            onOpenFile={onOpenFile}
-            onOpenComposer={onOpenComposer}
-            isStreaming={isLoading && message.role === 'assistant' && message.id === visibleMessages[visibleMessages.length - 1]?.id}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  // 虚拟滚动渲染（长对话）
+  // 虚拟滚动全量渲染（物理移除 length < 10 分支，保持 DOM 树静止）
   return (
-
     <div
       ref={localRef}
       style={{
-        // 移除 h-full 和 overflow: hidden，让父容器控制滚动
-        // 虚拟滚动通过父容器的滚动来工作
         contain: 'layout style paint',
         willChange: 'transform',
+        width: '100%',
       }}
     >
       <div
