@@ -100,10 +100,19 @@ export async function selectMessagesForContext(
         selected.sort((a, b) => a.index - b.index);
         const windowSelected: typeof selected = [];
         
-        // 必保系统消息
+        // 🏆 PIVO 3.0: 必保系统消息和最后一条用户消息
         const systemMessages = selected.filter(s => s.message.role === 'system');
         windowSelected.push(...systemMessages);
         currentTokens += systemMessages.reduce((sum, s) => sum + s.estimatedTokens, 0);
+
+        // 找回最后一条用户消息
+        const userMessages = selected.filter(s => s.message.role === 'user');
+        const lastUserMessage = userMessages.length > 0 ? userMessages[userMessages.length - 1] : null;
+        
+        if (lastUserMessage && !windowSelected.some(s => s.index === lastUserMessage.index)) {
+            windowSelected.push(lastUserMessage);
+            currentTokens += lastUserMessage.estimatedTokens;
+        }
 
         const windowIndices = new Set(windowSelected.map(s => s.index));
         for (let i = selected.length - 1; i >= 0; i--) {
@@ -116,6 +125,18 @@ export async function selectMessagesForContext(
             }
         }
         selected = windowSelected;
+    }
+
+    // 🏆 PIVO 3.0: 物理级安全检查 - 确保最终结果中至少包含一条 User 消息 (如果有的话)
+    const hasUser = selected.some(s => s.message.role === 'user');
+    if (!hasUser) {
+        const allUserMessages = scored.filter(s => s.message.role === 'user');
+        if (allUserMessages.length > 0) {
+            // 强行找回最后一条 User 消息
+            const lastUser = allUserMessages[allUserMessages.length - 1];
+            console.log(`[ContextFilter] 🛡️ Safety Recovery: Re-injecting last user message at index ${lastUser.index}`);
+            selected.push(lastUser);
+        }
     }
 
     return selected.sort((a, b) => a.index - b.index).map(s => s.message);

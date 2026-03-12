@@ -204,11 +204,22 @@ export class StreamingResponseController {
           parsed.content = contentMatch[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
       }
       
-      const pathMatch = argsStr.match(/"rel_path"\s*:\s*"((?:[^"\\]|\\.)*)/s);
+      const pathMatch = argsStr.match(/"(?:rel_)?path"\s*:\s*"((?:[^"\\]|\\.)*)/s);
       if (pathMatch) {
           let val = pathMatch[1];
-          if (val.includes('"')) val = val.substring(0, val.indexOf('"'));
+          const remainingStr = argsStr.substring(argsStr.indexOf(val) + val.length);
+          if (remainingStr.startsWith('"')) {
+              // 闭合
+          }
           parsed.rel_path = val;
+          parsed.path = val;
+      }
+
+      // 🏆 v0.5.0: 增强型命令提取 - 支持 cmd 和 command，使用 /s 模式以匹配多行内容
+      const commandMatch = argsStr.match(/"(?:command|cmd)"\s*:\s*"((?:[^"\\]|\\.)*)/s);
+      if (commandMatch) {
+          parsed.command = commandMatch[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+          parsed.cmd = parsed.command; // 双向兼容
       }
     }
     return parsed;
@@ -268,8 +279,13 @@ export class StreamingResponseController {
         isStreaming: false,
         toolCalls: m.toolCalls?.map((tc: any) => {
           let fArgs = tc.args || {};
-          if ((!fArgs || Object.keys(fArgs).length === 0) && (tc as any).function?.arguments) {
-            try { fArgs = JSON.parse((tc as any).function.arguments); } catch (e) {}
+          if ((!fArgs || Object.keys(fArgs).length === 0 || tc.isPartial) && (tc as any).function?.arguments) {
+            try { 
+                fArgs = JSON.parse((tc as any).function.arguments); 
+            } catch (e) {
+                // 🏆 PIVO 3.0: 物理级最后一次挽救 - 强制使用正则提取器
+                fArgs = this.extractPartialArgs((tc as any).function.arguments);
+            }
           }
           // 🏆 PIVO 3.0: 物理保留所有字段（包括 result），仅更新 isPartial 和 args
           return { ...tc, isPartial: false, args: fArgs };
