@@ -317,18 +317,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     // Create a stable reference to expandedBlocks for useCallback
     const expandedBlocksRef = useRef(expandedBlocks);
     expandedBlocksRef.current = expandedBlocks;
-    // Debug: Log message toolCalls on every render (development only)
-    React.useEffect(() => {
-        if (process.env.NODE_ENV === 'development' && message.toolCalls && message.toolCalls.length > 0) {
-            console.log('[MessageItem] Rendering message with toolCalls:', message.id, message.toolCalls.length);
-        }
-    }, [message.toolCalls, message.id]);
-    // Debug: Log when isStreaming changes
-    React.useEffect(() => {
-        if (process.env.NODE_ENV === 'development' && isStreaming && message.role === 'assistant') {
-            console.log('[MessageItem] 🚀 Message is actively streaming:', message.id);
-        }
-    }, [isStreaming, message.id]);
+    // 🏆 PIVO 3.0: 移除冗余渲染日志，确保控制台在流式输出时的极致纯净
     // Count pending tool calls for batch actions
     const pendingCount = React.useMemo(() => {
         if (!message.toolCalls || !Array.isArray(message.toolCalls)) return 0;

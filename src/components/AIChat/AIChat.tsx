@@ -184,30 +184,21 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < THRESHOLD;
 
     if (!isNearBottom) {
-      // 用户离开底部：标记为正在手动滚动
-      // 🔥 FIX v0.4.0: 如果当前正在加载且之前不在滚动状态，则记录起始锁定位置
-      if (!isUserScrolling.current) {
-        console.log('[AIChat] 🔒 Scroll Locked: User moved away from bottom during streaming');
-      }
+      // 🏆 PIVO 3.0: 物理级静默锁定
       isUserScrolling.current = true;
 
       if (scrollTimeoutRef.current) {
         window.clearTimeout(scrollTimeoutRef.current);
       }
 
-      // 延长锁定期限到 3 秒，确保用户有足够时间阅读
+      // 延长锁定期限，确保用户阅读体验
       scrollTimeoutRef.current = window.setTimeout(() => {
-        // 只有当用户真的停留在底部附近时才解除锁定
         if (container.scrollHeight - container.scrollTop - container.clientHeight < THRESHOLD) {
           isUserScrolling.current = false;
-          console.log('[AIChat] 🔓 Scroll Unlocked: User returned to bottom');
         }
       }, 3000);
     } else {
       // 用户主动滑到底部：立即解除锁定
-      if (isUserScrolling.current) {
-        console.log('[AIChat] 🔓 Scroll Unlocked: User manually returned to bottom');
-      }
       isUserScrolling.current = false;
       if (scrollTimeoutRef.current) {
         window.clearTimeout(scrollTimeoutRef.current);
