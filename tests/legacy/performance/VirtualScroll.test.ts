@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useSnippetStore } from '../../src/stores/snippetStore';
-import { TestDataGenerator } from '../../src/utils/testDataGenerator';
+import { useSnippetStore } from '../../../src/stores/snippetStore';
+import { TestDataGenerator } from '../../../src/utils/testDataGenerator';
 
 describe('Virtual Scroll Stress Test', () => {
   beforeEach(async () => {

@@ -75,18 +75,23 @@ describe('Chat Loading State', () => {
     // Capture event listeners
     const eventListeners: Record<string, (event: any) => void> = {};
     listenMock.mockImplementation((event, callback) => {
-      console.log(`[Test] Registered listener for: ${event}`);
       eventListeners[event] = callback;
       return Promise.resolve(() => {});
     });
 
+    // 🏆 PIVO 3.0: 必须使用 FakeTimers
+    vi.useFakeTimers();
+
     // 1. Start request
     const sendPromise = useChatStore.getState().sendMessage('你好', 'test-provider', 'test-model');
     
-    // Check loading state immediately
+    // 允许异步初始化完成（拦截器等）
+    await vi.advanceTimersByTimeAsync(10);
+    
+    // Check loading state
     expect(useChatStore.getState().isLoading).toBe(true);
 
-    await sendPromise; // Wait for invoke to complete (listeners registered)
+    await sendPromise; // Wait for invoke to complete
 
     // Find assistant message ID
     const messages = useChatStore.getState().messages;
@@ -96,16 +101,17 @@ describe('Chat Loading State', () => {
     // 2. Simulate Finish Event
     const finishEventName = `${assistantMsg.id}_finish`;
     const finishCallback = eventListeners[finishEventName];
-    console.log('[Test] finishCallback type:', typeof finishCallback);
-    if (typeof finishCallback === 'function') {
-        console.log('[Test] finishCallback source start:', finishCallback.toString().substring(0, 100));
-    }
     expect(finishCallback).toBeDefined();
 
     await finishCallback({ payload: 'done' });
+    
+    // 前进时间以触发自洁
+    vi.advanceTimersByTime(200);
 
     // 3. Verify loading state is reset
     expect(useChatStore.getState().isLoading).toBe(false);
+    
+    vi.useRealTimers();
   });
 
   it('should reset isLoading to false after stream error', async () => {
@@ -115,8 +121,13 @@ describe('Chat Loading State', () => {
       return Promise.resolve(() => {});
     });
 
-    await useChatStore.getState().sendMessage('你好', 'test-provider', 'test-model');
+    vi.useFakeTimers();
+
+    const sendPromise = useChatStore.getState().sendMessage('你好', 'test-provider', 'test-model');
+    await vi.advanceTimersByTimeAsync(10);
+    
     expect(useChatStore.getState().isLoading).toBe(true);
+    await sendPromise;
 
     const messages = useChatStore.getState().messages;
     const assistantMsg = messages[1];
@@ -126,7 +137,9 @@ describe('Chat Loading State', () => {
     expect(errorCallback).toBeDefined();
 
     await errorCallback({ payload: 'Some Error' });
+    vi.advanceTimersByTime(200);
 
     expect(useChatStore.getState().isLoading).toBe(false);
+    vi.useRealTimers();
   });
 });

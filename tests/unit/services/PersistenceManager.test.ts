@@ -23,13 +23,15 @@ describe('PersistenceManager (TDD)', () => {
         const { get, set } = await import('idb-keyval');
         const testKey = 'ifai-history-session-1';
         const testValue = { messages: [] };
+        const stringifiedValue = JSON.stringify(testValue);
 
-        await manager.setItem(testKey, testValue);
-        expect(set).toHaveBeenCalledWith(testKey, JSON.stringify(testValue));
+        await manager.setItem(testKey, stringifiedValue);
+        expect(set).toHaveBeenCalledWith(testKey, stringifiedValue);
 
-        vi.mocked(get).mockResolvedValue(JSON.stringify(testValue));
+        vi.mocked(get).mockResolvedValue(stringifiedValue);
         const result = await manager.getItem(testKey);
-        expect(result).toEqual(testValue);
+        expect(result).toBe(stringifiedValue);
+        expect(JSON.parse(result!)).toEqual(testValue);
     });
 
     it('should route light config keys to LocalStorage', async () => {
@@ -37,7 +39,7 @@ describe('PersistenceManager (TDD)', () => {
         const testValue = 'dark';
 
         await manager.setItem(testKey, testValue);
-        expect(localStorage.getItem(testKey)).toBe(JSON.stringify(testValue));
+        expect(localStorage.getItem(testKey)).toBe(testValue);
 
         const result = await manager.getItem(testKey);
         expect(result).toBe(testValue);
@@ -46,9 +48,11 @@ describe('PersistenceManager (TDD)', () => {
     it('should handle complex objects correctly in LocalStorage fallback', async () => {
         const testKey = 'ui-state';
         const testValue = { sidebarWidth: 250, open: true };
+        const stringifiedValue = JSON.stringify(testValue);
 
-        await manager.setItem(testKey, testValue);
+        await manager.setItem(testKey, stringifiedValue);
         const result = await manager.getItem(testKey);
-        expect(result).toEqual(testValue);
+        expect(result).toBe(stringifiedValue);
+        expect(JSON.parse(result!)).toEqual(testValue);
     });
 });

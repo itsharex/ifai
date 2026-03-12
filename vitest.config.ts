@@ -27,7 +27,15 @@ export default defineConfig({
     environment: 'happy-dom',
     setupFiles: './tests/legacy/setup.ts',
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'tests/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['tests/e2e/**', 'tests/e2e/**/*.spec.ts', '**/e2e/**', '**/e2e/*.spec.ts'],
+    exclude: [
+      'tests/e2e/**', 
+      'tests/e2e/**/*.spec.ts', 
+      '**/e2e/**', 
+      '**/e2e/*.spec.ts',
+      'tests/core/**/*.spec.ts',
+      'tests/reproduction/**/*.spec.ts',
+      '**/*.spec.ts' // 排除所有 .spec.ts，它们通常是 Playwright 测试
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

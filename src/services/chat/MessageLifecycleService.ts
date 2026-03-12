@@ -177,21 +177,37 @@ export class MessageLifecycleService {
 
   static transformToApiHistory(messages: Message[], options: any) {
     const { isInlineTask, isChinese, msgId, enrichedContent, content } = options;
+    console.log(`[Lifecycle] 🔄 transformToApiHistory: messages.length=${messages.length}, msgId=${msgId}`);
+    
     const prepareMessageContent = (c: any): any => {
         if (Array.isArray(c)) return c;
         return (c || '').replace(/^\[(CHAT|TASK-EXECUTION)\]\s*/, '');
     };
 
+    const lastUserIndex = messages.map(m => m.role).lastIndexOf('user');
+    console.log(`[Lifecycle] 🔍 lastUserIndex: ${lastUserIndex}`);
+
     let msgHistory = messages.map((m, i) => {
         const toolCalls = m.toolCalls?.filter(tc => tc.tool).map(tc => ({ id: tc.id, type: "function", function: { name: tc.tool, arguments: (tc as any).function?.arguments || JSON.stringify(tc.args || {}) } }));
         let mContent = prepareMessageContent(m.content);
-        if (m.role === 'user' && Array.isArray(mContent) && msgId && i === messages.length - 1) {
-            const cached = MessageLifecycleService.multimodalCache.get(msgId);
-            if (cached) mContent = cached;
+        
+        // 🏆 PIVO 3.0: 增强型多模态保真度逻辑
+        // 如果是最后一条用户消息，则尝试从缓存或 enrichedContent 中恢复内容
+        if (i === lastUserIndex && m.role === 'user') {
+            if (Array.isArray(mContent) && msgId) {
+                const cached = MessageLifecycleService.multimodalCache.get(msgId);
+                console.log(`[Lifecycle] 📦 Syncing multimodal content for index ${i}, cached found: ${!!cached}`);
+                if (cached) mContent = cached;
+            } else if (typeof content === 'string' && enrichedContent) {
+                mContent = enrichedContent;
+            }
         }
-        if (i === messages.length - 1 && m.role === 'user' && typeof content === 'string' && enrichedContent) mContent = enrichedContent;
+        
         return { role: m.role, content: mContent, tool_calls: (toolCalls?.length ? toolCalls : undefined), tool_call_id: m.tool_call_id };
     });
+
+    console.log(`[Lifecycle] 📝 msgHistory roles: ${msgHistory.map(m => m.role).join(', ')}`);
+
 
     const inlineInstruction = isInlineTask ? (isChinese ? "\n\n【核心要求】你现在正在进行原位(Inline)代码编辑。请直接调用 agent_write_file 或 agent_replace_text 物理修改用户选中的代码。严禁只给出 Markdown 代码块建议。" : "\n\n[CORE REQUIREMENT] You are performing an In-place (Inline) edit. MUST call agent_write_file or agent_replace_text to physically modify the code. DO NOT just provide code blocks in chat.") : "";
     const PIVO_PROMPT = (isChinese ? `【物理工具箱授权】

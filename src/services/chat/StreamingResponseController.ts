@@ -147,8 +147,29 @@ export class StreamingResponseController {
     }, 80);
   }
 
+  private extractPartialArgs(argsStr: string): any {
+    let parsed: any = {};
+    try { 
+      parsed = JSON.parse(argsStr); 
+    } catch (e) {
+      // 🏆 PIVO 3.0: 鲁棒性正则提取 (支持未闭合 JSON)
+      const contentMatch = argsStr.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)/s);
+      if (contentMatch) {
+          parsed.content = contentMatch[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+      }
+      
+      const pathMatch = argsStr.match(/"rel_path"\s*:\s*"((?:[^"\\]|\\.)*)/s);
+      if (pathMatch) {
+          let val = pathMatch[1];
+          if (val.includes('"')) val = val.substring(0, val.indexOf('"'));
+          parsed.rel_path = val;
+      }
+    }
+    return parsed;
+  }
+
   private processToolCallUpdate(msg: Message, update: any, assistantMsgId: string) {
-    const toolName = update.function?.name || update.tool;
+    const deltaName = update.function?.name || update.tool || '';
     const newArgs = update.function?.arguments || '';
     const existingCalls = msg.toolCalls || [];
     let cid = update.id;
@@ -159,14 +180,13 @@ export class StreamingResponseController {
 
     if (idx !== -1) {
       const tc = existingCalls[idx];
+      // 🏆 PIVO 3.0: 支持碎片化名字拼接 (DeepSeek 风格)
+      const toolName = (tc.tool || '') + deltaName;
       const argsStr = ((tc as any).function?.arguments || '') + newArgs;
-      let parsed = { ...tc.args };
-      try { parsed = JSON.parse(argsStr); } catch (e) {
-        const cMatch = String(argsStr).match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)(?:\\|"?$)/s);
-        if (cMatch) parsed.content = cMatch[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
-      }
+      const parsed = this.extractPartialArgs(argsStr);
+      
       const updated = [...existingCalls];
-      updated[idx] = { ...tc, args: parsed, function: { name: toolName, arguments: argsStr }, isPartial: isPartial } as any;
+      updated[idx] = { ...tc, tool: toolName, args: parsed, function: { name: toolName, arguments: argsStr }, isPartial: isPartial } as any;
       msg.toolCalls = updated;
       if (parsed.content) InlineSyncService.syncState(toolName, parsed.content);
       
@@ -184,13 +204,12 @@ export class StreamingResponseController {
       }
     } else {
       const tid = cid || `call_${crypto.randomUUID()}`;
-      let iArgs: any = {};
-      try { iArgs = newArgs ? JSON.parse(newArgs) : {}; } catch (e) {}
-      const tc = { id: tid, type: 'function', tool: toolName, args: iArgs, function: { name: toolName, arguments: newArgs }, status: 'pending', isPartial: isPartial, index: update.index } as any;
+      const iArgs = this.extractPartialArgs(newArgs);
+      const tc = { id: tid, type: 'function', tool: deltaName, args: iArgs, function: { name: deltaName, arguments: newArgs }, status: 'pending', isPartial: isPartial, index: update.index } as any;
       msg.toolCalls = [...existingCalls, tc];
       if (!(msg as any).contentSegments) (msg as any).contentSegments = [];
       (msg as any).contentSegments.push({ type: 'tool', order: (msg as any).contentSegments.length, timestamp: Date.now(), toolCallId: tid });
-      InlineSyncService.syncState(toolName, "");
+      InlineSyncService.syncState(deltaName, iArgs.content || "");
     }
   }
 

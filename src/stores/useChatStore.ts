@@ -130,6 +130,9 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
     const lifecycleResult = await MessageLifecycleService.interceptSendMessage(content, options, store);
     if (lifecycleResult.shouldStop) return;
 
+    // 🏆 PIVO 3.0: 物理骨架屏锁定 - 立即同步设置 isLoading
+    coreUseChatStore.setState({ isLoading: true });
+
     const { userMsgId, userMessageAdded } = lifecycleResult;
     const providerData = settings.providers.find((p: any) => p.id === providerId);
     const providerConfig = {
@@ -147,7 +150,7 @@ const patchedSendMessage = async (content: string | any[], providerId: string, m
 
     if (!userMessageAdded) {
         const autoApproveTools = typeof content === 'string' && content.includes('[TASK-EXECUTION]');
-        coreUseChatStore.getState().addMessage({
+        await coreUseChatStore.getState().addMessage({
             id: userMsgId, role: 'user', content: displayContent as any,
             // @ts-ignore
             autoApproveTools, isInlineTask: options.isInlineTask, displayLabel: options.displayLabel
@@ -160,9 +163,6 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
     const store = getStoreAdapter();
     const settings = useSettingsStore.getState();
     const assistantMsgId = crypto.randomUUID();
-
-    // 🏆 PIVO 3.0: 物理骨架屏锁定 - 立即同步设置 isLoading
-    coreUseChatStore.setState({ isLoading: true });
 
     SentinelService.scanForUuid(history);
     const { maxContextMessages, enableSmartContextSelection, maxContextTokens } = settings;

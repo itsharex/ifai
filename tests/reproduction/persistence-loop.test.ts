@@ -4,9 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('ifainew-core', () => ({
     useChatStore: {
         getState: vi.fn(() => ({ messages: [] })),
-        setState: vi.fn()
+        setState: vi.fn(),
+        subscribe: vi.fn((cb) => vi.fn()) // 返回取消订阅函数
     },
-    createToolCallDeduplicator: vi.fn(() => ({}))
+    createToolCallDeduplicator: vi.fn(() => ({})),
+    registerStores: vi.fn()
 }));
 
 // Mock useThreadStore
@@ -22,6 +24,11 @@ vi.mock('../../src/stores/persistence/threadPersistence', () => ({
 }));
 
 describe('Persistence Loop Defense (TDD)', () => {
+    beforeEach(async () => {
+        const { useChatStore } = await import('ifainew-core');
+        vi.mocked(useChatStore.setState).mockClear();
+    });
+
     it('should NOT trigger redundant setState when messages are identical', async () => {
         const { setThreadMessages } = await import('../../src/stores/useChatStore');
         const { useChatStore } = await import('ifainew-core');
@@ -30,6 +37,7 @@ describe('Persistence Loop Defense (TDD)', () => {
         
         // 模拟 Store 当前已有这些消息
         vi.mocked(useChatStore.getState).mockReturnValue({ messages: testMessages } as any);
+        vi.mocked(useChatStore.setState).mockClear();
 
         // 调用 setThreadMessages (传入相同数据)
         setThreadMessages('thread-1', [...testMessages] as any);

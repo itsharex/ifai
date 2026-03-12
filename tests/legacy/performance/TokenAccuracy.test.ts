@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { estimateTokens } from '../../src/utils/tokenCounter';
-import { TestDataGenerator } from '../../src/utils/testDataGenerator';
+import { estimateTokens } from '../../../src/utils/tokenCounter';
+import { TestDataGenerator } from '../../../src/utils/testDataGenerator';
 
 // Mock Tauri invoke
 const invokeMock = vi.fn();

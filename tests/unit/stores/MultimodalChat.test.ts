@@ -34,10 +34,11 @@ describe('Multimodal Integrity Regression Test', () => {
     expect(aiChatCall).toBeDefined();
     
     const messagesSent = (aiChatCall![1] as any).messages;
-    const lastMsg = messagesSent[messagesSent.length - 1];
+    const userMsg = messagesSent.find((m: any) => m.role === 'user');
+    expect(userMsg).toBeDefined();
     
     // 💎 核心断言：发送给后端的数据绝对不能包含脱敏占位符
-    const contentString = JSON.stringify(lastMsg.content);
+    const contentString = JSON.stringify(userMsg.content);
     expect(contentString).not.toContain('PREVIEW_DATA_HIDDEN');
     expect(contentString).toContain('very_long_real_base64_data_');
     

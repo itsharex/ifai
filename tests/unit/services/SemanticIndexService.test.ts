@@ -47,10 +47,10 @@ describe('SemanticIndexService (TDD)', () => {
         vi.mocked(SymbolExtractor.getMetadata).mockResolvedValue(mockMeta);
         
         // 模拟缓存命中且指纹匹配
-        mockManager.getItem.mockResolvedValue({
+        mockManager.getItem.mockResolvedValue(JSON.stringify({
             fingerprint: '100_1',
             symbols: mockSymbols
-        });
+        }));
 
         const result = await service.getFileSymbols('src/test.ts');
 

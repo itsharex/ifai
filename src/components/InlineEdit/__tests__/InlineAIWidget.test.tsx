@@ -10,8 +10,8 @@ describe('InlineAIWidget', () => {
     
     render(<InlineAIWidget onClose={onClose} onSubmit={onSubmit} />);
     
-    expect(screen.getByPlaceholderText(/Ask AI to edit/i)).toBeInTheDocument();
-    expect(screen.getByText('Inline AI')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Optimize this, add comments, or ask questions/i)).toBeInTheDocument();
+    expect(screen.getByText(/Inline Assistant/i)).toBeInTheDocument();
   });
 
   it('should call onClose when close button is clicked', () => {
@@ -20,7 +20,9 @@ describe('InlineAIWidget', () => {
     
     render(<InlineAIWidget onClose={onClose} onSubmit={onSubmit} />);
     
-    fireEvent.click(screen.getByText('✕'));
+    // 找到关闭按钮（通常是带有 X 图标的第一个按钮，或者通过其父容器定位）
+    const closeButton = screen.getByRole('button', { name: '' }); // X 图标按钮通常没有 accessible name
+    fireEvent.click(closeButton);
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -30,7 +32,7 @@ describe('InlineAIWidget', () => {
     
     render(<InlineAIWidget onClose={onClose} onSubmit={onSubmit} />);
     
-    const input = screen.getByPlaceholderText(/Ask AI to edit/i);
+    const input = screen.getByPlaceholderText(/Optimize this, add comments, or ask questions/i);
     fireEvent.change(input, { target: { value: 'Refactor this' } });
     fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
     

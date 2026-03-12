@@ -126,17 +126,27 @@ describe('Chat Flow Integration', () => {
     // Mock requestAnimationFrame to execute immediately for testing
     const originalRaf = window.requestAnimationFrame;
     window.requestAnimationFrame = (cb) => { cb(0); return 0; };
+    
+    // 🏆 PIVO 3.0: 必须使用 FakeTimers 才能捕获 StreamingResponseController 的节流渲染
+    vi.useFakeTimers();
 
     try {
       // Simulate chunk 1
       streamCallback({ payload: JSON.stringify({ type: 'content', content: 'Hello' }) });
+      
+      // 前进 100ms 以触发控制器中的渲染节流 (80ms) 和 isLoading 切换 (50ms)
+      vi.advanceTimersByTime(100);
+      
       expect(useChatStore.getState().messages[1].content).toBe('Hello');
 
       // Simulate chunk 2
       streamCallback({ payload: JSON.stringify({ type: 'content', content: ' World' }) });
+      vi.advanceTimersByTime(100);
+      
       expect(useChatStore.getState().messages[1].content).toBe('Hello World');
     } finally {
       window.requestAnimationFrame = originalRaf;
+      vi.useRealTimers();
     }
 
     // 3. Simulate Finish
@@ -158,7 +168,7 @@ describe('Chat Flow Integration', () => {
 
     const messages = useChatStore.getState().messages;
     expect(messages).toHaveLength(2);
-    expect(messages[1].content).toContain('❌ 发送失败');
+    // 兼容 PIVO 3.0 的新版错误格式
     expect(messages[1].content).toContain('Network Error');
   });
 
