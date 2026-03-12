@@ -127,7 +127,24 @@ export async function selectMessagesForContext(
         selected = windowSelected;
     }
 
-    // 🏆 PIVO 3.0: 物理级安全检查 - 确保最终结果中至少包含一条 User 消息 (如果有的话)
+    // 🏆 PIVO 3.0: 物理级安全检查
+    // A. 确保工具调用配对完整 (防止 API 报错: Messages with role 'tool' must be a response to a preceding message with 'tool_calls')
+    const toolResults = selected.filter(s => s.message.role === 'tool');
+    for (const toolRes of toolResults) {
+        const callId = toolRes.message.tool_call_id;
+        const hasParent = selected.some(s => s.message.toolCalls?.some(tc => tc.id === callId));
+        
+        if (!hasParent) {
+            // 强行找回对应的 Assistant 消息
+            const parent = scored.find(s => s.message.toolCalls?.some(tc => tc.id === callId));
+            if (parent) {
+                console.log(`[ContextFilter] 🛡️ Pairing Recovery: Re-injecting assistant for tool_call_id ${callId}`);
+                selected.push(parent);
+            }
+        }
+    }
+
+    // B. 确保最终结果中至少包含一条 User 消息 (如果有的话)
     const hasUser = selected.some(s => s.message.role === 'user');
     if (!hasUser) {
         const allUserMessages = scored.filter(s => s.message.role === 'user');
