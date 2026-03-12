@@ -820,18 +820,31 @@ ${textBefore}[CURSOR]${textAfter}
   }, [showMinimap, fontSize, fontFamily, lineHeight, fontLigatures, cursorBlinking, cursorSmoothCaretAnimation, smoothScrolling, bracketPairColorization, renderWhitespace, showLineNumbers, tabSize, wordWrap, isChatStreaming]); // Stable primitive dependencies
 
   // Update editor content when file changes (without remounting)
+  // 🏆 PIVO 3.0: 增强型物理同步引擎
   useEffect(() => {
     const editor = editorRef.current;
-    if (editor && file) {
-      const currentValue = editor.getValue();
-      // Only update if content is different (avoid overwriting user edits)
-      if (currentValue !== (file.content || '')) {
-        editor.setValue(file.content || '');
-      }
-      // Ensure editor is focused when switching files to keep keyboard shortcuts active
-      editor.focus();
+    if (editor) {
+        // 🔥 为 E2E 始终保持最新的编辑器实例指向
+        (window as any).__activeEditor = editor;
+        
+        if (file) {
+            const currentValue = editor.getValue();
+            const targetValue = file.content || '';
+            
+            // 🏆 PIVO 3.0: 极致物理同步 (排除用户活跃输入干扰)
+            if (currentValue !== targetValue) {
+                const noFocus = !editor.hasTextFocus(); 
+                const isNotDirty = !file.isDirty;
+
+                if (noFocus || isNotDirty) {
+                    console.log('[MonacoEditor] 🔄 Mandatory Physical Sync:', { file: file.path });
+                    editor.setValue(targetValue);
+                }
+            }
+        }
     }
-  }, [file?.id, paneId]); // 🔥 修复无限循环：移除 getEditorInstance 依赖，使用 ref 代替
+  }, [file?.id, file?.content, file?.isDirty, paneId]); 
+
 
   // v0.3.0: 代码异味自动分析
   const analyzeFile = useCodeSmellStore(state => state.analyzeFile);

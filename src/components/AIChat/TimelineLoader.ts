@@ -175,12 +175,25 @@ export class TimelineLoader {
    * 单个消息转换为事件
    */
   private messageToEvent(message: Message): TimelineEvent {
-    // 🏆 PIVO 3.0: 增强型字符串化逻辑，支持多模态 ContentPart[]
+    // 🏆 PIVO 3.0: 物理级健壮性加固 (终极版)
     let content = '';
-    if (typeof message.content === 'string') {
-        content = message.content;
-    } else if (Array.isArray(message.content)) {
-        content = message.content.map(p => p.type === 'text' ? p.text : '[image]').join('');
+    if (message && message.content !== undefined && message.content !== null) {
+        if (typeof message.content === 'string') {
+            content = message.content;
+        } else if (Array.isArray(message.content)) {
+            try {
+                content = message.content.map(p => {
+                    if (!p) return '';
+                    if (p.type === 'text') return String(p.text || '');
+                    return '[image]';
+                }).join('');
+            } catch (e) {
+                console.warn('[TimelineLoader] 🛡️ Multi-modal parse failed:', e);
+                content = '[Content Object]';
+            }
+        } else {
+            content = String(message.content || '');
+        }
     }
     
     const codeInfo = this.extractCodeInfo(content);
@@ -201,13 +214,14 @@ export class TimelineLoader {
   /**
    * 提取代码块信息
    */
-  private extractCodeInfo(content: string): {
+  private extractCodeInfo(content: any): {
     hasCode: boolean;
     language?: string;
     lines?: number;
   } {
+    const safeContent = String(content || '');
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    const matches = Array.from(content.matchAll(codeBlockRegex));
+    const matches = Array.from(safeContent.matchAll(codeBlockRegex));
 
     if (matches.length === 0) {
       return { hasCode: false };
@@ -228,9 +242,10 @@ export class TimelineLoader {
   /**
    * 截断内容预览
    */
-  private truncateContent(content: string, maxLength: number): string {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + '...';
+  private truncateContent(content: any, maxLength: number): string {
+    const safeContent = String(content || '');
+    if (safeContent.length <= maxLength) return safeContent;
+    return safeContent.substring(0, maxLength) + '...';
   }
 
   /**

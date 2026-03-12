@@ -94,12 +94,15 @@ export class AuthoritativeWait {
             const found = await page.evaluate((label) => {
                 // 安全获取 Pivo Store
                 const store = (window as any).__pivoStore;
-                if (!store) return false;
+                if (!store || typeof store.getState !== 'function') return false;
                 
                 const tasks = store.getState().taskTrees;
-                return Object.values(tasks).some((tree: any) => 
-                    tree.some((t: any) => t.label.includes(label))
-                );
+                if (!tasks) return false;
+
+                return Object.values(tasks).some((tree: any) => {
+                    if (!Array.isArray(tree)) return false;
+                    return tree.some((t: any) => t && t.label && String(t.label).includes(label));
+                });
             }, taskLabel);
 
             if (found) return;
