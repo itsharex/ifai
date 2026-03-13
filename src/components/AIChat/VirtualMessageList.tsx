@@ -71,34 +71,94 @@ export const VirtualMessageList: React.FC<VirtualMessageListProps> = ({
 
   const virtualItems = virtualizer.getVirtualItems();
 
-  // 🏆 PIVO 3.4.3: 物理级全量对齐闭环 (Total Fidelity Closure)
+  // 🏆 PIVO 3.4.9: 增强型动态粘性锁定
+  const isStickyLockedRef = useRef(true);
+  const lastScrollTopRef = useRef(0);
+  const isSyncingRef = useRef(false); // 物理锁：防止布局反馈环（Layout Loop）
+
+  useEffect(() => {
+    if (isLoading) {
+      isStickyLockedRef.current = true;
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
+    const el = scrollElementRef.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      // 如果正在程序化同步中，不响应滚动事件以避免状态污染
+      if (isSyncingRef.current) return;
+
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollTop < lastScrollTopRef.current - 10) {
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 150;
+        if (!isAtBottom) isStickyLockedRef.current = false;
+      } else if (scrollHeight - scrollTop - clientHeight < 50) {
+        isStickyLockedRef.current = true;
+      }
+      lastScrollTopRef.current = scrollTop;
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [scrollElementRef]);
+
+  // 🏆 PIVO 3.4.10: 增强型物理对齐节流阀
+  const lastSyncTimeRef = useRef(0);
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     const el = scrollElementRef.current;
     if (!el) return;
 
     const performSync = (force = false) => {
+      // 熔断检查：防止重入导致的死循环
+      if (isSyncingRef.current) return;
+
       const { messages: currentMessages, virtualizer: currentVirtualizer } = stateRef.current;
       const currentSafeMessages = currentMessages || [];
       const msgCount = currentSafeMessages.filter(m => m && m.role !== 'tool').length;
       if (msgCount === 0) return;
 
-      const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
-      if (force || isAtBottom) {
+      const now = Date.now();
+      // 🏆 节流逻辑：非强制模式下，限制对齐频率为 60ms (约 16fps)
+      if (!force && now - lastSyncTimeRef.current < 60) {
+          if (syncTimeoutRef.current) return;
+          syncTimeoutRef.current = setTimeout(() => {
+              syncTimeoutRef.current = null;
+              performSync(false);
+          }, 60);
+          return;
+      }
+
+      if (force || isStickyLockedRef.current) {
+        isSyncingRef.current = true;
+        lastSyncTimeRef.current = now;
+        
+        // 1. 逻辑同步：先告诉虚拟引擎我们要去哪
         currentVirtualizer.scrollToIndex(msgCount - 1, { align: 'end' });
+
+        // 2. 物理补刀：在下一帧（渲染完成）执行绝对对齐，根除“先跳再降”
         requestAnimationFrame(() => {
+            if (!el) return;
             el.scrollTop = el.scrollHeight;
+            
+            // 3. 异步释放锁
+            queueMicrotask(() => {
+                isSyncingRef.current = false;
+            });
         });
       }
     };
 
-    // 主动订阅：只需订阅一次，通过 Ref 访问最新状态
     const offUpdate = eventBus.on('chat:content-updated', () => performSync(false));
     const offFinish = eventBus.on('ifainew:stream-finished', () => performSync(true));
 
-    // 被动监听：布局变化
     let lastHeight = el.scrollHeight;
     const resizeObserver = new ResizeObserver(() => {
-      if (el.scrollHeight !== lastHeight) {
+      // 物理级高度增长判定：只有当高度真的变了且不在同步中时才触发
+      if (!isSyncingRef.current && el.scrollHeight !== lastHeight) {
         lastHeight = el.scrollHeight;
         const { isLoading: currentLoading, hasPendingToolCalls: currentPending } = stateRef.current;
         if (currentLoading || currentPending) {
@@ -112,6 +172,7 @@ export const VirtualMessageList: React.FC<VirtualMessageListProps> = ({
       offUpdate();
       offFinish();
       resizeObserver.disconnect();
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };
   }, [scrollElementRef]); // ⚠️ 物理静止：仅在容器变更时重订，绝不随数据抖动
 

@@ -477,7 +477,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     }, [message.contentSegments]);
     // 🔥 FIX v0.4.0: 工业级骨架屏占位，防止 CLS (布局抖动)
     const renderSkeleton = () => (
-        <div className="space-y-3 py-2 animate-pulse w-full max-w-[280px]">
+        <div className="space-y-3 py-2 w-full max-w-[280px] min-h-[80px]">
             <div className="h-2.5 bg-blue-500/10 rounded-full w-full opacity-60"></div>
             <div className="h-2.5 bg-blue-500/10 rounded-full w-[90%] opacity-40"></div>
             <div className="h-2.5 bg-blue-500/10 rounded-full w-[70%] opacity-20"></div>
@@ -729,7 +729,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 )}
                             </button>
                             {isThinkingExpanded && (
-                                <div className="mt-2 p-3 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-gray-400 leading-relaxed italic animate-in fade-in slide-in-from-top-1 duration-200">
+                                <div className="mt-2 p-3 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-gray-400 leading-relaxed italic">
                                     {thinkingText}
                                 </div>
                             )}

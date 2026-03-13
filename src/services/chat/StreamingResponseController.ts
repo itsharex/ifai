@@ -27,14 +27,15 @@ export class StreamingResponseController {
             this.activeStreams.forEach((session, id) => {
                 // 只有处于活跃流状态（有 unlistenFns 且没结束）才检测
                 if (session.unlistenFns && session.unlistenFns.length > 0) {
-                    if (now - (session.lastHeartbeat || 0) > 5000) {
+                    // 🏆 PIVO 3.4.11: 宽容度升级 - 5s -> 15s 超时，减少高频渲染场景下的误判
+                    if (now - (session.lastHeartbeat || 0) > 15000) {
                         console.warn(`[Controller] 🛡️ Sentinel detected stall for session: ${id}`);
                         // 物理唤醒自愈
                         this.triggerPhysicalSelfHealing(id);
                     }
                 }
             });
-        }, 2000);
+        }, 5000); // 2s -> 5s 检测间隔
     }
   }
 
@@ -252,15 +253,16 @@ export class StreamingResponseController {
 
     // 🔥 物理锁：确保节流周期内只有一个待执行任务
     s.renderRequested = true;
-    
-    // 🏆 PIVO 3.4: 物理事件驱动同步 - 在渲染前发射信号，让虚拟列表提前进入准备状态
-    eventBus.emit('chat:content-updated', { messageId: id });
 
     setTimeout(() => {
       // 🏆 物理二次检查：确保会话依然活跃且处于同一线程
       const session = this.activeStreams.get(id);
       if (session && session.renderRequested) {
         coreUseChatStore.setState({ messages: [...session.buffer] as any });
+        
+        // 🏆 PIVO 3.4.9: 物理事件驱动同步 - 必须在 State 更新后发射，确保 Virtualizer 拿到的是最新 count
+        eventBus.emit('chat:content-updated', { messageId: id });
+
         session.renderRequested = false;
       }
     }, 80);

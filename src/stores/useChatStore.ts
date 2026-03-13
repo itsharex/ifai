@@ -392,7 +392,9 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
                 coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: result.content || result.error || "", tool_call_id: toolCallId });
                 if (!options?.skipContinue && result.success) {
                     const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-                    if (providerConfig) setTimeout(async () => { await (window as any).__chatStore?.getState().generateResponse(coreUseChatStore.getState().messages, providerConfig); }, 300);
+                    // 🏆 PIVO 3.4.12: 物理缓冲升级 - 300ms -> 600ms。
+                    // 为磁盘写入、持久化以及 Monaco 渲染留出充足的物理时间片，根除卡顿。
+                    if (providerConfig) setTimeout(async () => { await (window as any).__chatStore?.getState().generateResponse(coreUseChatStore.getState().messages, providerConfig); }, 600);
                 }
                 return;
             }

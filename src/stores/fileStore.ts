@@ -22,6 +22,7 @@ interface FileState {
   activeFileId: string | null;
   gitStatuses: Map<string, GitStatus>;
   expandedNodes: Set<string>;
+  expandedPaths: string[]; // 🏆 PIVO 3.4.13: 持久化路径记忆（扁平化索引）
   selectedNodeIds: string[];
   lastSelectedNodeId: string | null;
   // v0.2.6 新增：Markdown 预览模式
@@ -106,6 +107,7 @@ export const useFileStore = create<FileState>()(
       activeFileId: null,
       gitStatuses: new Map(),
       expandedNodes: new Set(),
+      expandedPaths: [],
       selectedNodeIds: [],
       lastSelectedNodeId: null,
       // v0.2.6 新增：默认预览模式
@@ -430,12 +432,31 @@ export const useFileStore = create<FileState>()(
 
       toggleExpandedNode: (nodeId: string) => set((state) => {
         const newExpanded = new Set(state.expandedNodes);
+        let newPaths = [...(state.expandedPaths || [])];
+        
+        // 查找对应节点的路径
+        const findNodePath = (node: FileNode | null): string | null => {
+            if (!node) return null;
+            if (node.id === nodeId) return node.path;
+            if (node.children) {
+                for (const child of node.children) {
+                    const found = findNodePath(child);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+
+        const path = findNodePath(state.fileTree);
+
         if (newExpanded.has(nodeId)) {
           newExpanded.delete(nodeId);
+          if (path) newPaths = newPaths.filter(p => p !== path);
         } else {
           newExpanded.add(nodeId);
+          if (path && !newPaths.includes(path)) newPaths.push(path);
         }
-        return { expandedNodes: newExpanded };
+        return { expandedNodes: newExpanded, expandedPaths: newPaths };
       }),
 
       setExpandedNodes: (nodes: Set<string>) => set({ expandedNodes: nodes }),
@@ -917,24 +938,8 @@ export const useFileStore = create<FileState>()(
         // 🔥 修复文件选中状态:持久化选中的节点ID和最后选中的节点
         selectedNodeIds: state.selectedNodeIds,
         lastSelectedNodeId: state.lastSelectedNodeId,
-        // 存储展开的路径而不是 ID，因为 ID 每次重新加载都会变化
-        expandedPaths: Array.from(
-          (() => {
-            const paths = new Set<string>();
-            const collectPaths = (node: FileNode) => {
-              if (state.expandedNodes.has(node.id) && node.kind === 'directory') {
-                paths.add(node.path);
-              }
-              if (node.children) {
-                node.children.forEach(collectPaths);
-              }
-            };
-            if (state.fileTree) {
-              collectPaths(state.fileTree);
-            }
-            return paths;
-          })()
-        ),
+        // 🏆 PIVO 3.4.13: 高性能路径持久化 - 直接同步扁平数组，不再进行树遍历
+        expandedPaths: state.expandedPaths,
       }),
       storage: createJSONStorage(() => PersistenceManager.getInstance()),
 

@@ -103,13 +103,15 @@ const TaskItem: React.FC<{ task: TaskNode; level: number }> = ({ task, level }) 
   );
 };
 
-export const PivoTreeList: React.FC<PivoTreeListProps> = ({ tasks, level = 0 }) => {
+// 🏆 PIVO 3.4.11: 物理性能加固版任务列表
+// 使用 React.memo 配合物理属性锁定，确保在流式生成中高度绝对稳定。
+export const PivoTreeList: React.FC<PivoTreeListProps> = React.memo(({ tasks, level = 0 }) => {
   const isHydrating = usePivoStore(state => state.isHydrating);
 
   // 🏆 PIVO 3.0: 处理异步加载态
   if (isHydrating) {
     return (
-      <div className="my-4 p-4 rounded-xl bg-black/10 border border-white/5 space-y-2 animate-pulse">
+      <div className="my-2 p-4 rounded-xl bg-black/10 border border-white/5 space-y-2 min-h-[120px]">
         <Skeleton width={150} height={12} className="mb-4 opacity-20" />
         <Skeleton height={32} className="opacity-10" />
         <Skeleton height={32} className="opacity-10" />
@@ -120,8 +122,8 @@ export const PivoTreeList: React.FC<PivoTreeListProps> = ({ tasks, level = 0 }) 
   if (!tasks || tasks.length === 0) return null;
 
   return (
-    <div className="my-4 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-700">
-      <div className="relative p-2 rounded-xl bg-black/20 backdrop-blur-xl border border-white/10 ring-1 ring-black/50">
+    <div className="my-2 overflow-hidden">
+      <div className="relative p-2 rounded-xl bg-[#1a1a1a] border border-white/10 ring-1 ring-black/50">
         <div className="flex items-center gap-2 mb-2 px-2 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">
             <div className="w-1 h-3 bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6]"></div>
             Mission Execution Plan
@@ -134,4 +136,4 @@ export const PivoTreeList: React.FC<PivoTreeListProps> = ({ tasks, level = 0 }) 
       </div>
     </div>
   );
-};
+});
