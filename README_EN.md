@@ -1,10 +1,12 @@
 # IfAI
 
+### 🌟 v0.3.11 Highlights: Ultimate Stability & Zero-Jitter Engine
+- **Zero-Jitter Rendering**: Combined EventBus active syncing with ResizeObserver physical locking to eliminate all flickering and bouncing during long code generation.
+- **Performance Breakthrough**: Optimized file store persistence from O(N) to O(1), eradicating mouse lag after large file creation.
+- **Sentinel Reliability**: Upgraded streaming sentinel with 15s tolerance to prevent "empty bubble" loops during complex rendering.
+- **Double-Phase Alignment**: Pure physical synchronization between logical virtual lists and DOM scroll states.
+
 ### 🌟 v0.3.10 Highlights: Physical Fidelity & Cognitive Upgrade
-- **Symbol-First Probing Engine**: New "skeleton-first" cognition mode, resolving context overflow for 10KB+ files via millisecond-level physical structure analysis.
-- **Physical Fidelity Reinforcement**: Full storage migration to IndexedDB (bye-bye 5MB LocalStorage limit); fixed large JSON rendering fidelity.
-- **NVIDIA NIM Deep Integration**: Rust-based URL auto-calibration for industrial-grade inference protocols, resolving 404 configuration pitfalls.
-- **Precise Token Metering**: Dynamic physical metrics based on actual character length, ensuring 100% trustworthy usage statistics.
 
 ### 🌟 v0.3.6 Highlights: UI Refactor, PIVO 2.0 & Structured Workflow
 - **Industrial UI Refactor**: Introducing the Model Capsule panel and enhanced multi-threading management for a professional coding environment.
