@@ -54,7 +54,7 @@ export class AuthoritativeWait {
     ) {
         const { timeout = 30000 } = options;
         
-        const signalFound = await page.evaluate((name) => {
+        const signalFound = await page.evaluate(({ name, t }) => {
             return new Promise((resolve) => {
                 if ((window as any).__PIVO_SIGNALS__?.[name]) return resolve(true);
 
@@ -63,9 +63,9 @@ export class AuthoritativeWait {
                     resolve(true);
                 };
                 window.addEventListener(name, handler);
-                setTimeout(() => resolve(false), 29000); 
+                setTimeout(() => resolve(false), t - 1000); 
             });
-        }, signalName);
+        }, { name: signalName, t: timeout });
 
         if (!signalFound) {
             throw new Error(`[AuthoritativeWait] Timeout waiting for pipeline signal: ${signalName}`);

@@ -252,6 +252,10 @@ export class StreamingResponseController {
 
     // 🔥 物理锁：确保节流周期内只有一个待执行任务
     s.renderRequested = true;
+    
+    // 🏆 PIVO 3.4: 物理事件驱动同步 - 在渲染前发射信号，让虚拟列表提前进入准备状态
+    eventBus.emit('chat:content-updated', { messageId: id });
+
     setTimeout(() => {
       // 🏆 物理二次检查：确保会话依然活跃且处于同一线程
       const session = this.activeStreams.get(id);

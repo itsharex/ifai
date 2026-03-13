@@ -227,44 +227,26 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     fetchVersion();
   }, []);
 
-  // Auto-scroll to bottom when messages update, with throttling during streaming
+  // Auto-scroll to bottom when messages update (Initial scroll or command triggers)
   useEffect(() => {
+    // 🛡️ 深度防御：确保在流式产生的任何阶段，即使 rawMessages 瞬间丢失也不会崩溃
+    if (!rawMessages || !Array.isArray(rawMessages)) return;
+
     const isStreaming = isLoading && rawMessages.length > 0 &&
-                        rawMessages[rawMessages.length - 1].role === 'assistant';
+                        rawMessages[rawMessages.length - 1]?.role === 'assistant';
 
-    if (isStreaming) {
-      // Streaming state: throttle + RAF sync
-      const now = Date.now();
-      const timeSinceLastScroll = now - lastScrollTime.current;
-
-      if (timeSinceLastScroll >= SCROLL_THROTTLE_MS) {
-        // Cancel any pending RAF scroll
-        if (rafScrollId.current) {
-          cancelAnimationFrame(rafScrollId.current);
-        }
-        // Schedule new scroll in next animation frame
-        rafScrollId.current = requestAnimationFrame(() => {
-          scrollToBottom(true);
-          lastScrollTime.current = Date.now();
-        });
-      }
-    } else {
-      // Non-streaming state: immediate scroll
+    // 🏆 PIVO 3.4: 移除流式状态下的自动滚动逻辑。
+    // 该职责已通过 EventBus 物理总线移交给 VirtualMessageList 内部精准处理，消除抖动。
+    if (!isStreaming) {
+      // Non-streaming state: immediate scroll (e.g. after a command or user input)
       if (rafScrollId.current) {
         cancelAnimationFrame(rafScrollId.current);
       }
       scrollToBottom(false);
     }
+  }, [rawMessages?.length, isLoading]);
 
-    // Cleanup: cancel pending RAF on unmount or dependency change
-    return () => {
-      if (rafScrollId.current) {
-        cancelAnimationFrame(rafScrollId.current);
-      }
-    };
-  }, [rawMessages, isLoading]);
-
-  const currentProvider = providers.find(p => p.id === currentProviderId);
+  const currentProvider = (providers || []).find(p => p.id === currentProviderId);
   // 自定义提供商（本地端点）可能不需要 API Key
   const isProviderConfigured = !!(currentProvider && currentProvider.enabled &&
     (currentProvider.isCustom || currentProvider.apiKey));

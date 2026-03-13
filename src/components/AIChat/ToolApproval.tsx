@@ -554,20 +554,12 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
             <div className="px-5 pb-4 pt-4">
                 {isWriteFile ? (
                     <div className="space-y-4 overflow-hidden">
-                        {/* ✅ 流式参数显示 - write_file 也显示参数 */}
-                        {isPartial && (
-                            <div data-testid="tool-params" className="bg-gradient-to-br from-gray-900/60 to-gray-900/40 p-4 rounded-xl border border-gray-700/30 shadow-inner">
-                                <StreamingToolArgsViewer
-                                    args={toolCall.args || {}}
-                                    isStreaming={isPartial}
-                                    streamingKeys={isPartial ? Object.keys(toolCall.args || {}) : []}
-                                />
-                            </div>
-                        )}
-
+                        {/* 🏆 PIVO 3.4.7: 物理降噪 - 移除文件写入时的流式参数区。
+                            原因：路径已在头部和代码框显示，此区域的逐行出现会导致下方代码块剧烈跳动。 */}
+                        
                         {/* Improved Typewriter Streaming Preview (Point 1) */}
                         {(newContent || isPartial) && (
-                            <div className="animate-in fade-in zoom-in-95 duration-200">
+                            <div className={isPartial ? "" : "animate-in fade-in zoom-in-95 duration-200"}>
                                 <TypewriterCodeBlock
                                     code={newContent}
                                     isPartial={isPartial}
@@ -642,6 +634,7 @@ export const ToolApproval = ({ toolCall, onApprove, onReject, isLatestBashTool =
                                 args={toolCall.args || {}}
                                 isStreaming={isPartial}
                                 streamingKeys={isPartial ? Object.keys(toolCall.args || {}) : []}
+                                excludeKeys={['content']}
                             />
                         </div>
 
