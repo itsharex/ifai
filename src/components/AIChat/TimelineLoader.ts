@@ -182,7 +182,7 @@ export class TimelineLoader {
             content = message.content;
         } else if (Array.isArray(message.content)) {
             try {
-                content = message.content.map(p => {
+                content = (message.content as any[]).map(p => {
                     if (!p) return '';
                     if (p.type === 'text') return String(p.text || '');
                     return '[image]';

@@ -450,7 +450,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
 
     // 🔥 FIX v0.4.0: 智能内容预处理 - 提取思考内容
     const { thinkingText, contentWithoutThinking } = React.useMemo(() => {
-        const content = typeof message.content === 'string' ? message.content : (Array.isArray(message.content) ? message.content.map(p => p.type === 'text' ? p.text : '').join('') : '');
+        const content = typeof message.content === 'string' ? message.content : (Array.isArray(message.content) ? (message.content as any[]).map(p => p.type === 'text' ? p.text : '').join('') : '');
         const thinkingMatch = String(content || '').match(/^_\(([^)]+)\)_/);
         if (thinkingMatch) {
             return {

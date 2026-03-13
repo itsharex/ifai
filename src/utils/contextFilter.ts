@@ -95,9 +95,10 @@ export async function selectMessagesForContext(
 
         for (let i = finalItems.length - 1; i >= 0; i--) {
             const item = finalItems[i];
-            if (criticalSet.has(item.message.id) || (currentTokens + item.estimatedTokens <= maxTokens)) {
+            const tokens = await item.estimatedTokens; // 🏆 PIVO 3.4.14: 物理级异步解构
+            if (criticalSet.has(item.message.id) || (currentTokens + tokens <= maxTokens)) {
                 windowSelected.push(item);
-                currentTokens += item.estimatedTokens;
+                currentTokens += tokens;
             }
         }
         finalItems = windowSelected;

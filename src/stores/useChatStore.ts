@@ -540,7 +540,7 @@ export function initPivoSelfHealing() {
         
         if (lastMsg) {
             const { MessageLifecycleService } = await import('../services/chat/MessageLifecycleService');
-            MessageLifecycleService.triggerTaskBreakdown(lastMsg, state.messages);
+            MessageLifecycleService.triggerTaskBreakdown(lastMsg as any, state.messages as any);
         }
     });
 }
