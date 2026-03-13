@@ -48,10 +48,10 @@ export const TokenUsageIndicator: React.FC = () => {
             // 处理普通字符串格式
             return {
               role: m.role,
-              content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+              content: typeof m.content === 'string' ? m.content : (m.content ? JSON.stringify(m.content) : '')
             };
           })
-          .filter(m => m.content.length > 0); // 再次过滤，移除空内容
+          .filter(m => m.content && m.content.length > 0); // 🛡️ 安全防御：再次过滤，移除空内容
 
         const count = await countMessagesTokens(messagesForCounting, currentModel);
         const max = getModelMaxTokens(currentModel);

@@ -6,6 +6,7 @@ import { SentinelService } from '../SentinelService';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { ApprovalPipeline } from '../../utils/approvalPipeline';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { eventBus } from '../../core/events/GlobalEventBus';
 
 export class StreamingResponseController {
   private static instance: StreamingResponseController;
@@ -18,7 +19,63 @@ export class StreamingResponseController {
     lastHeartbeat: number;
   }> = new Map();
 
-  private constructor() {}
+  private constructor() {
+    // 🏆 PIVO 3.0: 物理级自愈心跳监测器
+    if (typeof window !== 'undefined') {
+        setInterval(() => {
+            const now = Date.now();
+            this.activeStreams.forEach((session, id) => {
+                // 只有处于活跃流状态（有 unlistenFns 且没结束）才检测
+                if (session.unlistenFns && session.unlistenFns.length > 0) {
+                    // 🏆 PIVO 3.4.11: 宽容度升级 - 5s -> 15s 超时，减少高频渲染场景下的误判
+                    if (now - (session.lastHeartbeat || 0) > 15000) {
+                        console.warn(`[Controller] 🛡️ Sentinel detected stall for session: ${id}`);
+                        // 物理唤醒自愈
+                        this.triggerPhysicalSelfHealing(id);
+                    }
+                }
+            });
+        }, 5000); // 2s -> 5s 检测间隔
+    }
+  }
+
+  private async triggerPhysicalSelfHealing(id: string) {
+    const state = coreUseChatStore.getState();
+    const msg = state.messages.find(m => m.id === id);
+    if (!msg || !(msg as any).isStreaming) return;
+
+    // 存根信号用于自愈和测试
+    if (typeof window !== 'undefined') {
+        if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
+        (window as any).__PIVO_SIGNALS__['ifainew:self-healing-triggered'] = { id, timestamp: Date.now() };
+    }
+
+    const hasUnclosedTool = msg.toolCalls?.some(tc => tc.isPartial);
+    const hasContent = !!msg.content && String(msg.content).trim().length > 0;
+    const hasAnyTool = msg.toolCalls && msg.toolCalls.length > 0;
+
+    // 🏆 PIVO 3.0: 物理级自愈决策引擎
+    // 情况 A: 有未闭合工具 -> 物理续写
+    // 情况 B: 没有任何内容且没有工具 (启动假死) -> 物理重试
+    if (hasUnclosedTool || (!hasContent && !hasAnyTool)) {
+        const reason = hasUnclosedTool ? "Unclosed tool" : "Startup stall";
+        console.log(`[Controller] 🔄 Physical Auto-Continue (${reason}): ${id}`);
+        
+        const settings = useSettingsStore.getState();
+        const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
+        if (providerConfig) {
+            // 重置心跳防止进入死循环
+            const s = this.activeStreams.get(id);
+            if (s) s.lastHeartbeat = Date.now();
+            
+            (coreUseChatStore.getState() as any).generateResponse(state.messages, providerConfig);
+        }
+    } else {
+        // 情况 C: 有内容且已闭合 -> 正常终结
+        console.log(`[Controller] 🛡️ Physical Finalize (Normal stop): ${id}`);
+        this.finalizeStream(id);
+    }
+  }
 
   static getInstance(): StreamingResponseController {
     if (!StreamingResponseController.instance) {
@@ -107,72 +164,72 @@ export class StreamingResponseController {
 
     if (textChunk || toolCallUpdate) {
       sessionData.lastHeartbeat = Date.now();
+
       if (!sessionData.hasReceivedChunk) {
+
           sessionData.hasReceivedChunk = true;
           setTimeout(() => coreUseChatStore.setState({ isLoading: false }), 50);
       }
 
+      // 🏆 PIVO 3.0: 精准物理引用锁定 - 仅更新当前活跃消息，保护历史消息引用
       sessionData.buffer = sessionData.buffer.map((m: any) => {
-        if (m.id === assistantMsgId) {
-          const newMsg: Message = { ...m, isStreaming: true };
-          if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
+        if (m.id !== assistantMsgId) return m; // 物理保留历史引用，防止 React 冗余重绘
+
+        const newMsg: Message = { ...m, isStreaming: true };
+        if (!(newMsg as any).contentSegments) (newMsg as any).contentSegments = [];
+        
+        if (textChunk) {
+          const prevContent = String(newMsg.content || '');
           
-          if (textChunk) {
-            const prevContent = String(newMsg.content || '');
-            
-            // 🏆 PIVO 3.0: 工业级消重算法 (物理级消除乱码)
-            // A. 计算完全重叠部分
-            let overlapIdx = 0;
-            const checkLimit = Math.min(prevContent.length, textChunk.length, 50); 
-            for (let i = 1; i <= checkLimit; i++) {
-                if (prevContent.endsWith(textChunk.substring(0, i))) {
-                    overlapIdx = i;
-                }
-            }
-            
-            let cleanChunk = textChunk.substring(overlapIdx);
-            
-            // B. 🚀 物理增强：检测“交叉错位叠加” (防突变乱码)
-            // 如果 cleanChunk 的前几个字符在 prevContent 的末尾高频出现，则进一步截断
-            if (cleanChunk.length > 3 && prevContent.length > 10) {
-                const tail = prevContent.slice(-15);
-                const chunkHead = cleanChunk.slice(0, 5);
-                // 如果头部的 3 个字符在尾部都找得到，极大概率是错位重发
-                let matchCount = 0;
-                for (const char of chunkHead) {
-                    if (tail.includes(char)) matchCount++;
-                }
-                if (matchCount >= 3) {
-                    console.warn(`[Streaming] 🛡️ High-entropy overlap detected, potential garbled text blocked: "${cleanChunk}"`);
-                    // 尝试寻找 cleanChunk 中第一个不在 tail 里的字符作为真实起点
-                    let realStart = 0;
-                    for (let j = 0; j < cleanChunk.length; j++) {
-                        if (!tail.includes(cleanChunk[j])) {
-                            realStart = j;
-                            break;
-                        }
-                    }
-                    cleanChunk = cleanChunk.substring(realStart);
-                }
-            }
-            
-            if (cleanChunk.length > 0) {
-                newMsg.content = prevContent + cleanChunk;
-                (newMsg as any).contentSegments.push({ 
-                    type: 'text', 
-                    order: (newMsg as any).contentSegments.length, 
-                    timestamp: Date.now(), 
-                    content: cleanChunk, 
-                    startPos: prevContent.length, 
-                    endPos: newMsg.content.length 
-                });
-                InlineSyncService.syncState("", "", cleanChunk);
-            }
+          // 🏆 PIVO 3.0: 工业级消重算法 (物理级消除乱码)
+          let overlapIdx = 0;
+          const checkLimit = Math.min(prevContent.length, textChunk.length, 50); 
+          for (let i = 1; i <= checkLimit; i++) {
+              if (prevContent.endsWith(textChunk.substring(0, i))) {
+                  overlapIdx = i;
+              }
           }
-          if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
-          return newMsg;
+          
+          let cleanChunk = textChunk.substring(overlapIdx);
+          
+          // B. 🚀 物理增强：检测“交叉错位叠加” (防突变乱码)
+          if (cleanChunk.length > 3 && prevContent.length > 10) {
+              const tail = prevContent.slice(-15);
+              const chunkHead = cleanChunk.slice(0, 5);
+              
+              const isTechnicalWord = /^[a-zA-Z0-9\-\/._]+$/.test(cleanChunk) && cleanChunk.length < 10;
+              let matchCount = 0;
+              for (const char of chunkHead) {
+                  if (tail.includes(char)) matchCount++;
+              }
+              
+              if (matchCount >= 3 && !isTechnicalWord) {
+                  let realStart = 0;
+                  for (let j = 0; j < cleanChunk.length; j++) {
+                      if (!tail.includes(cleanChunk[j])) {
+                          realStart = j;
+                          break;
+                      }
+                  }
+                  cleanChunk = cleanChunk.substring(realStart);
+              }
+          }
+          
+          if (cleanChunk.length > 0) {
+              newMsg.content = prevContent + cleanChunk;
+              (newMsg as any).contentSegments.push({ 
+                  type: 'text', 
+                  order: (newMsg as any).contentSegments.length, 
+                  timestamp: Date.now(), 
+                  content: cleanChunk, 
+                  startPos: prevContent.length, 
+                  endPos: newMsg.content.length 
+              });
+              InlineSyncService.syncState("", "", cleanChunk);
+          }
         }
-        return m;
+        if (toolCallUpdate) this.processToolCallUpdate(newMsg, toolCallUpdate, assistantMsgId);
+        return newMsg;
       });
       this.requestRender(assistantMsgId);
     }
@@ -181,14 +238,32 @@ export class StreamingResponseController {
   private requestRender(id: string) {
     const s = this.activeStreams.get(id);
     if (!s || s.renderRequested) return;
+    
+    // 🏆 PIVO 3.0: 物理哨兵自愈判定
+    const now = Date.now();
+    if (now - (s.lastHeartbeat || 0) > 5000) {
+        console.warn(`[Controller] 🛡️ Physical stall detected: ${id}`);
+        if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem('ifainew:stream-stalled', JSON.stringify({ id, timestamp: now }));
+        }
+    }
+
     const currentThreadId = useThreadStore.getState().activeThreadId || 'default';
     if (s.threadId !== currentThreadId) return; 
 
+    // 🔥 物理锁：确保节流周期内只有一个待执行任务
     s.renderRequested = true;
+
     setTimeout(() => {
-      if (this.activeStreams.has(id)) {
-        coreUseChatStore.setState({ messages: [...s.buffer] as any });
-        s.renderRequested = false;
+      // 🏆 物理二次检查：确保会话依然活跃且处于同一线程
+      const session = this.activeStreams.get(id);
+      if (session && session.renderRequested) {
+        coreUseChatStore.setState({ messages: [...session.buffer] as any });
+        
+        // 🏆 PIVO 3.4.9: 物理事件驱动同步 - 必须在 State 更新后发射，确保 Virtualizer 拿到的是最新 count
+        eventBus.emit('chat:content-updated', { messageId: id });
+
+        session.renderRequested = false;
       }
     }, 80);
   }
@@ -204,11 +279,24 @@ export class StreamingResponseController {
           parsed.content = contentMatch[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
       }
       
-      const pathMatch = argsStr.match(/"rel_path"\s*:\s*"((?:[^"\\]|\\.)*)/s);
+      // 🏆 PIVO 3.0: 物理级路径捕获 - 采用非约束性匹配以支持流式内容
+      const pathMatch = argsStr.match(/"(?:rel_)?path"\s*:\s*"(.*)/s);
       if (pathMatch) {
           let val = pathMatch[1];
-          if (val.includes('"')) val = val.substring(0, val.indexOf('"'));
+          // 如果 argsStr 中在 val 之后确实存在符合 JSON 结构的闭合引号，则进行截断
+          const structClosingMatch = val.match(/"\s*[,}\n]/);
+          if (structClosingMatch) {
+              val = val.substring(0, structClosingMatch.index);
+          }
           parsed.rel_path = val;
+          parsed.path = val;
+      }
+
+      // 🏆 v0.5.0: 增强型命令提取 - 支持 cmd 和 command，使用 /s 模式以匹配多行内容
+      const commandMatch = argsStr.match(/"(?:command|cmd)"\s*:\s*"((?:[^"\\]|\\.)*)/s);
+      if (commandMatch) {
+          parsed.command = commandMatch[1].replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+          parsed.cmd = parsed.command; // 双向兼容
       }
     }
     return parsed;
@@ -268,8 +356,13 @@ export class StreamingResponseController {
         isStreaming: false,
         toolCalls: m.toolCalls?.map((tc: any) => {
           let fArgs = tc.args || {};
-          if ((!fArgs || Object.keys(fArgs).length === 0) && (tc as any).function?.arguments) {
-            try { fArgs = JSON.parse((tc as any).function.arguments); } catch (e) {}
+          if ((!fArgs || Object.keys(fArgs).length === 0 || tc.isPartial) && (tc as any).function?.arguments) {
+            try { 
+                fArgs = JSON.parse((tc as any).function.arguments); 
+            } catch (e) {
+                // 🏆 PIVO 3.0: 物理级最后一次挽救 - 强制使用正则提取器
+                fArgs = this.extractPartialArgs((tc as any).function.arguments);
+            }
           }
           // 🏆 PIVO 3.0: 物理保留所有字段（包括 result），仅更新 isPartial 和 args
           return { ...tc, isPartial: false, args: fArgs };
@@ -302,25 +395,17 @@ export class StreamingResponseController {
         }
     }
 
-    // 🏆 PIVO 3.0: 物理闭环
-    // 只有在没有后续任务且流真正结束时，才允许启动 UI 自洁
+    // 🏆 PIVO 3.0: 物理闭环 (异步化解决 flushSync 冲突)
     console.log(`[PIVO-SIGNAL] 🏁 Stream Finalized: ${id}`);
     
-    // 触发任务拆解 (PIVO 3.0 物理核心步进)
-    try {
-        const { MessageLifecycleService } = await import('./MessageLifecycleService');
-        const state = coreUseChatStore.getState();
-        const lastMsg = state.messages.find(m => m.id === id);
-        if (lastMsg) {
-            MessageLifecycleService.triggerTaskBreakdown(lastMsg, state.messages);
-        }
-    } catch (e) {
-        console.error('[Streaming] ❌ Failed to trigger task breakdown:', e);
+    // 用于 E2E 自动化测试的权威信号存根
+    if (typeof window !== 'undefined') {
+        if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
+        (window as any).__PIVO_SIGNALS__['ifainew:stream-finished'] = { id, timestamp: Date.now() };
     }
 
-    // 🏆 PIVO 3.0: 物理管线存根 (用于 E2E 消除竞态)
-    if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
-    (window as any).__PIVO_SIGNALS__['ifainew:stream-finished'] = { timestamp: Date.now(), id };
+    // 🏆 物理隔离：通过 EventBus 广播结束，让任务拆解在下一帧触发
+    eventBus.emit('ifainew:stream-finished', { id });
 
     window.dispatchEvent(new CustomEvent('ifainew:stream-finished', { detail: { id } }));
     // 发送旧版 finish 事件以保证兼容性
@@ -341,7 +426,9 @@ export class StreamingResponseController {
     console.log(`[PIVO-SIGNAL] 🧹 Cleaning up session: ${id}`);
     const s = this.activeStreams.get(id);
     if (s) { 
-        s.unlistenFns.forEach(u => u()); 
+        if (s.unlistenFns) {
+            s.unlistenFns.forEach(u => u()); 
+        }
         this.activeStreams.delete(id); 
     }
     window.dispatchEvent(new CustomEvent('ifainew:session-cleaned', { detail: { id } }));

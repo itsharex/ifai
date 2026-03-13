@@ -9,6 +9,7 @@ import { File, Folder, Terminal, Search, Settings, ChevronDown, ChevronRight } f
 interface ToolArgsViewerProps {
   args: Record<string, any>;
   isPartial?: boolean;
+  excludeKeys?: string[];
 }
 
 /**
@@ -150,7 +151,7 @@ function ArgItem({ propKey: key, value, depth = 0 }: { propKey: string; value: a
       <span className="w-3"></span>
       <span className={color}>{icon}</span>
       <span className="text-[11px] text-gray-500 font-medium">{key}:</span>
-      <span className="text-[11px] text-gray-300 font-mono flex-1 truncate" title={String(value)}>
+      <span className="text-[11px] text-gray-300 font-mono flex-1 truncate" title={typeof value === 'string' && value.length > 500 ? 'Content too large to display' : String(value)}>
         {displayValue}
       </span>
     </div>
@@ -160,8 +161,8 @@ function ArgItem({ propKey: key, value, depth = 0 }: { propKey: string; value: a
 /**
  * 工具参数可视化器主组件
  */
-export const ToolArgsViewer: React.FC<ToolArgsViewerProps> = ({ args, isPartial }) => {
-  const entries = Object.entries(args);
+export const ToolArgsViewer: React.FC<ToolArgsViewerProps> = ({ args, isPartial, excludeKeys = [] }) => {
+  const entries = Object.entries(args).filter(([key]) => !excludeKeys.includes(key));
 
   if (entries.length === 0) {
     return (
@@ -198,8 +199,8 @@ export const ToolArgsViewer: React.FC<ToolArgsViewerProps> = ({ args, isPartial 
 /**
  * 紧凑型参数查看器（用于批处理等场景）
  */
-export const CompactToolArgsViewer: React.FC<ToolArgsViewerProps> = ({ args }) => {
-  const entries = Object.entries(args);
+export const CompactToolArgsViewer: React.FC<ToolArgsViewerProps> = ({ args, excludeKeys = [] }) => {
+  const entries = Object.entries(args).filter(([key]) => !excludeKeys.includes(key));
   const previewCount = 3;
 
   return (
@@ -207,7 +208,7 @@ export const CompactToolArgsViewer: React.FC<ToolArgsViewerProps> = ({ args }) =
       {entries.slice(0, previewCount).map(([key, value]) => (
         <div key={key} className="flex items-center gap-2 text-[10px]">
           <span className="text-gray-500 font-medium min-w-[60px]">{key}:</span>
-          <span className="text-gray-300 font-mono truncate flex-1" title={String(value)}>
+          <span className="text-gray-300 font-mono truncate flex-1" title={typeof value === 'string' && value.length > 500 ? 'Content too large to display' : String(value)}>
             {formatValue(value)}
           </span>
         </div>

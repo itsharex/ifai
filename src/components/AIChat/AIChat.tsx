@@ -176,38 +176,34 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
   };
 
   // Detect user manual scroll
+  const lastHeightRef = useRef(0);
   const handleScroll = () => {
     if (!scrollContainerRef.current) return;
 
     const container = scrollContainerRef.current;
-    const THRESHOLD = 50; // 更加严格的底部判定阈值
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < THRESHOLD;
+    const currentHeight = container.scrollHeight;
+    const THRESHOLD = 100; // 提升物理感应阈值
+    const isNearBottom = currentHeight - container.scrollTop - container.clientHeight < THRESHOLD;
 
-    if (!isNearBottom) {
-      // 用户离开底部：标记为正在手动滚动
-      // 🔥 FIX v0.4.0: 如果当前正在加载且之前不在滚动状态，则记录起始锁定位置
-      if (!isUserScrolling.current) {
-        console.log('[AIChat] 🔒 Scroll Locked: User moved away from bottom during streaming');
-      }
+    // 🏆 PIVO 3.0: 物理几何指纹判定
+    // 如果高度发生了变化，说明是内容增长，此时我们应优先保全粘性滚动
+    const isContentGrowing = Math.abs(currentHeight - lastHeightRef.current) > 10;
+    lastHeightRef.current = currentHeight;
+
+    if (!isNearBottom && !isContentGrowing) {
+      // 只有在内容没有剧烈变动，且用户离开底部时，才触发锁定
       isUserScrolling.current = true;
 
       if (scrollTimeoutRef.current) {
         window.clearTimeout(scrollTimeoutRef.current);
       }
 
-      // 延长锁定期限到 3 秒，确保用户有足够时间阅读
       scrollTimeoutRef.current = window.setTimeout(() => {
-        // 只有当用户真的停留在底部附近时才解除锁定
         if (container.scrollHeight - container.scrollTop - container.clientHeight < THRESHOLD) {
           isUserScrolling.current = false;
-          console.log('[AIChat] 🔓 Scroll Unlocked: User returned to bottom');
         }
       }, 3000);
-    } else {
-      // 用户主动滑到底部：立即解除锁定
-      if (isUserScrolling.current) {
-        console.log('[AIChat] 🔓 Scroll Unlocked: User manually returned to bottom');
-      }
+    } else if (isNearBottom) {
       isUserScrolling.current = false;
       if (scrollTimeoutRef.current) {
         window.clearTimeout(scrollTimeoutRef.current);
@@ -231,44 +227,26 @@ export const AIChat = ({ width, onResizeStart }: AIChatProps) => {
     fetchVersion();
   }, []);
 
-  // Auto-scroll to bottom when messages update, with throttling during streaming
+  // Auto-scroll to bottom when messages update (Initial scroll or command triggers)
   useEffect(() => {
+    // 🛡️ 深度防御：确保在流式产生的任何阶段，即使 rawMessages 瞬间丢失也不会崩溃
+    if (!rawMessages || !Array.isArray(rawMessages)) return;
+
     const isStreaming = isLoading && rawMessages.length > 0 &&
-                        rawMessages[rawMessages.length - 1].role === 'assistant';
+                        rawMessages[rawMessages.length - 1]?.role === 'assistant';
 
-    if (isStreaming) {
-      // Streaming state: throttle + RAF sync
-      const now = Date.now();
-      const timeSinceLastScroll = now - lastScrollTime.current;
-
-      if (timeSinceLastScroll >= SCROLL_THROTTLE_MS) {
-        // Cancel any pending RAF scroll
-        if (rafScrollId.current) {
-          cancelAnimationFrame(rafScrollId.current);
-        }
-        // Schedule new scroll in next animation frame
-        rafScrollId.current = requestAnimationFrame(() => {
-          scrollToBottom(true);
-          lastScrollTime.current = Date.now();
-        });
-      }
-    } else {
-      // Non-streaming state: immediate scroll
+    // 🏆 PIVO 3.4: 移除流式状态下的自动滚动逻辑。
+    // 该职责已通过 EventBus 物理总线移交给 VirtualMessageList 内部精准处理，消除抖动。
+    if (!isStreaming) {
+      // Non-streaming state: immediate scroll (e.g. after a command or user input)
       if (rafScrollId.current) {
         cancelAnimationFrame(rafScrollId.current);
       }
       scrollToBottom(false);
     }
+  }, [rawMessages?.length, isLoading]);
 
-    // Cleanup: cancel pending RAF on unmount or dependency change
-    return () => {
-      if (rafScrollId.current) {
-        cancelAnimationFrame(rafScrollId.current);
-      }
-    };
-  }, [rawMessages, isLoading]);
-
-  const currentProvider = providers.find(p => p.id === currentProviderId);
+  const currentProvider = (providers || []).find(p => p.id === currentProviderId);
   // 自定义提供商（本地端点）可能不需要 API Key
   const isProviderConfigured = !!(currentProvider && currentProvider.enabled &&
     (currentProvider.isCustom || currentProvider.apiKey));

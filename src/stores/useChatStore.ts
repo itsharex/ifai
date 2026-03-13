@@ -115,7 +115,6 @@ const patchedAddMessage = async (message: Message) => {
 const patchedSendMessage = async (content: string | any[], providerId: string, modelName: string, options: any = {}) => {
     // 🏆 v0.5.0: 物理级激活调试哨兵
     initDebugEventListeners();
-
     const store = getStoreAdapter();
     const settings = useSettingsStore.getState();
     const threadStore = useThreadStore.getState();
@@ -215,16 +214,33 @@ const patchedGenerateResponse = async (history: any[], providerConfig: any, opti
 
 // 🏆 v0.3.8: 终极哨兵 (权威判定版)
 coreUseChatStore.subscribe((state, prevState) => {
-    const lastMsg = state.messages[state.messages.length - 1];
-    if (lastMsg && lastMsg.role === 'assistant' &&  (lastMsg as any).isStreaming && !state.isLoading) {
-        // 🏆 PIVO 3.0: 权威物理判定
-        // 哨兵不再根据 Store 的陈旧快照做猜测，而是直接询问控制器的实时心跳
-        if (!StreamingResponseController.getInstance().isStreamStuck(lastMsg.id)) return;
+    const lastMsg = state.messages.length > 0 ? state.messages[state.messages.length - 1] : null;
+    if (!lastMsg) return;
 
-        console.log('[Sentinel] 🛡️ Authoritative stuck state detected, force finalizing:', lastMsg.id);
-        coreUseChatStore.setState(s => ({
-            messages: s.messages.map(m => m.id === lastMsg.id ? { ...m, isStreaming: false } : m)
-        }));
+    if (lastMsg && lastMsg.role === 'assistant' &&  (lastMsg as any).isStreaming && !state.isLoading) {
+        // 🏆 PIVO 3.0: 物理哨兵主动探测
+        // 只有当超过 5s 没有新数据块到达时，才物理触发自愈
+        const controller = StreamingResponseController.getInstance();
+        if (controller.isStreamStuck(lastMsg.id)) {
+             console.warn(`[ChatStore] 🛡️ Active probe detected stall: ${lastMsg.id}`);
+             
+             const hasUnclosedTool = lastMsg.toolCalls?.some(tc => tc.isPartial);
+             if (hasUnclosedTool) {
+                 const settings = (window as any).__settingsStore?.getState();
+                 const providerConfig = settings?.providers.find((p: any) => p.id === settings.currentProviderId);
+                 if (providerConfig) {
+                     console.log('[ChatStore] 🔄 Active Self-healing: Triggering Auto-Continue.');
+                     // 存根自愈触发状态用于 E2E
+                     if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
+                     (window as any).__PIVO_SIGNALS__['ifainew:self-healing-triggered'] = { id: lastMsg.id, timestamp: Date.now() };
+                     
+                     (coreUseChatStore.getState() as any).generateResponse(state.messages, providerConfig);
+                 }
+             } else {
+                 console.log('[ChatStore] 🛡️ Active Sentinel: Healthy but quiet. Finalizing.');
+                 controller.finalizeStream(lastMsg.id);
+             }
+        }
     }
 });
 
@@ -337,18 +353,48 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
                     } : m)
                 }));
 
-                // 🏆 v0.3.9: 物理级主动刷新资源管理器
+                // 🏆 v0.3.9: 物理级主动刷新资源管理器与编辑器同步
                 // 如果是写入类工具且成功，立即触发刷新，不完全依赖异步订阅者
                 const isWritingTool = ['agent_write_file', 'agent_replace', 'agent_insert_code', 'agent_delete_file', 'bash', 'agent_bash', 'agent_execute_command'].includes(latestToolCall.tool);
                 if (result.success && isWritingTool) {
                     console.log(`[ChatStore] 🔄 Tool "${latestToolCall.tool}" success, triggering immediate file tree refresh.`);
-                    useFileStore.getState().refreshFileTreeDebounced();
+                    const fileState = useFileStore.getState();
+                    fileState.refreshFileTreeDebounced();
+
+                    // 🏆 PIVO 3.0: 实时编辑器内容物理同步
+                    // 如果改动的是当前已打开的文件，强制同步内存中的 content，触发 Monaco 物理刷新
+                    const targetPath = finalArgs.path || finalArgs.rel_path || finalArgs.file_path;
+                    if (targetPath) {
+                        const openedFile = fileState.openedFiles.find(f => 
+                            f.path === targetPath || 
+                            (fileState.rootPath && f.path === `${fileState.rootPath}/${targetPath}`)
+                        );
+                        if (openedFile) {
+                            // 尝试从 JSON 响应中提取 newContent (支持 Diff 协议)
+                            let updatedContent = "";
+                            try {
+                                const parsed = JSON.parse(result.content || "");
+                                updatedContent = parsed.newContent || finalArgs.content || "";
+                            } catch (e) {
+                                // 兜底：如果不是 JSON，直接使用 AI 写入的内容
+                                updatedContent = finalArgs.content || "";
+                            }
+
+                            if (updatedContent) {
+                                console.log(`[ChatStore] ⚡ Physical Sync: Updating opened file "${targetPath}" content.`);
+                                fileState.updateFileContent(openedFile.id, updatedContent);
+                                fileState.setFileDirty(openedFile.id, false); // 磁盘已同步，重置为非 dirty
+                            }
+                        }
+                    }
                 }
 
                 coreUseChatStore.getState().addMessage({ id: crypto.randomUUID(), role: "tool", content: result.content || result.error || "", tool_call_id: toolCallId });
                 if (!options?.skipContinue && result.success) {
                     const providerConfig = settings.providers.find(p => p.id === settings.currentProviderId);
-                    if (providerConfig) setTimeout(async () => { await (window as any).__chatStore?.getState().generateResponse(coreUseChatStore.getState().messages, providerConfig); }, 300);
+                    // 🏆 PIVO 3.4.12: 物理缓冲升级 - 300ms -> 600ms。
+                    // 为磁盘写入、持久化以及 Monaco 渲染留出充足的物理时间片，根除卡顿。
+                    if (providerConfig) setTimeout(async () => { await (window as any).__chatStore?.getState().generateResponse(coreUseChatStore.getState().messages, providerConfig); }, 600);
                 }
                 return;
             }
@@ -356,6 +402,10 @@ const patchedApproveToolCall = async (messageId: string, toolCallId: string, opt
     }
     return await originalApproveToolCall(messageId, toolCallId);
 };
+
+import { eventBus } from '../core/events/GlobalEventBus';
+
+
 
 coreUseChatStore.setState({
     sendMessage: patchedSendMessage,
@@ -446,6 +496,55 @@ coreUseChatStore.subscribe((state, prevState) => {
 });
 
 // 🏆 v0.5.0: DebuggerAgent 实时同步引擎 (强同步初始化)
+
+// 🏆 PIVO 3.0: 物理级流式自愈中枢
+let isHealingInitialized = false;
+export function initPivoSelfHealing() {
+    if (isHealingInitialized || typeof window === 'undefined') return;
+    isHealingInitialized = true;
+    
+    console.log('[ChatStore] 🛡️ Activating PIVO 3.0 Physical Sentry...');
+    
+    // 1. 订阅流停滞事件 (自愈)
+    eventBus.on('stream:stalled', async (payload: { id: string }) => {
+        console.warn(`[ChatStore] 🛡️ Self-healing triggered: ${payload.id}`);
+        
+        if (!(window as any).__PIVO_SIGNALS__) (window as any).__PIVO_SIGNALS__ = {};
+        (window as any).__PIVO_SIGNALS__['ifainew:self-healing-triggered'] = { id: payload.id, timestamp: Date.now() };
+
+        const state = coreUseChatStore.getState();
+        const msg = (state.messages || []).find(m => m.id === payload.id);
+        
+        if (msg && (msg as any).isStreaming) {
+            const hasUnclosedTool = msg.toolCalls?.some(tc => tc.isPartial);
+            if (hasUnclosedTool) {
+                const settings = (window as any).__settingsStore?.getState();
+                const providerConfig = settings?.providers.find((p: any) => p.id === settings.currentProviderId);
+                if (providerConfig) {
+                    console.log(`[ChatStore] 🔄 Auto-Continue physically for session ${payload.id}`);
+                    (coreUseChatStore.getState() as any).generateResponse(state.messages, providerConfig);
+                }
+            } else {
+                console.log(`[ChatStore] 🛡️ Sentinel: Session ${payload.id} healthy but quiet. Finalizing.`);
+                const { StreamingResponseController } = await import('../services/chat/StreamingResponseController');
+                StreamingResponseController.getInstance().finalizeStream(payload.id);
+            }
+        }
+    });
+
+    // 2. 订阅流结束事件 (异步任务拆解，解决 flushSync 冲突)
+    eventBus.on('ifainew:stream-finished', async (payload: { id: string }) => {
+        console.log(`[ChatStore] 🌳 Async Task Breakdown: ${payload.id}`);
+        const state = coreUseChatStore.getState();
+        const lastMsg = (state.messages || []).find(m => m.id === payload.id);
+        
+        if (lastMsg) {
+            const { MessageLifecycleService } = await import('../services/chat/MessageLifecycleService');
+            MessageLifecycleService.triggerTaskBreakdown(lastMsg, state.messages);
+        }
+    });
+}
+
 let isDebugInitialized = false;
 export async function initDebugEventListeners() {
     if (isDebugInitialized) return;
@@ -458,8 +557,11 @@ export async function initDebugEventListeners() {
 
     isDebugInitialized = true;
     console.log('[ChatStore] 📡 Activating DebuggerAgent Physical Sentry...');
+
     
+
     // 1. 监听步骤开始
+
     listen<{ messageId: string; stepLabel: string; status?: string }>('debug:step:start', (event) => {
         const { messageId, stepLabel, status } = event.payload;
         const pivoStore = (window as any).__pivoStore;
@@ -509,6 +611,7 @@ export async function initDebugEventListeners() {
     });
 }
 
+initPivoSelfHealing();
 initDebugEventListeners();
 
 export const useChatStore = coreUseChatStore;

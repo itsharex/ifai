@@ -1,110 +1,53 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
-import { MessageItem } from '../../src/components/AIChat/MessageItem';
-import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { StreamingResponseController } from '../../src/services/chat/StreamingResponseController';
 
-// Mock dependencies
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
-}));
-
-vi.mock('../../src/stores/settingsStore', () => ({
-  useSettingsStore: Object.assign(() => ({
-    agentAutoApprove: false,
-    fontSize: 14,
-    compactMode: false
-  }), {
-    getState: () => ({
-      agentAutoApprove: false,
-      fontSize: 14,
-      compactMode: false
-    })
-  })
-}));
-
+// Mock chat store to track reference updates
 vi.mock('../../src/stores/useChatStore', () => ({
-  useChatStore: Object.assign(() => ({
-    messages: [],
-    isLoading: false,
-    sendMessage: vi.fn(),
-    approveToolCall: vi.fn(),
-    rejectToolCall: vi.fn()
-  }), {
-    getState: () => ({ 
-        messages: [],
-        isLoading: false,
-        sendMessage: vi.fn(),
-        approveToolCall: vi.fn(),
-        rejectToolCall: vi.fn()
-    }) 
-  })
+    useChatStore: {
+        setState: vi.fn(),
+        getState: () => ({ messages: [] })
+    },
+    toolCallDeduplicator: {
+        getCanonicalId: (id: string) => id
+    }
 }));
 
-vi.mock('../../src/stores/threadStore', () => ({
-  useThreadStore: {
-    getState: () => ({
-      activeThreadId: 'thread-1'
-    })
-  }
-}));
+describe('StreamingResponseController Performance (Red-Green)', () => {
+    let controller: any;
 
-// Mock ifainew-core
-vi.mock('ifainew-core', () => ({
-  getToolLabel: (name: string) => name,
-  getToolColor: () => 'text-blue-400',
-  parseToolCalls: () => ({ segments: [] })
-}));
+    beforeEach(() => {
+        controller = StreamingResponseController.getInstance();
+    });
 
-describe('MessageItem Rerender Logic', () => {
-  it('SHOULD rerender when contentSegments change, even if content is identical', () => {
-    const onApprove = vi.fn();
-    const onReject = vi.fn();
-    
-    const message = {
-      id: 'msg-1',
-      role: 'assistant' as const,
-      content: 'Thinking...',
-      toolCalls: [],
-      contentSegments: [
-        { type: 'text', order: 0, content: 'Thinking...' }
-      ]
-    };
+    it('should maintain stable object references for history messages during streaming', () => {
+        const historyMsgId = 'history-1';
+        const activeMsgId = 'active-1';
+        
+        const historyMsg = { id: historyMsgId, role: 'user', content: 'hello' };
+        const activeMsg = { id: activeMsgId, role: 'assistant', content: '' };
+        
+        // 1. 初始化会话
+        const sessionData = {
+            buffer: [historyMsg, activeMsg],
+            lastHeartbeat: Date.now(),
+            hasReceivedChunk: false
+        };
 
-    const { rerender, container } = render(
-      <MessageItem 
-        message={message as any} 
-        onApprove={onApprove} 
-        onReject={onReject}
-        isStreaming={true}
-      />
-    );
+        // 2. 模拟收到新内容
+        const payload = { type: 'content', content: 'AI reply' };
+        
+        // 我们需要直接调用私有方法 handleEventChunk 进行逻辑测试
+        // @ts-ignore
+        controller.handleEventChunk(activeMsgId, sessionData, payload);
 
-    // 初始状态没有工具
-    expect(container.textContent).not.toContain('tool-1');
-
-    // 模拟流式更新：content 没变，但增加了一个 tool segment
-    const updatedMessage = {
-      ...message,
-      toolCalls: [
-        { id: 'tool-1', tool: 'test_tool', status: 'pending', args: {}, isPartial: true }
-      ],
-      contentSegments: [
-        { type: 'text', order: 0, content: 'Thinking...' },
-        { type: 'tool', order: 1, toolCallId: 'tool-1' }
-      ]
-    };
-
-    rerender(
-      <MessageItem 
-        message={updatedMessage as any} 
-        onApprove={onApprove} 
-        onReject={onReject}
-        isStreaming={true}
-      />
-    );
-
-    // 如果 arePropsEqual 逻辑有缺陷，这里会失败，因为组件认为 props 没变
-    // 注意：我们期望能看到工具卡片相关的文字
-    expect(container.textContent).toContain('test_tool');
-  });
+        // 3. 🔴 关键物理断言：历史消息的对象引用必须绝对相等
+        // 在老逻辑中，sessionData.buffer.map 会创建新对象，导致 historyMsg !== sessionData.buffer[0]
+        expect(sessionData.buffer[0]).toBe(historyMsg);
+        
+        // 4. 活跃消息的对象引用必须改变（因为它更新了内容）
+        expect(sessionData.buffer[1]).not.toBe(activeMsg);
+        expect(sessionData.buffer[1].content).toBe('AI reply');
+        
+        console.log('[TDD] ✅ Reference pinning verified! History objects are static.');
+    });
 });

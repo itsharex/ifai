@@ -10,6 +10,7 @@ interface StreamingToolArgsViewerProps {
   args: Record<string, any>;
   isStreaming?: boolean;
   streamingKeys?: string[];
+  excludeKeys?: string[];
 }
 
 /**
@@ -78,9 +79,10 @@ function formatValue(value: any): string {
 export const StreamingToolArgsViewer: React.FC<StreamingToolArgsViewerProps> = ({
   args,
   isStreaming = false,
-  streamingKeys = []
+  streamingKeys = [],
+  excludeKeys = []
 }) => {
-  const entries = Object.entries(args);
+  const entries = Object.entries(args).filter(([key]) => !excludeKeys.includes(key));
 
   if (entries.length === 0 && !isStreaming) {
     return (
@@ -92,7 +94,7 @@ export const StreamingToolArgsViewer: React.FC<StreamingToolArgsViewerProps> = (
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 min-h-[28px]">
       {entries.map(([key, value]) => {
         const isKeyStreaming = isStreaming && streamingKeys.includes(key);
         const hasValue = value !== undefined && value !== null && value !== '';
@@ -129,7 +131,7 @@ export const StreamingToolArgsViewer: React.FC<StreamingToolArgsViewerProps> = (
             <div className="flex-1 flex items-center gap-1.5 min-w-0">
               <span className={color}>{icon}</span>
               {hasValue ? (
-                <span className="text-gray-300 font-mono truncate" title={String(value)}>
+                <span className="text-gray-300 font-mono truncate" title={typeof value === 'string' && value.length > 500 ? 'Content too large to display' : String(value)}>
                   {displayValue}
                 </span>
               ) : isKeyStreaming ? (
@@ -142,11 +144,11 @@ export const StreamingToolArgsViewer: React.FC<StreamingToolArgsViewerProps> = (
         );
       })}
 
-      {/* 流式传输中提示 */}
+      {/* 流式传输中提示 - 物理级对齐高度，消除首个参数到达时的布局弹跳 */}
       {isStreaming && entries.length === 0 && (
-        <div className="flex items-center gap-2 text-xs text-gray-500 px-2 py-2">
+        <div className="flex items-center gap-2 text-xs py-1 px-2">
           <Loader2 size={14} className="animate-spin text-blue-400" />
-          <span className="italic">正在生成参数...</span>
+          <span className="text-gray-500 italic">正在提取操作参数...</span>
         </div>
       )}
     </div>

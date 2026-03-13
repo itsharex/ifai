@@ -6,6 +6,7 @@ import { IS_COMMERCIAL } from '../../config/edition';
 import i18n from '../../i18n/config';
 import { recognizeIntent, shouldTriggerAgent } from '../../utils/intentRecognizer';
 import { invoke } from '@tauri-apps/api/core';
+import { useFileStore } from '../../stores/fileStore';
 
 export class MessageLifecycleService {
   private static multimodalCache = new Map<string, any[]>();
@@ -209,6 +210,9 @@ export class MessageLifecycleService {
     console.log(`[Lifecycle] 📝 msgHistory roles: ${msgHistory.map(m => m.role).join(', ')}`);
 
 
+    const rootPath = useFileStore.getState().rootPath;
+    const workspaceInfo = rootPath ? (isChinese ? `\n【当前工作区】${rootPath}` : `\n[CURRENT WORKSPACE] ${rootPath}`) : "";
+
     const inlineInstruction = isInlineTask ? (isChinese ? "\n\n【核心要求】你现在正在进行原位(Inline)代码编辑。请直接调用 agent_write_file 或 agent_replace_text 物理修改用户选中的代码。严禁只给出 Markdown 代码块建议。" : "\n\n[CORE REQUIREMENT] You are performing an In-place (Inline) edit. MUST call agent_write_file or agent_replace_text to physically modify the code. DO NOT just provide code blocks in chat.") : "";
     const PIVO_PROMPT = (isChinese ? `【物理工具箱授权】
 你现在拥有 PIVO 2.0 全量物理执行权限。请根据需要直接调用以下工具：
@@ -216,13 +220,17 @@ export class MessageLifecycleService {
 - agent_write_file: 写入或重构代码文件
 - agent_read_file: 读取物理文件内容
 - agent_scan_project: 快速扫描项目全景
+${workspaceInfo}
 
 【准则】你是一名资深的物理执行专家，请直接行动，严禁只用文字描述。` : `[PIVO 2.0 PHYSICAL TOOL AUTHORIZATION]
 You have full execution permissions. Directly call:
 - agent_execute_command: execute system commands
 - agent_write_file: write/refactor code
 - agent_read_file: read physical files
-- agent_scan_project: scan project topology.`) + inlineInstruction;
+- agent_scan_project: scan project topology.
+${workspaceInfo}
+
+[PRINCIPLE] Action oriented. No mere descriptions.`) + inlineInstruction;
 
     if (!msgHistory.some((m: any) => m.content === PIVO_PROMPT) && msgHistory.length < 5) {
         msgHistory.unshift({ role: "system", content: PIVO_PROMPT } as any);

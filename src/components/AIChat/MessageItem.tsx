@@ -90,59 +90,52 @@ interface MessageItemProps {
 // Custom comparison function for React.memo
 // Optimized to avoid unnecessary re-renders during streaming
 const arePropsEqual = (prevProps: MessageItemProps, nextProps: MessageItemProps) => {
-    // Re-render if streaming status changes
-    if (prevProps.isStreaming !== nextProps.isStreaming) {
-        return false;
+    // 1. 物理状态校验 (Physical Status Check)
+    if (prevProps.isStreaming !== nextProps.isStreaming) return false;
+    
+    const pm = prevProps.message;
+    const nm = nextProps.message;
+
+    // 2. 身份校验 (Identity Check)
+    if (pm.id !== nm.id) return false;
+
+    // 3. 内容保真度校验 (Content Fidelity Check)
+    // ⚡️ PERFORMANCE: 如果是已经结束流的消息，且内容长度和引用都未变，则视为相等
+    if (pm.content !== nm.content) {
+        // 如果引用变了，进一步检查物理内容（防止 map 导致的虚假更新）
+        if (typeof pm.content === 'string' && typeof nm.content === 'string') {
+            if (pm.content !== nm.content) return false;
+        } else if (JSON.stringify(pm.content) !== JSON.stringify(nm.content)) {
+            return false;
+        }
     }
-    // Re-render if message content changes
-    if (prevProps.message.content !== nextProps.message.content) {
-        return false;
-    }
-    // 🔥 FIX: 必须比较 contentSegments，否则流式工具调用不会触发 UI 更新
-    if ((prevProps.message.contentSegments?.length || 0) !== (nextProps.message.contentSegments?.length || 0)) {
-        return false;
-    }
-    // 🔥 FIX v0.3.9.3: 更彻底的 toolCalls 深度比较
-    const prevToolCalls = prevProps.message.toolCalls;
-    const nextToolCalls = nextProps.message.toolCalls;
-    // 如果数量不同，重新渲染
-    if ((prevToolCalls?.length || 0) !== (nextToolCalls?.length || 0)) {
-        return false;
-    }
-    // 如果有 toolCalls，深度比较每个 toolCall
-    if (prevToolCalls && nextToolCalls) {
-        for (let i = 0; i < prevToolCalls.length; i++) {
-            const prevTC = prevToolCalls[i];
-            const nextTC = nextToolCalls[i];
-            // 检查所有关键字段
-            if (prevTC.id !== nextTC.id ||
-                prevTC.tool !== nextTC.tool ||
-                prevTC.status !== nextTC.status ||
-                prevTC.result !== nextTC.result ||
-                prevTC.isPartial !== nextTC.isPartial ||
-                // ⚡️ PERFORMANCE FIX: 使用引用比较代替 JSON.stringify
-                // 在 useChatStore 中，我们确保了 args 每次更新都是一个新对象
-                prevTC.args !== nextTC.args) {
+
+    // 4. 工具调用物理链路校验 (ToolCall Linkage Check)
+    const ptc = pm.toolCalls;
+    const ntc = nm.toolCalls;
+    
+    if ((ptc?.length || 0) !== (ntc?.length || 0)) return false;
+    if (ptc && ntc) {
+        for (let i = 0; i < ptc.length; i++) {
+            const p = ptc[i];
+            const n = ntc[i];
+            // 🏆 物理属性比对：忽略 args 引用抖动，只看核心状态突变
+            if (p.id !== n.id || p.status !== n.status || p.tool !== n.tool || p.isPartial !== n.isPartial) {
                 return false;
             }
+            // 针对正在流式的 args，如果长度变化显著或引用变化且不是在流式，则重绘
+            if (p.args !== n.args) {
+                const pLen = JSON.stringify(p.args || {}).length;
+                const nLen = JSON.stringify(n.args || {}).length;
+                if (pLen !== nLen) return false;
+            }
         }
-    } else if (prevToolCalls !== nextToolCalls) {
-        // 其中一个是 null/undefined 而另一个不是
-        return false;
     }
-    // Re-render if message ID changes
-    if (prevProps.message.id !== nextProps.message.id) {
-        return false;
-    }
-    // Re-render if references change
-    if ((prevProps.message.references?.length || 0) !== (nextProps.message.references?.length || 0)) {
-        return false;
-    }
-    // Re-render if metadata changes (like exploreProgress)
-    if ((prevProps.message as any).exploreProgress !== (nextProps.message as any).exploreProgress) {
-        return false;
-    }
-    // Otherwise skip re-render
+
+    // 5. 辅助元数据校验
+    if ((pm as any).exploreProgress !== (nm as any).exploreProgress) return false;
+    if ((pm.contentSegments?.length || 0) !== (nm.contentSegments?.length || 0)) return false;
+
     return true;
 };
 // 🔥 FIX: 添加自定义比较函数，确保 toolCalls 变化时触发重新渲染
@@ -324,22 +317,11 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     // Create a stable reference to expandedBlocks for useCallback
     const expandedBlocksRef = useRef(expandedBlocks);
     expandedBlocksRef.current = expandedBlocks;
-    // Debug: Log message toolCalls on every render (development only)
-    React.useEffect(() => {
-        if (process.env.NODE_ENV === 'development' && message.toolCalls && message.toolCalls.length > 0) {
-            console.log('[MessageItem] Rendering message with toolCalls:', message.id, message.toolCalls.length);
-        }
-    }, [message.toolCalls, message.id]);
-    // Debug: Log when isStreaming changes
-    React.useEffect(() => {
-        if (process.env.NODE_ENV === 'development' && isStreaming && message.role === 'assistant') {
-            console.log('[MessageItem] 🚀 Message is actively streaming:', message.id);
-        }
-    }, [isStreaming, message.id]);
+    // 🏆 PIVO 3.0: 移除冗余渲染日志，确保控制台在流式输出时的极致纯净
     // Count pending tool calls for batch actions
     const pendingCount = React.useMemo(() => {
-        if (!message.toolCalls) return 0;
-        return message.toolCalls.filter(tc => tc.status === 'pending' && !tc.isPartial).length;
+        if (!message.toolCalls || !Array.isArray(message.toolCalls)) return 0;
+        return message.toolCalls.filter(tc => tc && tc.status === 'pending' && !tc.isPartial).length;
     }, [message.toolCalls]);
     const handleApproveAll = () => {
         const store = useChatStore.getState() as any;
@@ -495,7 +477,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
     }, [message.contentSegments]);
     // 🔥 FIX v0.4.0: 工业级骨架屏占位，防止 CLS (布局抖动)
     const renderSkeleton = () => (
-        <div className="space-y-3 py-2 animate-pulse w-full max-w-[280px]">
+        <div className="space-y-3 py-2 w-full max-w-[280px] min-h-[80px]">
             <div className="h-2.5 bg-blue-500/10 rounded-full w-full opacity-60"></div>
             <div className="h-2.5 bg-blue-500/10 rounded-full w-[90%] opacity-40"></div>
             <div className="h-2.5 bg-blue-500/10 rounded-full w-[70%] opacity-20"></div>
@@ -747,7 +729,7 @@ export const MessageItem = React.memo(({ message, onApprove, onReject, onOpenFil
                                 )}
                             </button>
                             {isThinkingExpanded && (
-                                <div className="mt-2 p-3 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-gray-400 leading-relaxed italic animate-in fade-in slide-in-from-top-1 duration-200">
+                                <div className="mt-2 p-3 bg-white/[0.03] border border-white/5 rounded-lg text-xs text-gray-400 leading-relaxed italic">
                                     {thinkingText}
                                 </div>
                             )}

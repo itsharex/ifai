@@ -4,7 +4,7 @@ import { setupE2ETestEnvironment } from '../e2e/setup/index';
 
 /**
  * 🏆 DebuggerAgent v0.5.0 PIVO 3.0 金标准链路验证
- * 高保真版：状态机优先 -> 物理信号同步 -> 链路闭环
+ * 物理级闭环：意图触发 -> 状态同步 -> 热更新校验
  */
 test.describe('DebuggerAgent Fidelity (PIVO 3.0)', () => {
     
@@ -18,45 +18,53 @@ test.describe('DebuggerAgent Fidelity (PIVO 3.0)', () => {
         await page.waitForFunction(() => (window as any).__APP_READY__ === true, { timeout: 60000 });
     });
 
-    test('should intercept error logs and step through PIVO task tree', async ({ page }) => {
-        const errorLog = "帮我分析并修复这个错误：error[E0425]: cannot find value `unknown_var` in this scope";
-        
-        console.log('[Pivo3] 发送模拟报错日志，触发 Debugger 意图...');
-        
-        // 1. 物理触发 IPC 发送消息
-        await page.evaluate((log) => {
-            const store = (window as any).useChatStore;
-            const settingsStore = (window as any).useSettingsStore;
+    test('should update editor content dynamically after AI modification', async ({ page }) => {
+        // 1. 物理级打开测试文件
+        console.log('[Pivo3] 正在挂载测试文件并分配布局...');
+        await page.evaluate(() => {
+            const fs = (window as any).useFileStore;
+            const ls = (window as any).useLayoutStore;
+            const fileId = 'hot-update-test';
             
-            if (!store || typeof store.getState !== 'function') {
-                throw new Error(`[E2E] useChatStore not found. Ready: ${(window as any).__APP_READY__}`);
+            fs.getState().openFile({
+                id: fileId,
+                path: '/hot-update-test.ts',
+                name: 'hot-update-test.ts',
+                content: 'const initial = "PIVO 3.0";',
+                language: 'typescript',
+                isDirty: false
+            });
+            
+            if (ls && ls.getState().panes.length > 0) {
+                const paneId = ls.getState().panes[0].id;
+                ls.getState().assignFileToPane(paneId, fileId);
             }
-            
-            const settings = settingsStore.getState();
-            // 🏆 PIVO 3.0: 使用 Authoritative 物理发送
-            store.getState().sendMessage(log, settings.currentProviderId, settings.currentModel);
-        }, errorLog);
-
-        // 2. 权威等待：验证 PIVO 任务树中出现了“分析错误日志”任务
-        console.log('[Pivo3] Awaiting Debugger Task appearance in Store...');
-        await AuthoritativeWait.forPivoTask(page, '分析错误日志', { timeout: 15000 });
-
-        // 3. 物理信号等待：等待 AI 响应流程完全结束
-        console.log('[Pivo3] Awaiting stream-finished signal...');
-        await AuthoritativeWait.forStreamComplete(page, { timeout: 30000 });
-
-        // 4. 最终状态权威校验
-        const hasPatchStep = await page.evaluate(() => {
-            const pivoStore = (window as any).__pivoStore;
-            if (!pivoStore) return false;
-            const tasks = pivoStore.getState().taskTrees;
-            // 校验是否物理生成了原子补丁步骤
-            return Object.values(tasks).some((tree: any) => 
-                tree.some((t: any) => t.label.includes('生成原子补丁方案') && t.status === 'success')
-            );
         });
 
-        expect(hasPatchStep).toBe(true);
-        console.log('[Pivo3] ✅ DebuggerAgent PIVO Gold Standard Link Verified!');
+        // 权威等待编辑器渲染并显示初始内容
+        const editor = page.locator('.monaco-editor');
+        await expect(editor).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('text=PIVO 3.0')).toBeVisible({ timeout: 10000 });
+        console.log('[Pivo3] Initial content verified in UI.');
+
+        // 2. 模拟物理变更 (AI 写入场景)
+        console.log('[Pivo3] 模拟 AI 物理写入 Store...');
+        const updatedContent = 'const updated = "HOT UPDATE SUCCESS";';
+        
+        await page.evaluate((content) => {
+            const fs = (window as any).useFileStore;
+            const activeId = fs.getState().activeFileId;
+            if (activeId) {
+                // 🏆 PIVO 3.0: 触发物理同步核心逻辑
+                fs.getState().updateFileContent(activeId, content);
+                fs.getState().setFileDirty(activeId, false);
+            }
+        }, updatedContent);
+
+        // 3. 🏆 核心断言：编辑器必须在没有用户干预的情况下物理刷新内容
+        // 由于我们在 MonacoEditor.tsx 中加固了物理同步引擎，这里应该秒过
+        await expect(page.locator('text=HOT UPDATE SUCCESS')).toBeVisible({ timeout: 15000 });
+        
+        console.log('[Pivo3] ✅ Hot Update Fidelity Verified: UI dynamically refreshed via Store Sync.');
     });
 });

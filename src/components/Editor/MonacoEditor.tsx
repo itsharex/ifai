@@ -820,18 +820,32 @@ ${textBefore}[CURSOR]${textAfter}
   }, [showMinimap, fontSize, fontFamily, lineHeight, fontLigatures, cursorBlinking, cursorSmoothCaretAnimation, smoothScrolling, bracketPairColorization, renderWhitespace, showLineNumbers, tabSize, wordWrap, isChatStreaming]); // Stable primitive dependencies
 
   // Update editor content when file changes (without remounting)
+  // 🏆 PIVO 3.0: 增强型物理同步引擎
   useEffect(() => {
     const editor = editorRef.current;
-    if (editor && file) {
-      const currentValue = editor.getValue();
-      // Only update if content is different (avoid overwriting user edits)
-      if (currentValue !== (file.content || '')) {
-        editor.setValue(file.content || '');
-      }
-      // Ensure editor is focused when switching files to keep keyboard shortcuts active
-      editor.focus();
+    if (editor) {
+        // 🔥 为 E2E 始终保持最新的编辑器实例指向
+        (window as any).__activeEditor = editor;
+        
+        if (file) {
+            const currentValue = editor.getValue();
+            const targetValue = file.content || '';
+            
+            // 🏆 PIVO 3.0: 极致物理同步 (排除用户活跃输入干扰)
+            if (currentValue !== targetValue) {
+                const noFocus = !editor.hasTextFocus(); 
+                const isNotDirty = !file.isDirty;
+
+                // 🔥 物理加固：如果不是 dirty，说明是外部同步（如 Agent 写入），强制刷新
+                if (noFocus || isNotDirty) {
+                    console.log('[MonacoEditor] 🔄 Mandatory Physical Sync:', { file: file.path });
+                    editor.setValue(targetValue);
+                }
+            }
+        }
     }
-  }, [file?.id, paneId]); // 🔥 修复无限循环：移除 getEditorInstance 依赖，使用 ref 代替
+  }, [file?.id, file?.content, file?.isDirty, paneId]); 
+
 
   // v0.3.0: 代码异味自动分析
   const analyzeFile = useCodeSmellStore(state => state.analyzeFile);
@@ -908,14 +922,31 @@ ${textBefore}[CURSOR]${textAfter}
       }
       
       const position = editorRef.current.getPosition();
-      if (position) {
-        // 在当前行展开预览区域
+      const model = editorRef.current.getModel();
+      
+      if (position && model) {
+        // 🏆 PIVO 3.0: 物理智能几何适配逻辑
         const codeLines = modifiedCode ? modifiedCode.split('\n').length : 0;
-        // 如果代码还没出来，给个基础高度显示加载中
-        const lineCount = Math.min(Math.max(codeLines + 2, 6), 25);
+        
+        // 检测是否是“全量替换”模式 (包含关键声明且行数多)
+        const isFullFile = (modifiedCode?.includes('package ') || modifiedCode?.includes('import ')) && codeLines > 30;
+        
+        // 计算物理高度：
+        // 全量替换：占据约 50% 的编辑器视口
+        // 局部建议：动态增长，最大 35 行
+        let lineCount = 0;
+        if (isFullFile) {
+            lineCount = 25; // 提升至 25 行，为底部 Padding 留出物理空间
+        } else {
+            lineCount = Math.min(Math.max(codeLines + 6, 10), 35); // 增加缓冲区
+        }
+        
         const displayContent = modifiedCode || '✨ AI 正在构思并生成代码...';
         
-        diffZoneRef.current.show(position.lineNumber, lineCount, displayContent);
+        // 如果是全量替换且行数极多，锚定在第一行展示，防止在文件末尾重叠
+        const targetLine = isFullFile ? 0 : position.lineNumber;
+        
+        diffZoneRef.current.show(targetLine, lineCount, displayContent);
       }
     } else {
       diffZoneRef.current?.hide();
